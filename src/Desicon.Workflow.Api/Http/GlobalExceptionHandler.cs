@@ -1,3 +1,4 @@
+using Desicon.Workflow.Api.Endpoints;
 using Desicon.Workflow.Api.Security;
 using Microsoft.AspNetCore.Diagnostics;
 
@@ -29,6 +30,11 @@ public sealed partial class GlobalExceptionHandler : IExceptionHandler
             UnprovisionedUserException ex => (
                 StatusCodes.Status403Forbidden,
                 "No matching staff record",
+                ex.Message),
+
+            MissingBankDetailsException ex => (
+                StatusCodes.Status409Conflict,
+                "Bank details required",
                 ex.Message),
 
             InvalidOperationException ex => (

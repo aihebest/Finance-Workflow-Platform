@@ -183,6 +183,42 @@
         <member name="M:Desicon.Workflow.Infrastructure.Persistence.Migrations.AddAdvanceRetirementLinks.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
             <inheritdoc />
         </member>
+        <member name="T:Desicon.Workflow.Infrastructure.Persistence.Migrations.AddBeneficiaryAndEmployeeBankDetails">
+            <inheritdoc />
+        </member>
+        <member name="M:Desicon.Workflow.Infrastructure.Persistence.Migrations.AddBeneficiaryAndEmployeeBankDetails.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:Desicon.Workflow.Infrastructure.Persistence.Migrations.AddBeneficiaryAndEmployeeBankDetails.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:Desicon.Workflow.Infrastructure.Persistence.Migrations.AddBeneficiaryAndEmployeeBankDetails.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="T:Desicon.Workflow.Infrastructure.Persistence.Migrations.ApplyAlwaysEncryptedToBeneficiaryBankAccountNumber">
+            <inheritdoc />
+        </member>
+        <member name="M:Desicon.Workflow.Infrastructure.Persistence.Migrations.ApplyAlwaysEncryptedToBeneficiaryBankAccountNumber.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:Desicon.Workflow.Infrastructure.Persistence.Migrations.ApplyAlwaysEncryptedToBeneficiaryBankAccountNumber.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:Desicon.Workflow.Infrastructure.Persistence.Migrations.ApplyAlwaysEncryptedToBeneficiaryBankAccountNumber.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="T:Desicon.Workflow.Infrastructure.Persistence.Migrations.AddBeneficiaryBankDetailsSetByUserIdToExpenseRequests">
+            <inheritdoc />
+        </member>
+        <member name="M:Desicon.Workflow.Infrastructure.Persistence.Migrations.AddBeneficiaryBankDetailsSetByUserIdToExpenseRequests.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:Desicon.Workflow.Infrastructure.Persistence.Migrations.AddBeneficiaryBankDetailsSetByUserIdToExpenseRequests.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:Desicon.Workflow.Infrastructure.Persistence.Migrations.AddBeneficiaryBankDetailsSetByUserIdToExpenseRequests.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
         <member name="T:Desicon.Workflow.Infrastructure.Persistence.WorkflowDbContext">
              <summary>
              EF Core mapping of the engine and module tables described in
@@ -198,11 +234,34 @@
         <member name="T:Desicon.Workflow.Infrastructure.Persistence.WorkflowDbContextFactory">
             <summary>
             Lets `dotnet ef` build <see cref="T:Desicon.Workflow.Infrastructure.Persistence.WorkflowDbContext"/> at design time
-            (scaffolding, migrations) without a host project wiring up DI yet. The
-            connection string here is never used to open a connection -- migrations
-            only need it to select the SQL Server provider and generate SQL. Runtime
-            composition (API, Functions) will register its own connection string via
-            configuration.
+            (scaffolding, migrations) without a host project wiring up DI yet. For
+            `migrations add` this connection string is never opened -- it's only
+            used to select the SQL Server provider and generate SQL. `database
+            update` against a local dev database does open it, though, and the
+            ApplyAlwaysEncryptedToBeneficiaryBankAccountNumber migration's ALTER
+            COLUMN requires "Column Encryption Setting=Enabled" on that connection
+            (see WorkflowDbContextFactory and Program.cs's AKV provider
+            registration) -- without it that migration fails, not the ones before
+            it. Runtime composition (API, Functions) registers its own connection
+            string via configuration.
+            </summary>
+        </member>
+        <member name="T:Desicon.Workflow.Infrastructure.Security.IBankDetailsAuditor">
+            <summary>
+            The single place Beneficiary.BankName/BankAccountNumber are ever set or
+            edited. Stamps who did it (for the bank-details maker-checker check in
+            RequestActionService.EvaluatePolicyViolation) and writes a SecurityEvent
+            carrying old/new value hashes rather than the values themselves -- the
+            event is a durable audit record, not a place to duplicate the account
+            number in yet another table.
+            </summary>
+        </member>
+        <member name="M:Desicon.Workflow.Infrastructure.Security.IBankDetailsAuditor.ApplyChangeAsync(Desicon.Workflow.Domain.People.Beneficiary,System.String,System.String,System.Guid,System.String,System.Guid,System.DateTimeOffset,System.Threading.CancellationToken)">
+            <summary>
+            No-ops if newBankName/newBankAccountNumber match what is already on
+            the beneficiary -- re-saving an unchanged value is not a "change" and
+            must not overwrite BankDetailsSetByUserId with whoever merely
+            re-submitted the same form.
             </summary>
         </member>
         <member name="T:Desicon.Workflow.Infrastructure.Security.ISecurityEventWriter">
@@ -406,7 +465,7 @@
             the outermost call.
             </summary>
         </member>
-        <member name="M:Desicon.Workflow.Infrastructure.Workflow.RequestActionService.EvaluatePolicyViolation(Desicon.Workflow.Domain.Requests.Request,Desicon.Workflow.Core.Definitions.WorkflowTransition,System.Guid)">
+        <member name="M:Desicon.Workflow.Infrastructure.Workflow.RequestActionService.EvaluatePolicyViolation(Desicon.Workflow.Domain.Requests.Request,Desicon.Workflow.Core.Definitions.WorkflowTransition,System.Guid,Desicon.Workflow.Domain.People.Beneficiary)">
             <summary>
             Self-approval and maker-checker, enforced in code rather than trusted
             to the definition's own guard expressions. Returns a human-readable

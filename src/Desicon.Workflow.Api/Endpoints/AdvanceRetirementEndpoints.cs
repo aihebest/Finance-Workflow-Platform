@@ -1,8 +1,11 @@
+using Desicon.Workflow.Api.Security;
+using Desicon.Workflow.Core.Definitions;
 using Desicon.Workflow.Core.Engine;
 using Desicon.Workflow.Domain.Common;
 using Desicon.Workflow.Domain.People;
 using Desicon.Workflow.Domain.Requests;
 using Desicon.Workflow.Infrastructure.Persistence;
+using Desicon.Workflow.Infrastructure.Security;
 using Desicon.Workflow.Infrastructure.Workflow;
 using Microsoft.EntityFrameworkCore;
 
@@ -27,6 +30,8 @@ public static class AdvanceRetirementEndpoints
         IWorkflowDefinitionProvider definitions,
         IRequestNumberGenerator numberGenerator,
         IWorkflowClock clock,
+        IBankDetailsAuditor bankDetailsAuditor,
+        ICurrentUserAccessor currentUser,
         CancellationToken cancellationToken)
     {
         var advance = await db.CashAdvanceRequests
@@ -43,10 +48,20 @@ public static class AdvanceRetirementEndpoints
             return Results.Conflict($"Cash advance '{id}' has no outstanding balance to retire.");
         }
 
-        var beneficiary = await FindOrCreateEmployeeBeneficiaryAsync(db, advance.RequesterId, cancellationToken);
+        var now = clock.UtcNow;
+        var actingUser = await currentUser.GetActingUserAsync(cancellationToken);
+        var effectiveActorId = actingUser.OnBehalfOf ?? actingUser.UserId;
+
+        // advance.RequestId, not the not-yet-created expense's, is the
+        // SecurityEvent context here: the expense row does not exist in the
+        // database yet (it is only added to the DbContext below), and
+        // ISecurityEventWriter commits through its own connection that must
+        // see a real, already-persisted RequestId to satisfy the FK.
+        var beneficiary = await FindOrCreateEmployeeBeneficiaryAsync(
+            db, bankDetailsAuditor, advance.RequesterId, advance.RequestId, advance.ModuleKey,
+            effectiveActorId, now, cancellationToken);
 
         var definition = await definitions.GetAsync("EXPENSE", cancellationToken);
-        var now = clock.UtcNow;
 
         var expense = new ExpenseRequest
         {
@@ -95,6 +110,7 @@ public static class AdvanceRetirementEndpoints
         }
 
         expense.RecalculateTotals();
+        expense.ApplyPaymentMethodPolicy(definition.GetPolicyValue("PAYMENT_METHOD_THRESHOLD_NGN", now));
 
         db.ExpenseRequests.Add(expense);
         await db.SaveChangesAsync(cancellationToken);
@@ -115,11 +131,21 @@ public static class AdvanceRetirementEndpoints
     /// themselves" built in -- every claim pays a Beneficiary row. An advance
     /// being retired has no beneficiary of its own to reuse, so the
     /// requester's own Employee-type Beneficiary is found or created here.
-    /// Bank details are left blank: Employee carries none to source them
-    /// from, and Finance can fill them in on the draft before submission.
+    /// Bank details are sourced from the Employee record, never left blank:
+    /// an Employee-type Beneficiary with no bank details on file would pass
+    /// every guard silently and only surface as a payment failure at
+    /// Treasury, so this fails loudly instead, before the row is ever
+    /// created.
     /// </summary>
     private static async Task<Beneficiary> FindOrCreateEmployeeBeneficiaryAsync(
-        WorkflowDbContext db, Guid employeeId, CancellationToken cancellationToken)
+        WorkflowDbContext db,
+        IBankDetailsAuditor bankDetailsAuditor,
+        Guid employeeId,
+        Guid contextRequestId,
+        string contextModuleKey,
+        Guid actorId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
     {
         var existing = await db.Beneficiaries
             .FirstOrDefaultAsync(
@@ -134,17 +160,38 @@ public static class AdvanceRetirementEndpoints
             .FirstOrDefaultAsync(e => e.Id == employeeId, cancellationToken)
             ?? throw new InvalidOperationException($"Employee '{employeeId}' does not exist.");
 
+        if (string.IsNullOrWhiteSpace(employee.BankName) || string.IsNullOrWhiteSpace(employee.BankAccountNumber))
+        {
+            throw new MissingBankDetailsException(
+                $"Employee '{employee.FullName}' ({employee.StaffNumber}) has no bank details on file. " +
+                "Record bank details for this employee before an advance can be retired to them.");
+        }
+
         var beneficiary = new Beneficiary
         {
             Type = BeneficiaryType.Employee,
             Name = employee.FullName,
-            BankName = string.Empty,
-            BankAccountNumber = string.Empty,
             EmployeeId = employee.Id
         };
 
+        await bankDetailsAuditor.ApplyChangeAsync(
+            beneficiary, employee.BankName, employee.BankAccountNumber,
+            contextRequestId, contextModuleKey, actorId, now, cancellationToken);
+
         db.Beneficiaries.Add(beneficiary);
         return beneficiary;
+    }
+}
+
+/// <summary>Thrown when a payee's underlying Employee record has no bank
+/// details on file. Distinct from a generic InvalidOperationException (404)
+/// or ArgumentException (400) -- the request is well-formed and the employee
+/// exists, but the data needed to pay them does not, which is a 409-shaped
+/// state conflict.</summary>
+public sealed class MissingBankDetailsException : Exception
+{
+    public MissingBankDetailsException(string message) : base(message)
+    {
     }
 }
 

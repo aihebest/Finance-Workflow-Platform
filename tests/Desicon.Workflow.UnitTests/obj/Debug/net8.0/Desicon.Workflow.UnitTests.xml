@@ -4,6 +4,14 @@
         <name>Desicon.Workflow.UnitTests</name>
     </assembly>
     <members>
+        <member name="T:Desicon.Workflow.UnitTests.Definitions.WorkflowDefinitionExtensionsTests">
+            <summary>
+            Covers GetPolicyValue's effective-dating lookup: a policy figure is a
+            dated row in the module's own PolicyValues table, not a constant, so a
+            future change ships as an additional row rather than an edit to the
+            existing one (see WorkflowDefinitionExtensions.GetPolicyValue).
+            </summary>
+        </member>
         <member name="T:Desicon.Workflow.UnitTests.Engine.FormRuleTests">
             <summary>
             These tests encode the rules read off DEL-AC-FRM-002 and DEL-AC-FRM-003.
@@ -21,6 +29,13 @@
              release is not overdue until nearly two calendar weeks later. If the
              dashboard ever looks implausibly clean, this is the first place to look.
              </summary>
+        </member>
+        <member name="T:Desicon.Workflow.UnitTests.People.BeneficiaryTests">
+            <summary>
+            HasBankDetails is what RequestActionService.RunTransitionAsync stages
+            into ExpenseRequest.BeneficiaryHasBankDetails for the AUTHORISE guard --
+            see GuardEvaluatorTests.Authorise_guard_allows_bank_transfer_only_with_bank_details.
+            </summary>
         </member>
         <member name="T:Desicon.Workflow.UnitTests.Requests.PostingGuardTests">
              <summary>

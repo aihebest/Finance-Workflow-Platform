@@ -57,7 +57,42 @@ public sealed class PolicyValue
 {
     public required string Key { get; init; }
     public required decimal Value { get; init; }
+
+    /// <summary>When this figure took effect. Lets a single definition
+    /// version carry more than one dated row for the same key (e.g. a
+    /// threshold that changes mid-year without a module version bump) --
+    /// GetPolicyValue picks the latest row whose EffectiveFrom has passed as
+    /// of the lookup date. Defaults to "always effective" for policy values
+    /// that only ever need one row.</summary>
+    public DateTimeOffset EffectiveFrom { get; init; } = DateTimeOffset.MinValue;
+
     public string? Note { get; init; }
+}
+
+public static class WorkflowDefinitionExtensions
+{
+    /// <summary>
+    /// Reads a named figure out of the definition's own policy table rather
+    /// than a C# constant, so a policy change ships as a JSON edit -- and,
+    /// via EffectiveFrom, as a dated JSON edit: adding a new row with a
+    /// future EffectiveFrom lands the change on that date without touching
+    /// requests already recalculating today. Among rows for this key whose
+    /// EffectiveFrom is on or before <paramref name="asOf"/>, the one with
+    /// the latest EffectiveFrom wins (see ExpenseRequest.ApplyPaymentMethodPolicy
+    /// and CashAdvanceRequest.ApplyPaymentMethodPolicy, both called on every
+    /// totals recalculation so a policy change takes effect on the next
+    /// edit, not just for new requests).
+    /// </summary>
+    public static decimal GetPolicyValue(this WorkflowDefinition definition, string key, DateTimeOffset asOf)
+    {
+        var candidate = definition.PolicyValues
+            .Where(p => string.Equals(p.Key, key, StringComparison.Ordinal) && p.EffectiveFrom <= asOf)
+            .OrderByDescending(p => p.EffectiveFrom)
+            .FirstOrDefault();
+
+        return candidate?.Value ?? throw new InvalidOperationException(
+            $"Module '{definition.ModuleKey}' has no policy value named '{key}' effective as of {asOf:O}.");
+    }
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter))]

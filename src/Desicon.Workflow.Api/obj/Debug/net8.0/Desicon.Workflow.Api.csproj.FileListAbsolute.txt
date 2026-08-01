@@ -81,3 +81,8 @@ C:\Users\USER\OneDrive - Desicon Group\Documents\Claude\Projects\desicon-finance
 C:\Users\USER\OneDrive - Desicon Group\Documents\Claude\Projects\desicon-finance-workflow-scaffold\src\Desicon.Workflow.Api\obj\Debug\net8.0\ref\Desicon.Workflow.Api.dll
 C:\Users\USER\OneDrive - Desicon Group\Documents\Claude\Projects\desicon-finance-workflow-scaffold\src\Desicon.Workflow.Api\bin\Debug\net8.0\Microsoft.AspNetCore.Authentication.JwtBearer.dll
 C:\Users\USER\OneDrive - Desicon Group\Documents\Claude\Projects\desicon-finance-workflow-scaffold\src\Desicon.Workflow.Api\obj\Debug\net8.0\Desicon.Workflow.Api.sourcelink.json
+C:\Users\USER\OneDrive - Desicon Group\Documents\Claude\Projects\desicon-finance-workflow-scaffold\src\Desicon.Workflow.Api\bin\Debug\net8.0\Azure.Security.KeyVault.Keys.dll
+C:\Users\USER\OneDrive - Desicon Group\Documents\Claude\Projects\desicon-finance-workflow-scaffold\src\Desicon.Workflow.Api\bin\Debug\net8.0\Microsoft.Data.SqlClient.AlwaysEncrypted.AzureKeyVaultProvider.dll
+C:\Users\USER\OneDrive - Desicon Group\Documents\Claude\Projects\desicon-finance-workflow-scaffold\src\Desicon.Workflow.Api\bin\Debug\net8.0\System.ClientModel.dll
+C:\Users\USER\OneDrive - Desicon Group\Documents\Claude\Projects\desicon-finance-workflow-scaffold\src\Desicon.Workflow.Api\bin\Debug\net8.0\runtimes\unix\lib\netcoreapp2.1\Microsoft.Data.SqlClient.AlwaysEncrypted.AzureKeyVaultProvider.dll
+C:\Users\USER\OneDrive - Desicon Group\Documents\Claude\Projects\desicon-finance-workflow-scaffold\src\Desicon.Workflow.Api\bin\Debug\net8.0\runtimes\win\lib\netcoreapp2.1\Microsoft.Data.SqlClient.AlwaysEncrypted.AzureKeyVaultProvider.dll

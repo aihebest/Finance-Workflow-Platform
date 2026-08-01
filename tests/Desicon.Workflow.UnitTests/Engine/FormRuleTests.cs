@@ -76,6 +76,27 @@ public sealed class FormRuleTests
         claim.PaymentMethod.Should().Be(expected);
     }
 
+    // ── Same threshold, applied to CashAdvanceRequest.TotalAmountNgn: an
+    // advance has no net-payable concept of its own, so
+    // ApplyPaymentMethodPolicy reads the total instead (see
+    // cash-advance.workflow.json's PAYMENT_METHOD_THRESHOLD_NGN note). ────
+
+    [Theory]
+    [InlineData(30_001, PaymentMethod.BankTransfer)]
+    [InlineData(30_000, PaymentMethod.Cash)]
+    [InlineData(500, PaymentMethod.Cash)]
+    public void CashAdvance_payment_method_follows_the_same_policy_threshold(
+        decimal totalNgn, PaymentMethod expected)
+    {
+        var advance = new CashAdvanceRequest();
+        advance.Lines.Add(new AdvanceLine { Amount = totalNgn, AmountNgn = totalNgn });
+        advance.RecalculateTotals();
+
+        advance.ApplyPaymentMethodPolicy(thresholdNgn: 30_000m);
+
+        advance.PaymentMethod.Should().Be(expected);
+    }
+
     // ── "Project Code / Cost Center Code" allocation is exclusive ──────────
 
     [Theory]

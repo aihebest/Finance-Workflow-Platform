@@ -23,6 +23,8 @@ public sealed class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
         builder.Property(e => e.Email).HasMaxLength(200).IsRequired();
         builder.Property(e => e.Grade).HasMaxLength(50);
         builder.Property(e => e.DefaultCostCentreCode).HasMaxLength(30);
+        builder.Property(e => e.BankName).HasMaxLength(100);
+        builder.Property(e => e.BankAccountNumber).HasMaxLength(30);
 
         builder.HasOne<Department>()
             .WithMany()

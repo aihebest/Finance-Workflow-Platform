@@ -30,4 +30,13 @@ public sealed class Employee
     public string? DefaultCostCentreCode { get; set; }
 
     public bool IsActive { get; set; } = true;
+
+    /// <summary>Bank details on file for this employee, source of truth for
+    /// the Employee-type Beneficiary created when they are paid directly
+    /// (see AdvanceRetirementEndpoints.FindOrCreateEmployeeBeneficiaryAsync).
+    /// Null until HR/Finance record them -- an employee with no bank details
+    /// on file cannot be paid by bank transfer.</summary>
+    public string? BankName { get; set; }
+
+    public string? BankAccountNumber { get; set; }
 }

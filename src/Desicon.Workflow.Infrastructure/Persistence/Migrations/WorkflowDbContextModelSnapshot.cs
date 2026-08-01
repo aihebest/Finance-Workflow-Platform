@@ -159,6 +159,12 @@ namespace Desicon.Workflow.Infrastructure.Persistence.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
+                    b.Property<DateTime?>("BankDetailsSetAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("BankDetailsSetByUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("BankName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -266,6 +272,14 @@ namespace Desicon.Workflow.Infrastructure.Persistence.Migrations
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BankAccountNumber")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("BankName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("DefaultCostCentreCode")
                         .HasMaxLength(30)
@@ -678,6 +692,9 @@ namespace Desicon.Workflow.Infrastructure.Persistence.Migrations
                     b.Property<bool>("HasSupportingDocuments")
                         .HasColumnType("bit");
 
+                    b.Property<int>("PaymentMethod")
+                        .HasColumnType("int");
+
                     b.Property<Guid?>("PostedByUserId")
                         .HasColumnType("uniqueidentifier");
 
@@ -741,6 +758,12 @@ namespace Desicon.Workflow.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("AuthorisedByUserId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("BeneficiaryBankDetailsSetByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("BeneficiaryHasBankDetails")
+                        .HasColumnType("bit");
 
                     b.Property<Guid>("BeneficiaryId")
                         .HasColumnType("uniqueidentifier");

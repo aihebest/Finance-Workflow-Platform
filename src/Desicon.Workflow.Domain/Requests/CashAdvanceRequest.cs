@@ -62,6 +62,11 @@ public sealed class CashAdvanceRequest : Request
 
     public Guid? AuthorisedByUserId { get; set; }
 
+    /// <summary>Derived, not chosen -- see ApplyPaymentMethodPolicy. Cash
+    /// release itself is a manual Finance action (ReleaseCashAsync); this
+    /// only says which method the policy requires them to use.</summary>
+    public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.Cash;
+
     public List<AdvanceLine> Lines { get; set; } = new();
 
     public List<GlPostingLine> GlPostingLines { get; set; } = new();
@@ -84,6 +89,17 @@ public sealed class CashAdvanceRequest : Request
 
     public void RecalculateTotals() =>
         TotalAmountNgn = Lines.Sum(l => l.AmountNgn);
+
+    /// <summary>
+    /// Derives cash versus bank transfer from the policy threshold, same rule
+    /// and same policy key as ExpenseRequest.ApplyPaymentMethodPolicy, applied
+    /// to TotalAmountNgn since an advance has no "net payable" concept of its
+    /// own -- that only exists once a claim retires it.
+    /// </summary>
+    public void ApplyPaymentMethodPolicy(decimal thresholdNgn) =>
+        PaymentMethod = TotalAmountNgn > thresholdNgn
+            ? PaymentMethod.BankTransfer
+            : PaymentMethod.Cash;
 
     public bool HasValidAllocation => AllocationType switch
     {
@@ -190,6 +206,7 @@ public sealed class CashAdvanceRequest : Request
             [nameof(RetirementBalanceNgn)] = r => r.RetirementBalanceNgn,
             [nameof(PostedByUserId)] = r => r.PostedByUserId,
             [nameof(AuthorisedByUserId)] = r => r.AuthorisedByUserId,
+            [nameof(PaymentMethod)] = r => r.PaymentMethod.ToString(),
             [nameof(GlDebitTotal)] = r => r.GlDebitTotal,
             [nameof(GlCreditTotal)] = r => r.GlCreditTotal,
             ["GlLineCount"] = r => (decimal)r.GlPostingLines.Count,

@@ -6,6 +6,7 @@ using Desicon.Workflow.Core.Engine;
 using Desicon.Workflow.Domain.Audit;
 using Desicon.Workflow.Domain.Common;
 using Desicon.Workflow.Domain.Notifications;
+using Desicon.Workflow.Domain.People;
 using Desicon.Workflow.Domain.Requests;
 using Desicon.Workflow.Domain.Security;
 using Desicon.Workflow.Infrastructure.Persistence;
@@ -182,6 +183,22 @@ public sealed class RequestActionService
                 .AnyAsync(cancellationToken);
         }
 
+        // Staged for the same reason as above: the AUTHORISE guard
+        // (PaymentMethod == 'Cash' || BeneficiaryHasBankDetails == true, and
+        // ActorId != BeneficiaryBankDetailsSetByUserId) and the bank-details
+        // maker-checker check below both need the Beneficiary this claim
+        // pays, which ExpenseRequest cannot resolve on its own (see
+        // Beneficiary.HasBankDetails / Beneficiary.BankDetailsSetByUserId).
+        Beneficiary? beneficiary = null;
+        if (request is ExpenseRequest expenseRequest)
+        {
+            beneficiary = await _db.Beneficiaries
+                .AsNoTracking()
+                .FirstOrDefaultAsync(b => b.Id == expenseRequest.BeneficiaryId, cancellationToken);
+            expenseRequest.BeneficiaryHasBankDetails = beneficiary?.HasBankDetails ?? false;
+            expenseRequest.BeneficiaryBankDetailsSetByUserId = beneficiary?.BankDetailsSetByUserId;
+        }
+
         var definition = await _definitions.GetAsync(request.ModuleKey, cancellationToken);
 
         var effectiveActorId = actingUser.OnBehalfOf ?? actingUser.UserId;
@@ -232,7 +249,7 @@ public sealed class RequestActionService
         // engine has already authorised this transition against the JSON
         // definition, but a misconfigured (or forged) definition must not be
         // able to let a self-approval or maker-checker violation through.
-        var policyViolation = EvaluatePolicyViolation(request, transition, effectiveActorId);
+        var policyViolation = EvaluatePolicyViolation(request, transition, effectiveActorId, beneficiary);
         if (policyViolation is not null)
         {
             if (!isCascaded)
@@ -359,7 +376,7 @@ public sealed class RequestActionService
     /// reason when a check fires, otherwise null.
     /// </summary>
     private static string? EvaluatePolicyViolation(
-        Request request, WorkflowTransition transition, Guid effectiveActorId)
+        Request request, WorkflowTransition transition, Guid effectiveActorId, Beneficiary? beneficiary)
     {
         if (!SelfServiceResolvers.Contains(transition.Actor.Resolver ?? string.Empty) &&
             effectiveActorId == request.RequesterId)
@@ -377,6 +394,19 @@ public sealed class RequestActionService
         if (postedByUserId is { } poster && authorisedByUserId is { } authoriser && poster == authoriser)
         {
             return "Maker-checker blocked: PostedByUserId and AuthorisedByUserId are the same user.";
+        }
+
+        // Same separation, extended to bank details: whoever last set or
+        // edited the Beneficiary's bank details (IBankDetailsAuditor stamps
+        // BankDetailsSetByUserId) cannot be the one who authorises payment to
+        // that account -- otherwise the same person could plant fraudulent
+        // details and immediately sign off on paying them.
+        if (string.Equals(transition.Records, nameof(ExpenseRequest.AuthorisedByUserId), StringComparison.Ordinal) &&
+            beneficiary?.BankDetailsSetByUserId is { } bankDetailsSetter &&
+            bankDetailsSetter == effectiveActorId)
+        {
+            return "Maker-checker blocked: the acting user set this beneficiary's bank details " +
+                "and cannot also authorise payment to them.";
         }
 
         return null;

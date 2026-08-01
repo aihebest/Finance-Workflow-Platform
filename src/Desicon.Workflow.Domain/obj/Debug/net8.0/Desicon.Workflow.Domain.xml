@@ -115,6 +115,14 @@
             ever needs it, resolve "the beneficiary" to a person rather than just
             a bank account.</summary>
         </member>
+        <member name="P:Desicon.Workflow.Domain.People.Beneficiary.BankDetailsSetByUserId">
+            <summary>Who last set or edited BankName/BankAccountNumber, and when.
+            Enforces the same maker-checker separation as
+            Request.PostedByUserId/AuthorisedByUserId: whoever set these bank
+            details cannot be the one who authorises payment to them (see
+            RequestActionService.EvaluatePolicyViolation). Null only for a
+            Beneficiary that has never had bank details set.</summary>
+        </member>
         <member name="T:Desicon.Workflow.Domain.People.Delegation">
             <summary>
             "While I am on leave, act for me." An active delegation extends actor
@@ -156,6 +164,13 @@
             <summary>Self-referencing. Null at the top of the tree -- a
             managing director or equivalent with no line manager of their own.</summary>
         </member>
+        <member name="P:Desicon.Workflow.Domain.People.Employee.BankName">
+            <summary>Bank details on file for this employee, source of truth for
+            the Employee-type Beneficiary created when they are paid directly
+            (see AdvanceRetirementEndpoints.FindOrCreateEmployeeBeneficiaryAsync).
+            Null until HR/Finance record them -- an employee with no bank details
+            on file cannot be paid by bank transfer.</summary>
+        </member>
         <member name="T:Desicon.Workflow.Domain.Requests.AdvanceRetirementLink">
             <summary>
             One claim's contribution toward retiring one advance. CashAdvanceRequest.
@@ -196,11 +211,24 @@
             <summary>Recipient's Acknowledgement. Recorded for the audit trail;
             the retirement clock starts at cash release, not here.</summary>
         </member>
+        <member name="P:Desicon.Workflow.Domain.Requests.CashAdvanceRequest.PaymentMethod">
+            <summary>Derived, not chosen -- see ApplyPaymentMethodPolicy. Cash
+            release itself is a manual Finance action (ReleaseCashAsync); this
+            only says which method the policy requires them to use.</summary>
+        </member>
         <member name="P:Desicon.Workflow.Domain.Requests.CashAdvanceRequest.RetiredAmountNgn">
             <summary>Total retired so far via linked expense claims.</summary>
         </member>
         <member name="P:Desicon.Workflow.Domain.Requests.CashAdvanceRequest.RetirementWindowHours">
             <summary>Working hours allowed to retire, per station scope.</summary>
+        </member>
+        <member name="M:Desicon.Workflow.Domain.Requests.CashAdvanceRequest.ApplyPaymentMethodPolicy(System.Decimal)">
+            <summary>
+            Derives cash versus bank transfer from the policy threshold, same rule
+            and same policy key as ExpenseRequest.ApplyPaymentMethodPolicy, applied
+            to TotalAmountNgn since an advance has no "net payable" concept of its
+            own -- that only exists once a claim retires it.
+            </summary>
         </member>
         <member name="P:Desicon.Workflow.Domain.Requests.CashAdvanceRequest.HasOverdueAdvance">
             <summary>
@@ -286,6 +314,26 @@
         <member name="P:Desicon.Workflow.Domain.Requests.ExpenseRequest.RefundReceivedAmountNgn">
             <summary>Set when net payable is negative and the employee has returned
             the over-drawn amount.</summary>
+        </member>
+        <member name="P:Desicon.Workflow.Domain.Requests.ExpenseRequest.BeneficiaryHasBankDetails">
+            <summary>
+            Whether the Beneficiary this claim pays currently has bank details on
+            file -- the AUTHORISE guard's PaymentMethod == 'Cash' ||
+            BeneficiaryHasBankDetails == true rule. Like HasOverdueAdvance on
+            CashAdvanceRequest, this is a cross-entity fact a plain POCO cannot
+            answer on its own, so it is not computed here: it is staged by
+            RequestActionService.RunTransitionAsync immediately before guard
+            evaluation.
+            </summary>
+        </member>
+        <member name="P:Desicon.Workflow.Domain.Requests.ExpenseRequest.BeneficiaryBankDetailsSetByUserId">
+            <summary>
+            Who last set or edited the Beneficiary's bank details (mirrors
+            Beneficiary.BankDetailsSetByUserId). Staged the same way as
+            BeneficiaryHasBankDetails, immediately before guard evaluation, so the
+            AUTHORISE guard can block the same person who planted the bank
+            details from also authorising payment to them.
+            </summary>
         </member>
         <member name="P:Desicon.Workflow.Domain.Requests.ExpenseRequest.NetPayableNgn">
             <summary>"Net Payable" on the paper form. Signed: a negative value means

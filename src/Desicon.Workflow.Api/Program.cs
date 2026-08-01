@@ -1,4 +1,5 @@
 using System.Threading.RateLimiting;
+using Azure.Identity;
 using Desicon.Workflow.Api.Endpoints;
 using Desicon.Workflow.Api.Http;
 using Desicon.Workflow.Api.Security;
@@ -10,12 +11,27 @@ using Desicon.Workflow.Infrastructure.Security;
 using Desicon.Workflow.Infrastructure.Workflow;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Data.SqlClient;
+using Microsoft.Data.SqlClient.AlwaysEncrypted.AzureKeyVaultProvider;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 var connectionString = builder.Configuration.GetConnectionString("WorkflowDb")
     ?? throw new InvalidOperationException("Connection string 'WorkflowDb' is not configured.");
+
+// Beneficiary.BankAccountNumber is Always Encrypted (see
+// Migrations/*_ApplyAlwaysEncryptedToBeneficiaryBankAccountNumber.cs and
+// docs/04-Security-and-DevSecOps.md) with a Key-Vault-backed column master
+// key, so the driver needs this provider registered -- once, process-wide,
+// before any SqlConnection opens -- to unwrap the column encryption key.
+// DefaultAzureCredential resolves to Managed Identity in Azure and falls
+// back to az-cli/VS credentials for local dev against a dev Key Vault.
+SqlConnection.RegisterColumnEncryptionKeyStoreProviders(new Dictionary<string, SqlColumnEncryptionKeyStoreProvider>
+{
+    [SqlColumnEncryptionAzureKeyVaultProvider.ProviderName] =
+        new SqlColumnEncryptionAzureKeyVaultProvider(new DefaultAzureCredential())
+});
 
 builder.Services.AddDbContext<WorkflowDbContext>(options => options.UseSqlServer(connectionString));
 
@@ -44,6 +60,7 @@ builder.Services.AddScoped<AdvanceRetirementHandler>();
 builder.Services.AddScoped<RequestActionService>();
 
 builder.Services.AddSingleton<ISecurityEventWriter, SecurityEventWriter>();
+builder.Services.AddSingleton<IBankDetailsAuditor, BankDetailsAuditor>();
 
 var definitionsPath = Path.GetFullPath(
     Path.Combine(builder.Environment.ContentRootPath, builder.Configuration["Workflow:DefinitionsPath"]
@@ -142,5 +159,6 @@ app.MapModuleEndpoints();
 app.MapRequestEndpoints();
 app.MapExpenseEndpoints();
 app.MapCashAdvanceEndpoints();
+app.MapBeneficiaryEndpoints();
 
 app.Run();

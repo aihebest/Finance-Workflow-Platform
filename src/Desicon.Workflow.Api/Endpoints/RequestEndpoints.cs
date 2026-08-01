@@ -78,13 +78,15 @@ public static class RequestEndpoints
         var definition = await definitions.GetAsync(dto.ModuleKey, cancellationToken);
         var employee = await currentUser.GetEmployeeAsync(cancellationToken);
 
+        var paymentMethodThresholdNgn = definition.GetPolicyValue("PAYMENT_METHOD_THRESHOLD_NGN", clock.UtcNow);
+
         Request request;
         try
         {
             request = dto.ModuleKey switch
             {
-                "EXPENSE" => BuildExpenseDraft(dto.Payload),
-                "CASH_ADVANCE" => BuildCashAdvanceDraft(dto.Payload),
+                "EXPENSE" => BuildExpenseDraft(dto.Payload, paymentMethodThresholdNgn),
+                "CASH_ADVANCE" => BuildCashAdvanceDraft(dto.Payload, paymentMethodThresholdNgn),
                 _ => throw new ArgumentException(
                     $"Module '{dto.ModuleKey}' does not support draft creation via this endpoint.")
             };
@@ -151,6 +153,8 @@ public static class RequestEndpoints
         HttpRequest httpRequest,
         HttpResponse httpResponse,
         WorkflowDbContext db,
+        IWorkflowDefinitionProvider definitions,
+        IWorkflowClock clock,
         ICurrentUserAccessor currentUser,
         CancellationToken cancellationToken)
     {
@@ -190,8 +194,20 @@ public static class RequestEndpoints
         {
             switch (request)
             {
-                case ExpenseRequest expense: ApplyExpenseFields(expense, payload); break;
-                case CashAdvanceRequest advance: ApplyCashAdvanceFields(advance, payload); break;
+                case ExpenseRequest expense:
+                {
+                    var definition = await definitions.GetAsync(expense.ModuleKey, cancellationToken);
+                    ApplyExpenseFields(
+                        expense, payload, definition.GetPolicyValue("PAYMENT_METHOD_THRESHOLD_NGN", clock.UtcNow));
+                    break;
+                }
+                case CashAdvanceRequest advance:
+                {
+                    var definition = await definitions.GetAsync(advance.ModuleKey, cancellationToken);
+                    ApplyCashAdvanceFields(
+                        advance, payload, definition.GetPolicyValue("PAYMENT_METHOD_THRESHOLD_NGN", clock.UtcNow));
+                    break;
+                }
                 default:
                     return ProblemResults.BadRequest("This module does not support updates.", httpRequest.Path);
             }
@@ -475,10 +491,11 @@ public static class RequestEndpoints
         }
     }
 
-    private static ExpenseRequest BuildExpenseDraft(JsonElement payload) =>
-        ApplyExpenseFields(new ExpenseRequest(), payload);
+    private static ExpenseRequest BuildExpenseDraft(JsonElement payload, decimal paymentMethodThresholdNgn) =>
+        ApplyExpenseFields(new ExpenseRequest(), payload, paymentMethodThresholdNgn);
 
-    private static ExpenseRequest ApplyExpenseFields(ExpenseRequest expense, JsonElement payload)
+    private static ExpenseRequest ApplyExpenseFields(
+        ExpenseRequest expense, JsonElement payload, decimal paymentMethodThresholdNgn)
     {
         var data = payload.Deserialize<ExpenseDraftPayload>(JsonOptions)
             ?? throw new JsonException("Expense payload deserialised to null.");
@@ -521,13 +538,15 @@ public static class RequestEndpoints
         }
 
         expense.RecalculateTotals();
+        expense.ApplyPaymentMethodPolicy(paymentMethodThresholdNgn);
         return expense;
     }
 
-    private static CashAdvanceRequest BuildCashAdvanceDraft(JsonElement payload) =>
-        ApplyCashAdvanceFields(new CashAdvanceRequest(), payload);
+    private static CashAdvanceRequest BuildCashAdvanceDraft(JsonElement payload, decimal paymentMethodThresholdNgn) =>
+        ApplyCashAdvanceFields(new CashAdvanceRequest(), payload, paymentMethodThresholdNgn);
 
-    private static CashAdvanceRequest ApplyCashAdvanceFields(CashAdvanceRequest advance, JsonElement payload)
+    private static CashAdvanceRequest ApplyCashAdvanceFields(
+        CashAdvanceRequest advance, JsonElement payload, decimal paymentMethodThresholdNgn)
     {
         var data = payload.Deserialize<CashAdvanceDraftPayload>(JsonOptions)
             ?? throw new JsonException("Cash advance payload deserialised to null.");
@@ -578,6 +597,7 @@ public static class RequestEndpoints
         }
 
         advance.RecalculateTotals();
+        advance.ApplyPaymentMethodPolicy(paymentMethodThresholdNgn);
         return advance;
     }
 
@@ -708,6 +728,7 @@ public static class RequestEndpoints
             advance.CostCentreCode,
             StationScope = advance.StationScope.ToString(),
             advance.HasSupportingDocuments,
+            PaymentMethod = advance.PaymentMethod.ToString(),
             advance.CashReleasedAt,
             advance.AcknowledgedByUserId,
             advance.AcknowledgedAt,

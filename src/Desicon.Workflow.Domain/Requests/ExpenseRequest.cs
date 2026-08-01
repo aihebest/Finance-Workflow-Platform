@@ -63,6 +63,26 @@ public sealed class ExpenseRequest : Request
 
     public List<GlPostingLine> GlPostingLines { get; set; } = new();
 
+    /// <summary>
+    /// Whether the Beneficiary this claim pays currently has bank details on
+    /// file -- the AUTHORISE guard's PaymentMethod == 'Cash' ||
+    /// BeneficiaryHasBankDetails == true rule. Like HasOverdueAdvance on
+    /// CashAdvanceRequest, this is a cross-entity fact a plain POCO cannot
+    /// answer on its own, so it is not computed here: it is staged by
+    /// RequestActionService.RunTransitionAsync immediately before guard
+    /// evaluation.
+    /// </summary>
+    public bool BeneficiaryHasBankDetails { get; set; }
+
+    /// <summary>
+    /// Who last set or edited the Beneficiary's bank details (mirrors
+    /// Beneficiary.BankDetailsSetByUserId). Staged the same way as
+    /// BeneficiaryHasBankDetails, immediately before guard evaluation, so the
+    /// AUTHORISE guard can block the same person who planted the bank
+    /// details from also authorising payment to them.
+    /// </summary>
+    public Guid? BeneficiaryBankDetailsSetByUserId { get; set; }
+
     /// <summary>"Net Payable" on the paper form. Signed: a negative value means
     /// the employee spent less than the advance and owes the difference back.
     /// That path is the one most easily skipped on paper, and it is where money
@@ -103,6 +123,8 @@ public sealed class ExpenseRequest : Request
             [nameof(NetPayableNgn)] = r => r.NetPayableNgn,
             [nameof(ReceiptStatus)] = r => r.ReceiptStatus.ToString(),
             [nameof(PaymentMethod)] = r => r.PaymentMethod.ToString(),
+            [nameof(BeneficiaryHasBankDetails)] = r => r.BeneficiaryHasBankDetails,
+            [nameof(BeneficiaryBankDetailsSetByUserId)] = r => r.BeneficiaryBankDetailsSetByUserId,
             [nameof(PostedByUserId)] = r => r.PostedByUserId,
             [nameof(AuthorisedByUserId)] = r => r.AuthorisedByUserId,
             [nameof(AcknowledgedByUserId)] = r => r.AcknowledgedByUserId,

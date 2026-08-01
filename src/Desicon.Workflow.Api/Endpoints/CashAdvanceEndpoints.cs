@@ -141,27 +141,22 @@ public static class CashAdvanceEndpoints
         ICurrentUserAccessor currentUser,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(dto.PaymentMethod))
-        {
-            return ProblemResults.BadRequest("'paymentMethod' is required.", httpRequest.Path);
-        }
-
         var actingUser = await currentUser.GetActingUserAsync(cancellationToken);
 
-        // Neither CashReleasedAt nor PaymentMethod is guard-referenced on
-        // RELEASE_CASH -- CashReleasedAt is consumed straight from
-        // CapturedFields by RequestActionService.ApplyEffectAsync's
-        // "StartRetirementClock" case, so no pre-staging on the entity is
-        // needed here (unlike TreasuryNumber/JournalVoucherNumber/
-        // RefundReceivedAmountNgn elsewhere in this API).
+        // CashReleasedAt is consumed straight from CapturedFields by
+        // RequestActionService.ApplyEffectAsync's "StartRetirementClock"
+        // case, so no pre-staging on the entity is needed here (unlike
+        // TreasuryNumber/JournalVoucherNumber/RefundReceivedAmountNgn
+        // elsewhere in this API). PaymentMethod is not captured here at all
+        // -- it is derived by CashAdvanceRequest.ApplyPaymentMethodPolicy,
+        // not chosen by Finance at release time.
         var result = await actionService.ExecuteAsync(
             id, actingUser,
             new TransitionRequest(
                 "RELEASE_CASH", dto.Comment,
                 new Dictionary<string, object?>
                 {
-                    ["CashReleasedAt"] = dto.CashReleasedAt,
-                    ["PaymentMethod"] = dto.PaymentMethod
+                    ["CashReleasedAt"] = dto.CashReleasedAt
                 },
                 dto.IdempotencyKey),
             cancellationToken);
@@ -253,7 +248,6 @@ public static class CashAdvanceEndpoints
 
     private sealed record ReleaseCashDto(
         DateTimeOffset CashReleasedAt,
-        string PaymentMethod,
         string? Comment = null,
         string? IdempotencyKey = null);
 

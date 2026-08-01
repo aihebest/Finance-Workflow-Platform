@@ -24,4 +24,17 @@ public sealed class Beneficiary
     /// ever needs it, resolve "the beneficiary" to a person rather than just
     /// a bank account.</summary>
     public Guid? EmployeeId { get; set; }
+
+    /// <summary>Who last set or edited BankName/BankAccountNumber, and when.
+    /// Enforces the same maker-checker separation as
+    /// Request.PostedByUserId/AuthorisedByUserId: whoever set these bank
+    /// details cannot be the one who authorises payment to them (see
+    /// RequestActionService.EvaluatePolicyViolation). Null only for a
+    /// Beneficiary that has never had bank details set.</summary>
+    public Guid? BankDetailsSetByUserId { get; set; }
+
+    public DateTimeOffset? BankDetailsSetAt { get; set; }
+
+    public bool HasBankDetails =>
+        !string.IsNullOrWhiteSpace(BankName) && !string.IsNullOrWhiteSpace(BankAccountNumber);
 }

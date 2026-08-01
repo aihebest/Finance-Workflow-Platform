@@ -1,0 +1,42 @@
+﻿# .NET
+bin/
+obj/
+*.user
+TestResults/
+coverage*.xml
+*.trx
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+plan.txt
+*.tfvars
+!example.tfvars
+
+# Secrets and local config
+*.pfx
+*.key
+*.pem
+appsettings.Development.json
+appsettings.Local.json
+.env
+.env.*
+!.env.example
+
+# Security scan artefacts
+reports/
+*.sarif
+
+# IDE
+.vs/
+.idea/
+*.swp
+.DS_Store

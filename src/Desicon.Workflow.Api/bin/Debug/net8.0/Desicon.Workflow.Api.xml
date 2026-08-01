@@ -12,15 +12,36 @@
             involved from SUBMIT onward, same as any other expense claim.
             </summary>
         </member>
-        <member name="M:Desicon.Workflow.Api.Endpoints.AdvanceRetirementEndpoints.FindOrCreateEmployeeBeneficiaryAsync(Desicon.Workflow.Infrastructure.Persistence.WorkflowDbContext,System.Guid,System.Threading.CancellationToken)">
+        <member name="M:Desicon.Workflow.Api.Endpoints.AdvanceRetirementEndpoints.FindOrCreateEmployeeBeneficiaryAsync(Desicon.Workflow.Infrastructure.Persistence.WorkflowDbContext,Desicon.Workflow.Infrastructure.Security.IBankDetailsAuditor,System.Guid,System.Guid,System.String,System.Guid,System.DateTimeOffset,System.Threading.CancellationToken)">
             <summary>
             ExpenseRequest.BeneficiaryId is a required real FK (see
             ExpenseRequestConfiguration) with no notion of "the requester paying
             themselves" built in -- every claim pays a Beneficiary row. An advance
             being retired has no beneficiary of its own to reuse, so the
             requester's own Employee-type Beneficiary is found or created here.
-            Bank details are left blank: Employee carries none to source them
-            from, and Finance can fill them in on the draft before submission.
+            Bank details are sourced from the Employee record, never left blank:
+            an Employee-type Beneficiary with no bank details on file would pass
+            every guard silently and only surface as a payment failure at
+            Treasury, so this fails loudly instead, before the row is ever
+            created.
+            </summary>
+        </member>
+        <member name="T:Desicon.Workflow.Api.Endpoints.MissingBankDetailsException">
+            <summary>Thrown when a payee's underlying Employee record has no bank
+            details on file. Distinct from a generic InvalidOperationException (404)
+            or ArgumentException (400) -- the request is well-formed and the employee
+            exists, but the data needed to pay them does not, which is a 409-shaped
+            state conflict.</summary>
+        </member>
+        <member name="T:Desicon.Workflow.Api.Endpoints.BeneficiaryEndpoints">
+            <summary>
+            Editing bank details on the Beneficiary an expense claim pays. Deliberately
+            scoped to a specific claim rather than a general Beneficiary directory --
+            there is no such directory in this codebase, and Finance only ever touches
+            bank details while working a specific claim. Every change goes through
+            IBankDetailsAuditor, the same path FindOrCreateEmployeeBeneficiaryAsync
+            uses, so BankDetailsSetByUserId/BankDetailsSetAt and the SecurityEvent
+            audit trail cannot be bypassed by editing here instead.
             </summary>
         </member>
         <member name="T:Desicon.Workflow.Api.Endpoints.CashAdvanceEndpoints">

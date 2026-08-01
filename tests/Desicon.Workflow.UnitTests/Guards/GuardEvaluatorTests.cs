@@ -98,6 +98,82 @@ public sealed class GuardEvaluatorTests
             ["GlLineCount"] = 2m
         }).Should().BeTrue();
 
+    // ── The AUTHORISE guard from expense-reimbursement.workflow.json:
+    // maker-checker plus "a bank transfer requires bank details on file"
+    // plus "the authoriser cannot be the person who last set the
+    // beneficiary's bank details" ────────────────────────────────────────
+
+    private const string AuthoriseGuard =
+        "ActorId != PostedByUserId && (PaymentMethod == 'Cash' || BeneficiaryHasBankDetails == true) " +
+        "&& ActorId != BeneficiaryBankDetailsSetByUserId";
+
+    [Theory]
+    [InlineData("Cash", false, true)]          // cash never needs bank details
+    [InlineData("BankTransfer", true, true)]   // transfer + details on file
+    [InlineData("BankTransfer", false, false)] // transfer, no details -- blocked
+    public void Authorise_guard_allows_bank_transfer_only_with_bank_details(
+        string paymentMethod, bool beneficiaryHasBankDetails, bool expected)
+    {
+        Eval(AuthoriseGuard, new Dictionary<string, object?>
+        {
+            ["ActorId"] = Guid.NewGuid(),
+            ["PostedByUserId"] = Guid.NewGuid(),
+            ["PaymentMethod"] = paymentMethod,
+            ["BeneficiaryHasBankDetails"] = beneficiaryHasBankDetails,
+
+            // Nobody has set bank details in this scenario, so this clause
+            // must never be the one that blocks it.
+            ["BeneficiaryBankDetailsSetByUserId"] = null
+        }).Should().Be(expected);
+    }
+
+    [Fact]
+    public void Authorise_guard_still_blocks_same_actor_even_with_bank_details_on_file()
+    {
+        var user = Guid.NewGuid();
+
+        Eval(AuthoriseGuard, new Dictionary<string, object?>
+        {
+            ["ActorId"] = user,
+            ["PostedByUserId"] = user,
+            ["PaymentMethod"] = "BankTransfer",
+            ["BeneficiaryHasBankDetails"] = true,
+            ["BeneficiaryBankDetailsSetByUserId"] = null
+        }).Should().BeFalse("maker-checker must not be short-circuited by the bank-details clause");
+    }
+
+    [Fact]
+    public void Authorise_guard_blocks_the_person_who_last_set_the_beneficiarys_bank_details()
+    {
+        var bankDetailsSetter = Guid.NewGuid();
+
+        Eval(AuthoriseGuard, new Dictionary<string, object?>
+        {
+            // Distinct from PostedByUserId -- the maker-checker clause on
+            // PostedByUserId/AuthorisedByUserId must not be what is blocking
+            // this case; only the bank-details clause should fire.
+            ["ActorId"] = bankDetailsSetter,
+            ["PostedByUserId"] = Guid.NewGuid(),
+            ["PaymentMethod"] = "BankTransfer",
+            ["BeneficiaryHasBankDetails"] = true,
+            ["BeneficiaryBankDetailsSetByUserId"] = bankDetailsSetter
+        }).Should().BeFalse(
+            "the person who planted the beneficiary's bank details must not also authorise payment to them");
+    }
+
+    [Fact]
+    public void Authorise_guard_allows_a_different_person_to_authorise_after_bank_details_were_set()
+    {
+        Eval(AuthoriseGuard, new Dictionary<string, object?>
+        {
+            ["ActorId"] = Guid.NewGuid(),
+            ["PostedByUserId"] = Guid.NewGuid(),
+            ["PaymentMethod"] = "BankTransfer",
+            ["BeneficiaryHasBankDetails"] = true,
+            ["BeneficiaryBankDetailsSetByUserId"] = Guid.NewGuid()
+        }).Should().BeTrue();
+    }
+
     // ── Null handling ──────────────────────────────────────────────────────
 
     [Fact]

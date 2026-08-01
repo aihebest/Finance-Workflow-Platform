@@ -14,7 +14,8 @@
     {
       "key": "PAYMENT_METHOD_THRESHOLD_NGN",
       "value": 30000,
-      "note": "Above this net payable amount, payment is by bank transfer to the employee account. Source: DEL-AC-FRM-002 Rev 05 footer. Confirm current figure with Finance."
+      "effectiveFrom": "2026-09-01T00:00:00Z",
+      "note": "Above this net payable amount, payment is by bank transfer to the employee account. Source: DEL-AC-FRM-002 Rev 05 footer. Confirm current figure with Finance. A future rate change is a new row here with a later effectiveFrom, not an edit to this one -- see WorkflowDefinitionExtensions.GetPolicyValue."
     }
   ],
 
@@ -104,11 +105,11 @@
     {
       "from": "AUTHORISATION", "to": "AWAITING_PAYMENT", "action": "AUTHORISE",
       "actor": { "role": "FinanceManager" },
-      "guard": "ActorId != PostedByUserId",
-      "guardMessage": "The authoriser must be a different person from the inputer.",
+      "guard": "ActorId != PostedByUserId && (PaymentMethod == 'Cash' || BeneficiaryHasBankDetails == true) && ActorId != BeneficiaryBankDetailsSetByUserId",
+      "guardMessage": "The authoriser must be a different person from the inputer, a bank transfer requires the beneficiary to have bank details on file, and the authoriser cannot be the person who last set the beneficiary's bank details.",
       "records": "AuthorisedByUserId",
       "effect": "RetireLinkedAdvance",
-      "note": "Maker-checker. Mirrors the separate Inputer's sign / Authoriser's sign on the paper form. RetireLinkedAdvance is a no-op unless RetiresAdvanceId is set."
+      "note": "Maker-checker. Mirrors the separate Inputer's sign / Authoriser's sign on the paper form. RetireLinkedAdvance is a no-op unless RetiresAdvanceId is set. The bank-details half of the guard stops a bank-transfer claim reaching Awaiting Payment for a beneficiary Finance never recorded an account number for. The final clause stops whoever planted the beneficiary's bank details from also being the one who authorises payment to them -- see BankDetailsAuditor and RequestActionService.EvaluatePolicyViolation for the code-level defence-in-depth twin of this check."
     },
 
     {
@@ -127,7 +128,8 @@
     {
       "from": "AWAITING_PAYMENT", "to": "AWAITING_ACK", "action": "EXECUTE_PAYMENT",
       "actor": { "role": "FinanceOfficer" },
-      "captures": ["PaymentReference", "PaymentDate", "PaymentMethod"]
+      "captures": ["PaymentReference", "PaymentDate"],
+      "note": "PaymentMethod is derived by ExpenseRequest.ApplyPaymentMethodPolicy at submission/recalculation time, not captured here -- Finance cannot choose it at payment execution."
     },
     {
       "from": "AWAITING_PAYMENT", "to": "RETURNED", "action": "RETURN",
