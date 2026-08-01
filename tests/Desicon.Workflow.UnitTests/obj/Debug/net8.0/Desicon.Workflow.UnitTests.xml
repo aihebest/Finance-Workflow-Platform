@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Desicon.Workflow.UnitTests</name>
+    </assembly>
+    <members>
+        <member name="T:Desicon.Workflow.UnitTests.Engine.FormRuleTests">
+            <summary>
+            These tests encode the rules read off DEL-AC-FRM-002 and DEL-AC-FRM-003.
+            If a rule here is wrong, the form was misread -- so each test names the
+            clause it comes from.
+            </summary>
+        </member>
+        <member name="T:Desicon.Workflow.UnitTests.Engine.WorkingCalendarTests">
+             <summary>
+             The retirement clock runs on WORKING hours from cash release, per Finance
+             direction of 31 July 2026.
+            
+             These tests exist mainly to make the consequence visible. On a 9-hour
+             working day, 72 working hours is eight working days -- a Friday-afternoon
+             release is not overdue until nearly two calendar weeks later. If the
+             dashboard ever looks implausibly clean, this is the first place to look.
+             </summary>
+        </member>
+        <member name="T:Desicon.Workflow.UnitTests.Requests.PostingGuardTests">
+             <summary>
+             Regression coverage for the POSTING guard, copied verbatim from
+             modules/expense-reimbursement.workflow.json and modules/cash-advance.workflow.json:
+            
+               GlDebitTotal == GlCreditTotal &amp;&amp; GlLineCount >= 2 &amp;&amp; JournalVoucherNumber != null
+            
+             Exercised against real GlPostingLine collections (not a hand-fed field
+             dictionary) so this also proves out the fixed GlPostingLines TPT loading --
+             before that fix, GlDebitTotal/GlCreditTotal/GlLineCount had no lines to sum
+             and the guard failed closed for the wrong reason.
+             </summary>
+        </member>
+    </members>
+</doc>

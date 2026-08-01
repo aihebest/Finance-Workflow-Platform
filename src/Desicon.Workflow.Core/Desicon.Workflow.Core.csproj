@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Desicon.Workflow.Core</RootNamespace>
+    <!-- The engine is the one assembly that must never gain module-specific
+         knowledge. It has no package references by design. -->
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,280 @@
+{
+  "format": 1,
+  "restore": {
+    "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Api\\Desicon.Workflow.Api.csproj": {}
+  },
+  "projects": {
+    "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Api\\Desicon.Workflow.Api.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Api\\Desicon.Workflow.Api.csproj",
+        "projectName": "Desicon.Workflow.Api",
+        "projectPath": "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Api\\Desicon.Workflow.Api.csproj",
+        "packagesPath": "C:\\Users\\USER\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Api\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\USER\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Core\\Desicon.Workflow.Core.csproj": {
+                "projectPath": "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Core\\Desicon.Workflow.Core.csproj"
+              },
+              "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Domain\\Desicon.Workflow.Domain.csproj": {
+                "projectPath": "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Domain\\Desicon.Workflow.Domain.csproj"
+              },
+              "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Infrastructure\\Desicon.Workflow.Infrastructure.csproj": {
+                "projectPath": "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Infrastructure\\Desicon.Workflow.Infrastructure.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "allWarningsAsErrors": true,
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.AspNetCore.App": {
+              "privateAssets": "none"
+            },
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.422/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Core\\Desicon.Workflow.Core.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Core\\Desicon.Workflow.Core.csproj",
+        "projectName": "Desicon.Workflow.Core",
+        "projectPath": "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Core\\Desicon.Workflow.Core.csproj",
+        "packagesPath": "C:\\Users\\USER\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Core\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\USER\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "allWarningsAsErrors": true,
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.422/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Domain\\Desicon.Workflow.Domain.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Domain\\Desicon.Workflow.Domain.csproj",
+        "projectName": "Desicon.Workflow.Domain",
+        "projectPath": "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Domain\\Desicon.Workflow.Domain.csproj",
+        "packagesPath": "C:\\Users\\USER\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Domain\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\USER\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Core\\Desicon.Workflow.Core.csproj": {
+                "projectPath": "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Core\\Desicon.Workflow.Core.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "allWarningsAsErrors": true,
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.422/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Infrastructure\\Desicon.Workflow.Infrastructure.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Infrastructure\\Desicon.Workflow.Infrastructure.csproj",
+        "projectName": "Desicon.Workflow.Infrastructure",
+        "projectPath": "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Infrastructure\\Desicon.Workflow.Infrastructure.csproj",
+        "packagesPath": "C:\\Users\\USER\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Infrastructure\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\USER\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {
+              "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Core\\Desicon.Workflow.Core.csproj": {
+                "projectPath": "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Core\\Desicon.Workflow.Core.csproj"
+              },
+              "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Domain\\Desicon.Workflow.Domain.csproj": {
+                "projectPath": "C:\\Users\\USER\\OneDrive - Desicon Group\\Documents\\Claude\\Projects\\desicon-finance-workflow-scaffold\\src\\Desicon.Workflow.Domain\\Desicon.Workflow.Domain.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "allWarningsAsErrors": true,
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "Microsoft.EntityFrameworkCore.Design": {
+              "include": "Runtime, Build, Native, ContentFiles, Analyzers, BuildTransitive",
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[8.0.10, )"
+            },
+            "Microsoft.EntityFrameworkCore.SqlServer": {
+              "target": "Package",
+              "version": "[8.0.10, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.422/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

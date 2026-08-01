@@ -1,0 +1,39 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v8.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v8.0": {
+      "Desicon.Workflow.Domain/1.0.0": {
+        "dependencies": {
+          "Desicon.Workflow.Core": "1.0.0"
+        },
+        "runtime": {
+          "Desicon.Workflow.Domain.dll": {}
+        }
+      },
+      "Desicon.Workflow.Core/1.0.0": {
+        "runtime": {
+          "Desicon.Workflow.Core.dll": {
+            "assemblyVersion": "1.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "Desicon.Workflow.Domain/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "Desicon.Workflow.Core/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

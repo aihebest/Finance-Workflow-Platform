@@ -1,0 +1,161 @@
+{
+  "$schema": "./workflow-definition.schema.json",
+  "moduleKey": "EXPENSE",
+  "displayName": "Expense Form (Cash / Bank)",
+  "formCode": "DEL-AC-FRM-002",
+  "formRevision": "05",
+  "version": 1,
+  "effectiveFrom": "2026-09-01T00:00:00Z",
+  "numberFormat": "EXP-{yyyy}-{seq:000000}",
+  "workingCalendar": "NG_STANDARD",
+  "slaPausesOutsideWorkingHours": true,
+
+  "policyValues": [
+    {
+      "key": "PAYMENT_METHOD_THRESHOLD_NGN",
+      "value": 30000,
+      "note": "Above this net payable amount, payment is by bank transfer to the employee account. Source: DEL-AC-FRM-002 Rev 05 footer. Confirm current figure with Finance."
+    }
+  ],
+
+  "states": [
+    { "key": "DRAFT", "type": "initial", "label": "Draft" },
+    { "key": "LINE_MANAGER", "label": "Awaiting Verification (Line Manager)", "sla": { "hours": 24, "reminderEveryHours": 8, "escalateTo": "DEPT_HEAD" } },
+    { "key": "DEPT_HEAD", "label": "Awaiting Verification (Department Head)", "sla": { "hours": 24, "reminderEveryHours": 8, "escalateTo": "FINANCE_VERIFY" } },
+    { "key": "FINANCE_VERIFY", "label": "Finance Verification", "sla": { "hours": 48, "reminderEveryHours": 12 } },
+    { "key": "FINANCE_APPROVE", "label": "Awaiting Approval (Finance Manager)", "sla": { "hours": 48, "reminderEveryHours": 12 } },
+    { "key": "REFUND_DUE", "label": "Refund Due from Employee", "sla": { "hours": 24, "reminderEveryHours": 8 } },
+    { "key": "POSTING", "label": "GL Posting (Inputer)", "sla": { "hours": 24 } },
+    { "key": "AUTHORISATION", "label": "Posting Authorisation (Checker)", "sla": { "hours": 24 } },
+    { "key": "AWAITING_PAYMENT", "label": "Awaiting Payment", "sla": { "hours": 72, "reminderEveryHours": 24 } },
+    { "key": "AWAITING_ACK", "label": "Awaiting Recipient Acknowledgement", "sla": { "hours": 48, "reminderEveryHours": 24 } },
+    { "key": "RETURNED", "type": "rework", "label": "Returned for Correction" },
+    { "key": "REJECTED", "type": "terminal", "label": "Rejected" },
+    { "key": "CLOSED", "type": "terminal", "label": "Closed" }
+  ],
+
+  "transitions": [
+    {
+      "from": "DRAFT", "to": "LINE_MANAGER", "action": "SUBMIT",
+      "actor": { "resolver": "Requester" },
+      "guard": "LineCount > 0 && TotalAmountNgn > 0 && ReceiptStatus != 'No'",
+      "guardMessage": "Add at least one expense line and attach receipts before submitting."
+    },
+    {
+      "from": "LINE_MANAGER", "to": "DEPT_HEAD", "action": "VERIFY",
+      "actor": { "resolver": "LineManagerOf", "arg": "RequesterId" },
+      "guard": "ActorId != RequesterId",
+      "guardMessage": "You cannot verify your own request."
+    },
+    { "from": "LINE_MANAGER", "to": "RETURNED", "action": "RETURN", "actor": { "resolver": "LineManagerOf", "arg": "RequesterId" }, "requiresComment": true },
+    { "from": "LINE_MANAGER", "to": "REJECTED", "action": "REJECT", "actor": { "resolver": "LineManagerOf", "arg": "RequesterId" }, "requiresComment": true },
+
+    { "from": "DEPT_HEAD", "to": "FINANCE_VERIFY", "action": "VERIFY", "actor": { "resolver": "DepartmentHeadOf", "arg": "DepartmentId" }, "guard": "ActorId != RequesterId", "guardMessage": "You cannot verify your own request." },
+    { "from": "DEPT_HEAD", "to": "RETURNED", "action": "RETURN", "actor": { "resolver": "DepartmentHeadOf", "arg": "DepartmentId" }, "requiresComment": true },
+    { "from": "DEPT_HEAD", "to": "REJECTED", "action": "REJECT", "actor": { "resolver": "DepartmentHeadOf", "arg": "DepartmentId" }, "requiresComment": true },
+
+    {
+      "from": "FINANCE_VERIFY", "to": "FINANCE_APPROVE", "action": "VERIFY",
+      "actor": { "role": "FinanceOfficer" },
+      "guard": "ReceiptStatus == 'Yes' && TreasuryNumber != null",
+      "guardMessage": "Receipts must be complete and a Treasury number captured before this proceeds.",
+      "captures": ["TreasuryNumber"]
+    },
+    {
+      "from": "FINANCE_VERIFY", "to": "RETURNED", "action": "RETURN",
+      "actor": { "role": "FinanceOfficer" },
+      "guard": "ReceiptStatus == 'Incomplete'",
+      "guardMessage": "Return is available when receipts are marked Incomplete.",
+      "requiresComment": true,
+      "note": "The 'Incomplete' tick on the paper form maps to a return, not a rejection."
+    },
+
+    {
+      "from": "FINANCE_APPROVE", "to": "POSTING", "action": "APPROVE",
+      "actor": { "role": "FinanceManager" },
+      "guard": "NetPayableNgn >= 0 && ActorId != RequesterId",
+      "guardMessage": "You cannot approve your own claim."
+    },
+    {
+      "from": "FINANCE_APPROVE", "to": "REFUND_DUE", "action": "APPROVE",
+      "actor": { "role": "FinanceManager" },
+      "guard": "NetPayableNgn < 0",
+      "guardMessage": "This branch applies only when the advance exceeded the amount spent.",
+      "note": "Employee spent less than the advance taken and owes the difference back."
+    },
+    { "from": "FINANCE_APPROVE", "to": "RETURNED", "action": "RETURN", "actor": { "role": "FinanceManager" }, "requiresComment": true },
+    { "from": "FINANCE_APPROVE", "to": "REJECTED", "action": "REJECT", "actor": { "role": "FinanceManager" }, "requiresComment": true },
+
+    {
+      "from": "REFUND_DUE", "to": "POSTING", "action": "CONFIRM_REFUND",
+      "actor": { "role": "FinanceOfficer" },
+      "guard": "RefundReceivedAmountNgn == Abs(NetPayableNgn)",
+      "guardMessage": "The refund received must equal the amount over-drawn."
+    },
+
+    {
+      "from": "POSTING", "to": "AUTHORISATION", "action": "POST",
+      "actor": { "role": "FinanceOfficer" },
+      "guard": "GlDebitTotal == GlCreditTotal && GlLineCount >= 2 && JournalVoucherNumber != null",
+      "guardMessage": "Debits must equal credits and a JV number is required.",
+      "captures": ["JournalVoucherNumber", "GlPostingLines"],
+      "records": "PostedByUserId"
+    },
+    {
+      "from": "AUTHORISATION", "to": "AWAITING_PAYMENT", "action": "AUTHORISE",
+      "actor": { "role": "FinanceManager" },
+      "guard": "ActorId != PostedByUserId",
+      "guardMessage": "The authoriser must be a different person from the inputer.",
+      "records": "AuthorisedByUserId",
+      "effect": "RetireLinkedAdvance",
+      "note": "Maker-checker. Mirrors the separate Inputer's sign / Authoriser's sign on the paper form. RetireLinkedAdvance is a no-op unless RetiresAdvanceId is set."
+    },
+
+    {
+      "from": "POSTING", "to": "RETURNED", "action": "RETURN",
+      "actor": { "role": "FinanceOfficer" },
+      "requiresComment": true,
+      "note": "An error found at posting must be returnable. Without this the inputer's only options are to post something they know is wrong or to leave it stranded."
+    },
+    {
+      "from": "AUTHORISATION", "to": "POSTING", "action": "RETURN",
+      "actor": { "role": "FinanceManager" },
+      "requiresComment": true,
+      "note": "The checker rejects the inputer's work back to the inputer, not all the way to the requester."
+    },
+
+    {
+      "from": "AWAITING_PAYMENT", "to": "AWAITING_ACK", "action": "EXECUTE_PAYMENT",
+      "actor": { "role": "FinanceOfficer" },
+      "captures": ["PaymentReference", "PaymentDate", "PaymentMethod"]
+    },
+    {
+      "from": "AWAITING_PAYMENT", "to": "RETURNED", "action": "RETURN",
+      "actor": { "role": "FinanceOfficer" },
+      "requiresComment": true
+    },
+    {
+      "from": "AWAITING_ACK", "to": "CLOSED", "action": "ACKNOWLEDGE",
+      "actor": { "resolver": "Beneficiary" },
+      "note": "Only the beneficiary can close the request. Finance marking it paid is not sufficient."
+    },
+    {
+      "from": "AWAITING_ACK", "to": "AWAITING_PAYMENT", "action": "REJECT",
+      "actor": { "resolver": "Beneficiary" },
+      "requiresComment": true,
+      "note": "The beneficiary disputes receipt. This is the case that produced the 18-month-old unpaid claims: marked paid, never received, and no mechanism to say so. It returns the item to Finance with the dispute recorded."
+    },
+
+    { "from": "RETURNED", "to": "LINE_MANAGER", "action": "RESUBMIT", "actor": { "resolver": "Requester" }, "effect": "IncrementRevisionNumber" }
+  ],
+
+  "notifications": [
+    { "on": "STATE_ENTERED", "to": "CurrentActor", "template": "action-required" },
+    { "on": "SLA_REMINDER", "to": "CurrentActor", "template": "reminder" },
+    { "on": "SLA_BREACHED", "to": ["CurrentActor", "EscalationTarget"], "template": "escalation" },
+    { "on": "RETURNED", "to": "Requester", "template": "returned-for-correction" },
+    { "on": "REJECTED", "to": "Requester", "template": "rejected" },
+    { "on": "AWAITING_ACK", "to": "Beneficiary", "template": "confirm-receipt" },
+    { "on": "CLOSED", "to": ["Requester", "Beneficiary"], "template": "closed" }
+  ]
+}

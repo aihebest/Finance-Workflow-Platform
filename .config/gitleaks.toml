@@ -1,0 +1,31 @@
+title = "Desicon Finance Workflow - secret detection"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "azure-sql-connection-string-with-password"
+description = "Azure SQL connection string carrying a password"
+regex = '''(?i)(Server|Data Source)=.{0,120}(Password|Pwd)=[^;"'\s]{4,}'''
+tags = ["azure", "sql", "credential"]
+
+[[rules]]
+id = "azure-storage-account-key"
+description = "Storage account key"
+regex = '''(?i)AccountKey=[A-Za-z0-9+/=]{60,}'''
+tags = ["azure", "storage"]
+
+[allowlist]
+description = "Test fixtures and documentation examples"
+paths = [
+  '''tests/.*''',
+  '''docs/.*''',
+  '''.*\.example$''',
+]
+# The platform authenticates to Azure by Managed Identity, so a connection
+# string in this repo should carry no credential at all. These entries exist to
+# allow the credential-free forms.
+regexes = [
+  '''Server=tcp:.*;Authentication=Active Directory Default;''',
+  '''Server=localhost,1433;Database=WorkflowTest''',
+]

@@ -1,0 +1,257 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Desicon.Workflow.Core</name>
+    </assembly>
+    <members>
+        <member name="T:Desicon.Workflow.Core.Definitions.StringOrArrayConverter">
+            <summary>
+            Allows a notification target to be written either as a single value or as
+            an array, so definition authors can write "to": "Requester" as well as
+            "to": ["Requester", "Beneficiary"].
+            </summary>
+        </member>
+        <member name="T:Desicon.Workflow.Core.Definitions.WorkflowDefinition">
+            <summary>
+            A workflow definition is data, not code. Adding a new business process to
+            the platform means publishing one of these -- it must never require a
+            change to the engine assembly.
+            </summary>
+        </member>
+        <member name="P:Desicon.Workflow.Core.Definitions.WorkflowDefinition.FormCode">
+            <summary>QMS form code, e.g. DEL-AC-FRM-002.</summary>
+        </member>
+        <member name="P:Desicon.Workflow.Core.Definitions.WorkflowDefinition.FormRevision">
+            <summary>QMS revision, e.g. "05". Stamped onto every request captured
+            under this definition so a historical request reprints in its own
+            layout after a later revision ships.</summary>
+        </member>
+        <member name="P:Desicon.Workflow.Core.Definitions.WorkflowDefinition.NumberFormat">
+            <summary>e.g. "EXP-{yyyy}-{seq:000000}".</summary>
+        </member>
+        <member name="F:Desicon.Workflow.Core.Definitions.StateType.Normal">
+            <summary>Ordinary state awaiting an actor.</summary>
+        </member>
+        <member name="F:Desicon.Workflow.Core.Definitions.StateType.Initial">
+            <summary>Entry point. Exactly one per definition.</summary>
+        </member>
+        <member name="F:Desicon.Workflow.Core.Definitions.StateType.Terminal">
+            <summary>End of life. No outbound transitions.</summary>
+        </member>
+        <member name="F:Desicon.Workflow.Core.Definitions.StateType.Rework">
+            <summary>Returned to the requester for correction. Not a rejection --
+            the request keeps its number and history and re-enters the flow.</summary>
+        </member>
+        <member name="P:Desicon.Workflow.Core.Definitions.SlaPolicy.Hours">
+            <summary>Hours allowed in this state before breach.</summary>
+        </member>
+        <member name="P:Desicon.Workflow.Core.Definitions.SlaPolicy.ReminderEveryHours">
+            <summary>Reminder cadence. Null means no reminders.</summary>
+        </member>
+        <member name="P:Desicon.Workflow.Core.Definitions.SlaPolicy.EscalateTo">
+            <summary>State key to escalate to on breach. Escalation transfers
+            authority to act, it does not merely notify -- otherwise the SLA is
+            advisory and delay stays hidden.</summary>
+        </member>
+        <member name="P:Desicon.Workflow.Core.Definitions.WorkflowTransition.Action">
+            <summary>SUBMIT, VERIFY, APPROVE, RETURN, REJECT, POST, AUTHORISE,
+            EXECUTE_PAYMENT, ACKNOWLEDGE, CONFIRM_REFUND, RESUBMIT.</summary>
+        </member>
+        <member name="P:Desicon.Workflow.Core.Definitions.WorkflowTransition.Guard">
+            <summary>Expression in the restricted guard language. Null means no
+            condition beyond actor authority.</summary>
+        </member>
+        <member name="P:Desicon.Workflow.Core.Definitions.WorkflowTransition.GuardMessage">
+            <summary>Message shown to the user when the guard fails. Without this a
+            blocked approver sees only that the button did nothing.</summary>
+        </member>
+        <member name="P:Desicon.Workflow.Core.Definitions.WorkflowTransition.Captures">
+            <summary>Fields the actor must supply as part of this transition,
+            e.g. TreasuryNumber at Finance verification.</summary>
+        </member>
+        <member name="P:Desicon.Workflow.Core.Definitions.WorkflowTransition.Records">
+            <summary>Field on the request stamped with the acting user's id,
+            e.g. PostedByUserId, so a later maker-checker guard can compare it.</summary>
+        </member>
+        <member name="P:Desicon.Workflow.Core.Definitions.WorkflowTransition.Effect">
+            <summary>Named side effect, e.g. IncrementRevisionNumber.</summary>
+        </member>
+        <member name="P:Desicon.Workflow.Core.Definitions.ActorSpec.Role">
+            <summary>Static role requirement, e.g. FinanceManager.</summary>
+        </member>
+        <member name="P:Desicon.Workflow.Core.Definitions.ActorSpec.Resolver">
+            <summary>Dynamic resolver, e.g. LineManagerOf / DepartmentHeadOf /
+            Requester / Beneficiary. Definitions never name an individual.</summary>
+        </member>
+        <member name="T:Desicon.Workflow.Core.Engine.IRequestNumberGenerator">
+            <summary>
+            Mints the human-facing request number (e.g. EXP-2026-000123) at
+            submission. Implemented outside this project because the "no gaps from
+            failed inserts being reused" guarantee (docs/03-Data-Model-ERD.md section
+            3) needs a real database sequence, not an in-memory counter -- see
+            SqlSequenceRequestNumberGenerator in Infrastructure.
+            </summary>
+        </member>
+        <member name="T:Desicon.Workflow.Core.Engine.IWorkflowSubject">
+            <summary>
+            The request as the engine sees it. The engine knows nothing about expenses,
+            advances or requisitions -- only that a thing has a state, some fields, and
+            a requester. That is what makes a new module a data change rather than a
+            code change.
+            </summary>
+        </member>
+        <member name="M:Desicon.Workflow.Core.Engine.IActorResolver.ResolveAsync(Desicon.Workflow.Core.Definitions.ActorSpec,Desicon.Workflow.Core.Engine.IWorkflowSubject,System.Threading.CancellationToken)">
+            <summary>Resolves the set of user ids permitted to act under this spec.</summary>
+        </member>
+        <member name="F:Desicon.Workflow.Core.Engine.TransitionOutcome.PolicyViolation">
+            <summary>
+            Never produced by <see cref="T:Desicon.Workflow.Core.Engine.WorkflowEngine"/> itself -- the engine has
+            already returned <see cref="F:Desicon.Workflow.Core.Engine.TransitionOutcome.Succeeded"/> by the time this applies. It is
+            set by a caller (RequestActionService) after an independent,
+            defence-in-depth check -- self-approval or maker-checker -- rejects a
+            transition the definition's own guards allowed. Kept in this enum
+            because it is the same vocabulary of "why didn't this go through" as
+            the engine's own denial outcomes.
+            </summary>
+        </member>
+        <member name="T:Desicon.Workflow.Core.Engine.WorkflowEngine">
+            <summary>
+            Executes workflow transitions. Every state change in the platform goes
+            through <see cref="M:Desicon.Workflow.Core.Engine.WorkflowEngine.ExecuteAsync(Desicon.Workflow.Core.Definitions.WorkflowDefinition,Desicon.Workflow.Core.Engine.IWorkflowSubject,Desicon.Workflow.Core.Engine.ActingUser,Desicon.Workflow.Core.Engine.TransitionRequest,System.Threading.CancellationToken)"/> -- there is no second path. That single
+            choice is what guarantees an audit event is written for every transition,
+            because there is nowhere else a transition can happen.
+            </summary>
+        </member>
+        <member name="M:Desicon.Workflow.Core.Engine.WorkflowEngine.GetAvailableTransitionsAsync(Desicon.Workflow.Core.Definitions.WorkflowDefinition,Desicon.Workflow.Core.Engine.IWorkflowSubject,Desicon.Workflow.Core.Engine.ActingUser,System.Threading.CancellationToken)">
+            <summary>
+            Returns the transitions this user could execute right now. Used to drive
+            the UI's action buttons -- but the UI's opinion is cosmetic. The same
+            checks run again inside ExecuteAsync.
+            </summary>
+        </member>
+        <member name="M:Desicon.Workflow.Core.Engine.WorkflowEngine.ComputeSlaDueAt(Desicon.Workflow.Core.Definitions.WorkflowDefinition,System.String)">
+            <summary>
+            Computes the SLA deadline for a newly entered state. Returns null where
+            the state has no SLA.
+            </summary>
+        </member>
+        <member name="T:Desicon.Workflow.Core.Guards.IGuardFieldSource">
+            <summary>
+            Supplies field values to the guard evaluator. Implemented by the request
+            aggregate so that a guard can only see fields the aggregate chooses to
+            expose -- never arbitrary properties via reflection.
+            </summary>
+        </member>
+        <member name="T:Desicon.Workflow.Core.Guards.GuardEvaluator">
+             <summary>
+             Evaluates a parsed guard expression against a field source.
+            
+             Security posture:
+               * functions are restricted to a fixed allowlist
+               * fields come from an explicit dictionary, not reflection
+               * an unknown field or function is an error, never a silent null
+            
+             That last point matters. A guard that silently evaluates to false when a
+             field name is misspelled would block every request in that state and look
+             like a workflow bug; a guard that silently evaluates to true would wave
+             them all through. Failing loudly at definition-publish time is the only
+             safe behaviour.
+             </summary>
+        </member>
+        <member name="T:Desicon.Workflow.Core.Guards.GuardParser">
+             <summary>
+             Recursive-descent parser for guard expressions.
+            
+             Precedence, lowest to highest:
+               ||
+               &amp;&amp;
+               == !=
+               &gt; &gt;= &lt; &lt;=
+               + -            (binary)
+               ! -            (unary)
+               primary        (literal, field, function call, parenthesised expression)
+            
+             The output is a plain object graph. Nothing is compiled, emitted or
+             reflected over, so a malformed or hostile definition can only ever produce
+             a parse failure -- never code execution.
+             </summary>
+        </member>
+        <member name="T:Desicon.Workflow.Core.Guards.TokenKind">
+            <summary>
+            Token kinds for the restricted guard expression language.
+            </summary>
+        </member>
+        <member name="T:Desicon.Workflow.Core.Guards.GuardTokenizer">
+             <summary>
+             Tokenizer for guard expressions such as:
+                 NetPayableNgn &gt;= 0 &amp;&amp; ActorId != RequesterId
+                 GlDebitTotal == GlCreditTotal &amp;&amp; JournalVoucherNumber != null
+                 RefundReceivedAmountNgn == Abs(NetPayableNgn)
+            
+             The grammar is deliberately small. There is no assignment, no member access,
+             no indexing and no way to name a type, so a definition author cannot reach
+             anything the evaluator does not explicitly expose.
+             </summary>
+        </member>
+        <member name="T:Desicon.Workflow.Core.Scheduling.IWorkingCalendar">
+             <summary>
+             Working-hours arithmetic. Used for SLA deadlines and for the cash advance
+             retirement clock.
+            
+             Calendar hours and working hours are not interchangeable and the difference
+             is large. On a 9-hour working day, 72 working hours is eight working days --
+             well over a calendar week once a weekend falls inside it. Every overdue
+             figure on the dashboard depends on which of the two is meant, so the choice
+             is explicit configuration rather than a default buried in code.
+             </summary>
+        </member>
+        <member name="M:Desicon.Workflow.Core.Scheduling.IWorkingCalendar.AddWorkingHours(System.DateTimeOffset,System.Decimal)">
+            <summary>Advances by the given number of working hours, skipping
+            non-working hours, weekends and holidays.</summary>
+        </member>
+        <member name="M:Desicon.Workflow.Core.Scheduling.IWorkingCalendar.WorkingHoursBetween(System.DateTimeOffset,System.DateTimeOffset)">
+            <summary>Working hours elapsed between two instants. Used for turnaround
+            reporting, so an approver is not charged for the weekend.</summary>
+        </member>
+        <member name="P:Desicon.Workflow.Core.Scheduling.WorkingCalendarOptions.UtcOffset">
+            <summary>Nigeria is UTC+1 year round, with no daylight saving.</summary>
+        </member>
+        <member name="P:Desicon.Workflow.Core.Scheduling.WorkingCalendarOptions.Holidays">
+             <summary>
+             Declared public holidays.
+            
+             Nigerian holidays cannot be fully computed. Eid al-Fitr, Eid al-Adha and
+             Maulud follow the lunar calendar and are declared by the Federal
+             Government each year, sometimes only days ahead, and the declaration
+             often adds a second day. So this is a maintained table, not an algorithm,
+             and it needs an owner and an annual update task -- an SLA that silently
+             counts Eid as a working day will produce false breach alerts.
+             </summary>
+        </member>
+        <member name="T:Desicon.Workflow.Core.Scheduling.WorkflowClock">
+            <summary>
+            Default clock backed by a working calendar registry.
+            </summary>
+        </member>
+        <member name="T:Desicon.Workflow.Core.Scheduling.NigerianHolidays">
+            <summary>
+            Fixed-date Nigerian public holidays. Lunar holidays are not here by design --
+            see <see cref="P:Desicon.Workflow.Core.Scheduling.WorkingCalendarOptions.Holidays"/>.
+            </summary>
+        </member>
+        <member name="M:Desicon.Workflow.Core.Scheduling.NigerianHolidays.EasterSunday(System.Int32)">
+            <summary>Anonymous Gregorian computus.</summary>
+        </member>
+        <member name="T:Desicon.Workflow.Core.Validation.WorkflowDefinitionValidator">
+             <summary>
+             Validates a workflow definition before it is published.
+            
+             This exists because a structurally broken definition is a live incident,
+             not a unit-test failure. A state with no way out silently strands every
+             request that reaches it, and nobody notices until an approver asks why
+             their claim has not moved in three weeks. That class of defect is caught
+             here, in CI, against the real definition files.
+             </summary>
+        </member>
+    </members>
+</doc>

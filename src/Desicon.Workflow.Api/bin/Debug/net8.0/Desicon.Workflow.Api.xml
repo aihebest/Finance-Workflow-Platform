@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Desicon.Workflow.Api</name>
+    </assembly>
+    <members>
+        <member name="T:Desicon.Workflow.Api.Endpoints.AdvanceRetirementEndpoints">
+            <summary>
+            Drafting is a plain insert, not a guarded transition -- nothing here goes
+            through RequestActionService/WorkflowEngine, because a DRAFT has no
+            predecessor state an actor needed authority to leave. The engine gets
+            involved from SUBMIT onward, same as any other expense claim.
+            </summary>
+        </member>
+        <member name="M:Desicon.Workflow.Api.Endpoints.AdvanceRetirementEndpoints.FindOrCreateEmployeeBeneficiaryAsync(Desicon.Workflow.Infrastructure.Persistence.WorkflowDbContext,System.Guid,System.Threading.CancellationToken)">
+            <summary>
+            ExpenseRequest.BeneficiaryId is a required real FK (see
+            ExpenseRequestConfiguration) with no notion of "the requester paying
+            themselves" built in -- every claim pays a Beneficiary row. An advance
+            being retired has no beneficiary of its own to reuse, so the
+            requester's own Employee-type Beneficiary is found or created here.
+            Bank details are left blank: Employee carries none to source them
+            from, and Finance can fill them in on the draft before submission.
+            </summary>
+        </member>
+    </members>
+</doc>

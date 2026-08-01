@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <RootNamespace>Desicon.Workflow.Api</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Desicon.Workflow.Core\Desicon.Workflow.Core.csproj" />
+    <ProjectReference Include="..\Desicon.Workflow.Domain\Desicon.Workflow.Domain.csproj" />
+    <ProjectReference Include="..\Desicon.Workflow.Infrastructure\Desicon.Workflow.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

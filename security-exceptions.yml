@@ -1,0 +1,37 @@
+# Accepted security findings.
+#
+# Every entry needs an owner, a justification, a linked issue and an expiry.
+# scripts/check-exceptions.mjs fails the build when one expires, so an
+# exception is a deferral with a deadline rather than a permanent suppression.
+#
+# Reviewed monthly by @desicon/security.
+
+exceptions:
+  - id: EX-2026-001
+    tool: checkov
+    rule: CKV_AZURE_211
+    scope: infra/terraform/environments/dev
+    severity: medium
+    justification: >
+      Dev App Service Plan runs a non-production SKU without zone redundancy.
+      Dev holds no production data and is rebuilt from Terraform on demand.
+      The same rule is enforced in prd by policy/terraform/azure_security.rego.
+    owner: "@desicon/ict-platform"
+    issue: https://github.com/desicon/finance-workflow/issues/12
+    accepted_on: 2026-07-31
+    expires_on: 2027-01-27
+
+  # Template — copy, do not edit the entry above.
+  #
+  # - id: EX-YYYY-NNN
+  #   tool: trivy | checkov | tfsec | codeql | dependency-check | npm-audit
+  #   rule: <rule or CVE id>
+  #   scope: <path or image>
+  #   severity: critical | high | medium | low
+  #   justification: >
+  #     Why the risk is acceptable, and what compensating control exists.
+  #     "Not exploitable in our configuration" needs the reason, not the claim.
+  #   owner: "@team-or-person"
+  #   issue: <link>
+  #   accepted_on: YYYY-MM-DD
+  #   expires_on: YYYY-MM-DD   # Critical/High: max 30 days. Others: max 180.

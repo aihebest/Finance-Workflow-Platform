@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Desicon.Workflow.Domain</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Domain references Core only for IWorkflowSubject / IGuardFieldSource,
+         which are the contracts the engine consumes. Core never references
+         Domain, so the dependency stays one-way. -->
+    <ProjectReference Include="..\Desicon.Workflow.Core\Desicon.Workflow.Core.csproj" />
+  </ItemGroup>
+</Project>
