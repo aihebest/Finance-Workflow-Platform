@@ -42,6 +42,12 @@ public sealed class JsonWorkflowDefinitionProvider : IWorkflowDefinitionProvider
         return definition;
     }
 
+    public async Task<IReadOnlyList<WorkflowDefinition>> GetAllAsync(CancellationToken cancellationToken = default)
+    {
+        await EnsureLoadedAsync(cancellationToken);
+        return _cache.Values.ToList();
+    }
+
     private async Task EnsureLoadedAsync(CancellationToken cancellationToken)
     {
         if (_loaded)

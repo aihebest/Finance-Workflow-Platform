@@ -202,6 +202,17 @@
         <member name="P:Desicon.Workflow.Domain.Requests.CashAdvanceRequest.RetirementWindowHours">
             <summary>Working hours allowed to retire, per station scope.</summary>
         </member>
+        <member name="P:Desicon.Workflow.Domain.Requests.CashAdvanceRequest.HasOverdueAdvance">
+            <summary>
+            Whether this requester currently has another cash advance sitting in
+            Overdue retirement status -- the SUBMIT guard's
+            BLOCK_NEW_ADVANCE_WHEN_OVERDUE rule. This is a cross-request fact a
+            plain POCO cannot answer on its own, so it is not computed here: it is
+            staged by RequestActionService.RunTransitionAsync immediately before
+            guard evaluation, the same pattern GlPostingLines uses for the POSTING
+            guard on this same class.
+            </summary>
+        </member>
         <member name="M:Desicon.Workflow.Domain.Requests.CashAdvanceRequest.ReleaseCash(System.DateTimeOffset,Desicon.Workflow.Core.Scheduling.IWorkingCalendar,System.Nullable{System.Decimal})">
              <summary>
              Starts the retirement clock. Called when Finance releases the cash --
@@ -228,6 +239,14 @@
             Recomputes retirement status. Called by the daily retirement sweep and
             whenever a linked expense claim is approved.
             </summary>
+        </member>
+        <member name="F:Desicon.Workflow.Domain.Requests.CashAdvanceRequest.Accessors">
+            <summary>See <see cref="F:Desicon.Workflow.Domain.Requests.Request.Accessors"/> -- FieldNames and
+            TryGetField both read this same dictionary so they cannot drift.</summary>
+        </member>
+        <member name="P:Desicon.Workflow.Domain.Requests.CashAdvanceRequest.FieldNames">
+            <summary>This module's own fields. A guard's full field surface for
+            CASH_ADVANCE is this union <see cref="P:Desicon.Workflow.Domain.Requests.Request.FieldNames"/>.</summary>
         </member>
         <member name="T:Desicon.Workflow.Domain.Requests.ExpenseRequest">
              <summary>
@@ -282,6 +301,14 @@
             and so a historical request reprints under the threshold that applied
             when it was raised.
             </summary>
+        </member>
+        <member name="F:Desicon.Workflow.Domain.Requests.ExpenseRequest.Accessors">
+            <summary>See <see cref="F:Desicon.Workflow.Domain.Requests.Request.Accessors"/> -- FieldNames and
+            TryGetField both read this same dictionary so they cannot drift.</summary>
+        </member>
+        <member name="P:Desicon.Workflow.Domain.Requests.ExpenseRequest.FieldNames">
+            <summary>This module's own fields. A guard's full field surface for
+            EXPENSE is this union <see cref="P:Desicon.Workflow.Domain.Requests.Request.FieldNames"/>.</summary>
         </member>
         <member name="T:Desicon.Workflow.Domain.Requests.ExpenseLine">
             <summary>
@@ -346,12 +373,24 @@
             escalated item in the same second is not hypothetical; the second must
             get a clean conflict, not a silent overwrite.</summary>
         </member>
+        <member name="F:Desicon.Workflow.Domain.Requests.Request.Accessors">
+            <summary>
+            The single declaration of which fields this class exposes to the
+            guard evaluator. FieldNames and TryGetField both read this same
+            dictionary -- one list, one dispatch table -- so they cannot drift
+            apart the way a parallel HashSet and switch statement could.
+            </summary>
+        </member>
+        <member name="P:Desicon.Workflow.Domain.Requests.Request.FieldNames">
+            <summary>The field names this allowlist is the entire surface a
+            workflow definition can see -- there is no reflection fallback, so a
+            definition cannot reach a field the aggregate has not published.</summary>
+        </member>
         <member name="M:Desicon.Workflow.Domain.Requests.Request.TryGetField(System.String,System.Object@)">
             <summary>
-            Exposes fields to the guard evaluator. This allowlist is the entire
-            surface a workflow definition can see -- there is no reflection fallback,
-            so a definition cannot reach a field the aggregate has not published.
-            Module subclasses override to add their own, calling base first.
+            Exposes fields to the guard evaluator. Module subclasses override to
+            add their own via the same accessor-dictionary pattern, calling base
+            last.
             </summary>
         </member>
         <member name="P:Desicon.Workflow.Domain.Requests.Request.ActorId">
@@ -360,6 +399,20 @@
             definition can express maker-checker rules such as
             "ActorId != PostedByUserId".
             </summary>
+        </member>
+        <member name="T:Desicon.Workflow.Domain.Requests.RequestGuardFieldSchema">
+            <summary>
+            Domain-side implementation of IGuardFieldSchema. Each module's field
+            surface is the union of the base Request fields and that module's own
+            request subclass fields -- exactly the two dictionaries TryGetField
+            dispatches through at runtime, so this can never see a field the
+            evaluator itself could not resolve.
+            </summary>
+        </member>
+        <member name="P:Desicon.Workflow.Domain.Requests.RequestGuardFieldSchema.ModuleKeys">
+            <summary>Every module key this schema knows about. The single source
+            consumers (e.g. the schema-export tool) use instead of hardcoding
+            their own copy of the module list.</summary>
         </member>
         <member name="T:Desicon.Workflow.Domain.Security.SecurityEvent">
             <summary>

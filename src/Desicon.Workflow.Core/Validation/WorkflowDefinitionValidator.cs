@@ -41,9 +41,10 @@ public sealed class WorkflowDefinitionValidator
         "CurrentActor"
     };
 
-    public static ValidationResult Validate(WorkflowDefinition definition)
+    public static ValidationResult Validate(WorkflowDefinition definition, IGuardFieldSchema fieldSchema)
     {
         ArgumentNullException.ThrowIfNull(definition);
+        ArgumentNullException.ThrowIfNull(fieldSchema);
 
         var result = new ValidationResult();
         var stateKeys = new HashSet<string>(StringComparer.Ordinal);
@@ -60,7 +61,7 @@ public sealed class WorkflowDefinitionValidator
         ValidateTerminalStates(definition, result);
         ValidateTransitionEndpoints(definition, stateKeys, result);
         ValidateActors(definition, result);
-        ValidateGuards(definition, result);
+        ValidateGuards(definition, fieldSchema, result);
         ValidateSla(definition, stateKeys, result);
         ValidateReachability(definition, result);
         ValidateTerminalAttainability(definition, result);
@@ -161,13 +162,29 @@ public sealed class WorkflowDefinitionValidator
         }
     }
 
-    private static void ValidateGuards(WorkflowDefinition definition, ValidationResult result)
+    private static void ValidateGuards(
+        WorkflowDefinition definition, IGuardFieldSchema fieldSchema, ValidationResult result)
     {
+        IReadOnlySet<string>? knownFields;
+        try
+        {
+            knownFields = fieldSchema.GetFieldNames(definition.ModuleKey);
+        }
+        catch (ArgumentException)
+        {
+            // An unrecognised module key is not this method's concern to
+            // report -- there is no dedicated check for it anywhere in this
+            // validator today -- so guard-field reachability is simply
+            // skipped rather than raised as a confusing secondary error.
+            knownFields = null;
+        }
+
         foreach (var transition in definition.Transitions.Where(t => t.Guard is not null))
         {
+            GuardNode node;
             try
             {
-                GuardParser.Parse(transition.Guard!);
+                node = GuardParser.Parse(transition.Guard!);
             }
             catch (GuardSyntaxException ex)
             {
@@ -175,7 +192,71 @@ public sealed class WorkflowDefinitionValidator
                     "INVALID_GUARD",
                     $"Transition '{transition.Action}' from '{transition.From}' has an invalid " +
                     $"guard expression: {ex.Message}");
+                continue;
             }
+
+            if (knownFields is null)
+            {
+                continue;
+            }
+
+            foreach (var fieldName in CollectFieldNames(node).Distinct(StringComparer.Ordinal))
+            {
+                if (!knownFields.Contains(fieldName))
+                {
+                    result.Error(
+                        "UNKNOWN_GUARD_FIELD",
+                        $"Transition '{transition.Action}' from '{transition.From}' guard references " +
+                        $"unknown field '{fieldName}'. Known fields for module " +
+                        $"'{definition.ModuleKey}': {string.Join(", ", knownFields.Order(StringComparer.Ordinal))}.");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Walks a guard's AST collecting every field reference. No visitor
+    /// pattern exists in this codebase (see GuardEvaluator.Evaluate), so this
+    /// follows the same hand-written switch-on-node-type shape.
+    /// </summary>
+    private static IEnumerable<string> CollectFieldNames(GuardNode node)
+    {
+        switch (node)
+        {
+            case FieldNode field:
+                yield return field.Name;
+                break;
+
+            case UnaryNode unary:
+                foreach (var name in CollectFieldNames(unary.Operand))
+                {
+                    yield return name;
+                }
+                break;
+
+            case BinaryNode binary:
+                foreach (var name in CollectFieldNames(binary.Left))
+                {
+                    yield return name;
+                }
+                foreach (var name in CollectFieldNames(binary.Right))
+                {
+                    yield return name;
+                }
+                break;
+
+            case FunctionNode function:
+                foreach (var argument in function.Arguments)
+                {
+                    foreach (var name in CollectFieldNames(argument))
+                    {
+                        yield return name;
+                    }
+                }
+                break;
+
+            case LiteralNode:
+                break;
         }
     }
 

@@ -70,31 +70,51 @@ public class Request : IWorkflowSubject
     public bool IsClosed => ClosedAt.HasValue;
 
     /// <summary>
-    /// Exposes fields to the guard evaluator. This allowlist is the entire
-    /// surface a workflow definition can see -- there is no reflection fallback,
-    /// so a definition cannot reach a field the aggregate has not published.
-    /// Module subclasses override to add their own, calling base first.
+    /// The single declaration of which fields this class exposes to the
+    /// guard evaluator. FieldNames and TryGetField both read this same
+    /// dictionary -- one list, one dispatch table -- so they cannot drift
+    /// apart the way a parallel HashSet and switch statement could.
+    /// </summary>
+    private static readonly Dictionary<string, Func<Request, object?>> Accessors =
+        new(StringComparer.Ordinal)
+        {
+            [nameof(RequestId)] = r => r.RequestId,
+            [nameof(RequestNumber)] = r => r.RequestNumber,
+            [nameof(ModuleKey)] = r => r.ModuleKey,
+            [nameof(TreasuryNumber)] = r => r.TreasuryNumber,
+            [nameof(JournalVoucherNumber)] = r => r.JournalVoucherNumber,
+            [nameof(CurrentState)] = r => r.CurrentState,
+            [nameof(RequesterId)] = r => r.RequesterId,
+            [nameof(DepartmentId)] = r => r.DepartmentId,
+            [nameof(CurrentActorId)] = r => r.CurrentActorId,
+            [nameof(TotalAmountNgn)] = r => r.TotalAmountNgn,
+            [nameof(RevisionNumber)] = r => r.RevisionNumber,
+            [nameof(EscalationCount)] = r => r.EscalationCount,
+            [nameof(SubmittedAt)] = r => r.SubmittedAt,
+            [nameof(ActorId)] = r => r.ActorId,
+        };
+
+    /// <summary>The field names this allowlist is the entire surface a
+    /// workflow definition can see -- there is no reflection fallback, so a
+    /// definition cannot reach a field the aggregate has not published.</summary>
+    public static IReadOnlySet<string> FieldNames { get; } =
+        Accessors.Keys.ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Exposes fields to the guard evaluator. Module subclasses override to
+    /// add their own via the same accessor-dictionary pattern, calling base
+    /// last.
     /// </summary>
     public virtual bool TryGetField(string name, out object? value)
     {
-        switch (name)
+        if (Accessors.TryGetValue(name, out var accessor))
         {
-            case nameof(RequestId): value = RequestId; return true;
-            case nameof(RequestNumber): value = RequestNumber; return true;
-            case nameof(ModuleKey): value = ModuleKey; return true;
-            case nameof(TreasuryNumber): value = TreasuryNumber; return true;
-            case nameof(JournalVoucherNumber): value = JournalVoucherNumber; return true;
-            case nameof(CurrentState): value = CurrentState; return true;
-            case nameof(RequesterId): value = RequesterId; return true;
-            case nameof(DepartmentId): value = DepartmentId; return true;
-            case nameof(CurrentActorId): value = CurrentActorId; return true;
-            case nameof(TotalAmountNgn): value = TotalAmountNgn; return true;
-            case nameof(RevisionNumber): value = RevisionNumber; return true;
-            case nameof(EscalationCount): value = EscalationCount; return true;
-            case nameof(SubmittedAt): value = SubmittedAt; return true;
-            case nameof(ActorId): value = ActorId; return true;
-            default: value = null; return false;
+            value = accessor(this);
+            return true;
         }
+
+        value = null;
+        return false;
     }
 
     /// <summary>

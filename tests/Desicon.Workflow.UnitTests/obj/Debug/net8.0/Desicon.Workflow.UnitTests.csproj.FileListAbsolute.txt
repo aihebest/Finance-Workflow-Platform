@@ -110,3 +110,4 @@ C:\Users\USER\OneDrive - Desicon Group\Documents\Claude\Projects\desicon-finance
 C:\Users\USER\OneDrive - Desicon Group\Documents\Claude\Projects\desicon-finance-workflow-scaffold\tests\Desicon.Workflow.UnitTests\obj\Debug\net8.0\Desicon.Workflow.UnitTests.pdb
 C:\Users\USER\OneDrive - Desicon Group\Documents\Claude\Projects\desicon-finance-workflow-scaffold\tests\Desicon.Workflow.UnitTests\obj\Debug\net8.0\Desicon.Workflow.UnitTests.genruntimeconfig.cache
 C:\Users\USER\OneDrive - Desicon Group\Documents\Claude\Projects\desicon-finance-workflow-scaffold\tests\Desicon.Workflow.UnitTests\obj\Debug\net8.0\ref\Desicon.Workflow.UnitTests.dll
+C:\Users\USER\OneDrive - Desicon Group\Documents\Claude\Projects\desicon-finance-workflow-scaffold\tests\Desicon.Workflow.UnitTests\obj\Debug\net8.0\Desicon.Workflow.UnitTests.sourcelink.json

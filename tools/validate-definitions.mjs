@@ -7,8 +7,9 @@
  * Usage: node tools/validate-definitions.mjs [dir]
  */
 
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const KNOWN_RESOLVERS = new Set([
   "Requester",
@@ -20,6 +21,50 @@ const KNOWN_RESOLVERS = new Set([
 ]);
 
 const NEGATIVE_ACTIONS = new Set(["REJECT", "RETURN", "WRITE_OFF"]);
+
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
+const GUARD_FIELD_SCHEMA_PATH = join(SCRIPT_DIR, "guard-field-schema.json");
+
+/**
+ * Extracts every field reference from a guard expression -- the JS mirror of
+ * WorkflowDefinitionValidator's AST walk, minus the AST: there is no parser
+ * on this side, so this works off tokens instead of a tree. String literals
+ * are blanked out first so quoted text (e.g. 'Yes') is never mistaken for a
+ * field, and an identifier immediately followed by '(' is a guard function
+ * call (Abs, Round, ...), not a field, matching GuardParser's own
+ * identifier-vs-function-call rule.
+ */
+function extractGuardFieldNames(guard) {
+  const withoutStringLiterals = guard.replace(/'[^']*'/g, "''");
+  const fields = new Set();
+  const identifierRe = /[A-Za-z_][A-Za-z0-9_]*/g;
+
+  let match;
+  while ((match = identifierRe.exec(withoutStringLiterals)) !== null) {
+    const name = match[0];
+    if (name === "true" || name === "false" || name === "null") continue;
+
+    const rest = withoutStringLiterals.slice(match.index + name.length);
+    if (/^\s*\(/.test(rest)) continue; // function call name, not a field
+
+    fields.add(name);
+  }
+
+  return fields;
+}
+
+function loadGuardFieldSchema() {
+  if (!existsSync(GUARD_FIELD_SCHEMA_PATH)) {
+    console.log(
+      `\nNOTE: ${GUARD_FIELD_SCHEMA_PATH} not found -- skipping guard-field ` +
+        "reachability checks. Run `dotnet build tools/Desicon.Workflow.SchemaExport` " +
+        "to generate it (the C# WorkflowDefinitionValidator still runs this check in CI).",
+    );
+    return null;
+  }
+
+  return JSON.parse(readFileSync(GUARD_FIELD_SCHEMA_PATH, "utf8"));
+}
 
 function traverse(def, startKey) {
   const visited = new Set([startKey]);
@@ -38,10 +83,13 @@ function traverse(def, startKey) {
   return visited;
 }
 
-function validate(def) {
+function validate(def, guardFieldSchema) {
   const errors = [];
   const warnings = [];
   const stateKeys = new Set();
+  const moduleFields = guardFieldSchema?.[def.moduleKey]
+    ? new Set(guardFieldSchema[def.moduleKey])
+    : null;
 
   for (const s of def.states) {
     if (stateKeys.has(s.key)) errors.push(`DUPLICATE_STATE: ${s.key}`);
@@ -74,6 +122,14 @@ function validate(def) {
 
     if (t.guard && !t.guardMessage)
       warnings.push(`GUARD_WITHOUT_MESSAGE: ${t.action} from ${t.from}`);
+
+    if (t.guard && moduleFields) {
+      for (const fieldName of extractGuardFieldNames(t.guard)) {
+        if (!moduleFields.has(fieldName)) {
+          errors.push(`UNKNOWN_GUARD_FIELD: ${fieldName} (${t.action} from ${t.from})`);
+        }
+      }
+    }
   }
 
   for (const s of def.states) {
@@ -118,12 +174,13 @@ function validate(def) {
 
 const dir = process.argv[2] ?? "modules";
 const files = readdirSync(dir).filter((f) => f.endsWith(".workflow.json"));
+const guardFieldSchema = loadGuardFieldSchema();
 
 let failed = false;
 
 for (const file of files) {
   const def = JSON.parse(readFileSync(join(dir, file), "utf8"));
-  const { errors, warnings } = validate(def);
+  const { errors, warnings } = validate(def, guardFieldSchema);
 
   console.log(`\n${file}  (${def.moduleKey} — ${def.formCode} Rev ${def.formRevision})`);
   console.log(`  states: ${def.states.length}  transitions: ${def.transitions.length}`);

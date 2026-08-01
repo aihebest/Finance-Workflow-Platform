@@ -35,5 +35,22 @@
              and the guard failed closed for the wrong reason.
              </summary>
         </member>
+        <member name="T:Desicon.Workflow.UnitTests.Requests.RequestFieldAccessTests">
+            <summary>
+            Regression coverage for the two TryGetField bugs the guard-field
+            reachability check surfaced: HasValidAllocation was missing entirely, and
+            HasOverdueAdvance did not exist. Both must resolve through TryGetField --
+            not just exist as CLR properties -- since that is what GuardEvaluator
+            actually calls at runtime.
+            </summary>
+        </member>
+        <member name="T:Desicon.Workflow.UnitTests.Validation.WorkflowDefinitionValidatorTests">
+            <summary>
+            Covers the guard-field reachability check specifically: every guard's AST
+            is walked and every field reference must resolve against the module's
+            IGuardFieldSchema, the same schema tools/validate-definitions.mjs mirrors
+            from the emitted JSON file.
+            </summary>
+        </member>
     </members>
 </doc>

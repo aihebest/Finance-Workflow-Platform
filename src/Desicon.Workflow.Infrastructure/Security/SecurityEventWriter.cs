@@ -1,4 +1,5 @@
 using Desicon.Workflow.Domain.Security;
+using Desicon.Workflow.Infrastructure.Observability;
 using Desicon.Workflow.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -29,5 +30,10 @@ public sealed class SecurityEventWriter : ISecurityEventWriter
         await using var db = new WorkflowDbContext(_options);
         db.SecurityEvents.Add(securityEvent);
         await db.SaveChangesAsync(cancellationToken);
+
+        WorkflowMetrics.SecurityEventsWritten.Add(
+            1,
+            new KeyValuePair<string, object?>("module", securityEvent.ModuleKey),
+            new KeyValuePair<string, object?>("reason", securityEvent.Reason));
     }
 }

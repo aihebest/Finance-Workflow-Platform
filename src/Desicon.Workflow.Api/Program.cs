@@ -1,10 +1,15 @@
+using System.Threading.RateLimiting;
 using Desicon.Workflow.Api.Endpoints;
+using Desicon.Workflow.Api.Http;
+using Desicon.Workflow.Api.Security;
 using Desicon.Workflow.Core.Engine;
 using Desicon.Workflow.Core.Guards;
 using Desicon.Workflow.Core.Scheduling;
 using Desicon.Workflow.Infrastructure.Persistence;
 using Desicon.Workflow.Infrastructure.Security;
 using Desicon.Workflow.Infrastructure.Workflow;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -45,10 +50,97 @@ var definitionsPath = Path.GetFullPath(
         ?? throw new InvalidOperationException("Configuration 'Workflow:DefinitionsPath' is not set.")));
 builder.Services.AddSingleton<IWorkflowDefinitionProvider>(_ => new JsonWorkflowDefinitionProvider(definitionsPath));
 
+// The definitions are immutable for the process lifetime (see
+// WorkflowDefinitionValidator's own treatment of them), so the inbox index
+// derived from them is built once, synchronously, at startup rather than
+// per-request.
+builder.Services.AddSingleton(sp =>
+{
+    var definitions = sp.GetRequiredService<IWorkflowDefinitionProvider>();
+    var all = definitions.GetAllAsync().GetAwaiter().GetResult();
+    return new InboxStateIndex(all);
+});
+
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUserAccessor, CurrentUserAccessor>();
+builder.Services.AddScoped<ReadAccessScope>();
+
+// Entra ID (Azure AD) v2.0 tokens, validated against the tenant's own JWKS
+// via OIDC discovery -- Authority alone is enough for the handler to fetch
+// and cache signing keys, no manual JWKS wiring needed. MapInboundClaims is
+// turned off so "oid" and "roles" keep their short names instead of being
+// rewritten onto long http://schemas... claim-mapping URIs.
+var azureAd = builder.Configuration.GetSection("AzureAd");
+var tenantId = azureAd["TenantId"] ?? throw new InvalidOperationException("Configuration 'AzureAd:TenantId' is not set.");
+var instance = azureAd["Instance"] ?? throw new InvalidOperationException("Configuration 'AzureAd:Instance' is not set.");
+var audience = azureAd["Audience"] ?? throw new InvalidOperationException("Configuration 'AzureAd:Audience' is not set.");
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.Authority = $"{instance.TrimEnd('/')}/{tenantId}/v2.0";
+        options.Audience = audience;
+        options.MapInboundClaims = false;
+    });
+
+builder.Services.AddAuthorization();
+
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+
+// Doc 04's documented threshold: 100 requests/minute per authenticated user
+// (falling back to remote IP for anything that reaches the limiter
+// unauthenticated), 429 with Retry-After on rejection. Per-endpoint 10/min
+// limiters for auth/upload endpoints are not wired here: authentication is
+// entirely Entra-hosted (no local auth endpoint exists to limit) and no
+// upload endpoint exists in this API surface (attachments are out of scope
+// per doc 05 -- see final summary).
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+    {
+        var key = context.User.FindFirst("oid")?.Value
+            ?? context.Connection.RemoteIpAddress?.ToString()
+            ?? "unknown";
+
+        return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 100,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        });
+    });
+
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        context.HttpContext.Response.Headers.RetryAfter = "60";
+
+        await Results.Problem(
+            statusCode: StatusCodes.Status429TooManyRequests,
+            title: "Too many requests",
+            detail: "Rate limit exceeded. Retry after the window indicated by the Retry-After header.",
+            instance: context.HttpContext.Request.Path,
+            type: "https://desicon.internal/problems/rate-limited"
+        ).ExecuteAsync(context.HttpContext);
+    };
+});
+
 builder.Services.AddEndpointsApiExplorer();
 
 var app = builder.Build();
 
+app.UseExceptionHandler();
+app.UseHttpsRedirection();
+app.UseRateLimiter();
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.MapAdvanceRetirementEndpoints();
+app.MapModuleEndpoints();
+app.MapRequestEndpoints();
+app.MapExpenseEndpoints();
+app.MapCashAdvanceEndpoints();
 
 app.Run();

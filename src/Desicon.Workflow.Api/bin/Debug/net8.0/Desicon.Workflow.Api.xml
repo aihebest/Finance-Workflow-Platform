@@ -23,5 +23,131 @@
             from, and Finance can fill them in on the draft before submission.
             </summary>
         </member>
+        <member name="T:Desicon.Workflow.Api.Endpoints.CashAdvanceEndpoints">
+            <summary>
+            DEL-AC-FRM-003 (cash advance) specific capture endpoints. gl-lines and
+            authorise-posting mirror ExpenseEndpoints -- doc 05's module-endpoint list
+            omits them for this module, but cash-advance.workflow.json has the same
+            POSTING/AUTHORISATION states gated by the same GL guards, so without these
+            two endpoints an advance could never actually pass through them.
+            </summary>
+        </member>
+        <member name="T:Desicon.Workflow.Api.Endpoints.ExpenseEndpoints">
+            <summary>
+            DEL-AC-FRM-002 (expense) specific capture endpoints. Everything here
+            exists because the corresponding workflow transition either has no
+            meaningful generic capture shape (a list of GL lines is not a scalar
+            payload field) or references a guard field that must be staged onto the
+            tracked entity before RequestActionService.ExecuteAsync runs -- see
+            RequestEndpoints.ExecuteActionAsync's TreasuryNumber handling for the one
+            case that *is* generic enough to live there instead.
+            </summary>
+        </member>
+        <member name="T:Desicon.Workflow.Api.Endpoints.ModuleEndpoints">
+            <summary>
+            Read-only reflection of the published (data, not code) workflow
+            definitions -- what modules exist, and the states/transitions/captures a
+            frontend needs to render forms and action buttons without hardcoding the
+            workflow shape.
+            </summary>
+        </member>
+        <member name="T:Desicon.Workflow.Api.Endpoints.RequestEndpoints">
+            <summary>
+            The generic engine surface from docs/05-API-Frontend-and-Operations.md
+            §1: draft creation, the read/update/submit/action/history lifecycle, and
+            the three worklist views (inbox, my requests, my advances). Everything
+            module-specific (expense/cash-advance capture endpoints) lives in its own
+            file and calls back through the same RequestActionService, so there is
+            still exactly one path a state transition can take.
+            </summary>
+        </member>
+        <member name="T:Desicon.Workflow.Api.Endpoints.CreateRequestDto">
+            <summary>{ moduleKey, payload } -- payload is module-specific, parsed
+            against ExpenseDraftPayload/CashAdvanceDraftPayload by ModuleKey.</summary>
+        </member>
+        <member name="M:Desicon.Workflow.Api.Endpoints.CreateRequestDto.#ctor(System.String,System.Text.Json.JsonElement)">
+            <summary>{ moduleKey, payload } -- payload is module-specific, parsed
+            against ExpenseDraftPayload/CashAdvanceDraftPayload by ModuleKey.</summary>
+        </member>
+        <member name="T:Desicon.Workflow.Api.Endpoints.ExecuteActionDto">
+            <summary>Body for the generic POST /actions mutation entry point.</summary>
+        </member>
+        <member name="M:Desicon.Workflow.Api.Endpoints.ExecuteActionDto.#ctor(System.String,System.String,System.Collections.Generic.IReadOnlyDictionary{System.String,System.Object},System.String)">
+            <summary>Body for the generic POST /actions mutation entry point.</summary>
+        </member>
+        <member name="T:Desicon.Workflow.Api.Endpoints.ActionRequestDto">
+            <summary>Shared minimal body for the thin action wrappers (submit,
+            acknowledge, and the other module-specific single-purpose endpoints)
+            that need nothing beyond an optional comment and idempotency key.</summary>
+        </member>
+        <member name="M:Desicon.Workflow.Api.Endpoints.ActionRequestDto.#ctor(System.String,System.String)">
+            <summary>Shared minimal body for the thin action wrappers (submit,
+            acknowledge, and the other module-specific single-purpose endpoints)
+            that need nothing beyond an optional comment and idempotency key.</summary>
+        </member>
+        <member name="T:Desicon.Workflow.Api.Http.ETagHelper">
+            <summary>
+            ETag / If-Match mapped onto Request.RowVersion (see RequestConfiguration's
+            IsRowVersion() mapping). A stale write must come back as 412, never a
+            silent overwrite -- doc 05 §1's conventions are explicit on this.
+            </summary>
+        </member>
+        <member name="M:Desicon.Workflow.Api.Http.ETagHelper.TryGetIfMatchRowVersion(Microsoft.AspNetCore.Http.HttpRequest,System.Byte[]@)">
+            <summary>Parses the If-Match header into a rowversion. Returns false
+            (rather than throwing) for a missing or malformed header -- callers
+            decide whether If-Match is required for their endpoint.</summary>
+        </member>
+        <member name="T:Desicon.Workflow.Api.Http.GlobalExceptionHandler">
+            <summary>
+            Last-resort translation to problem+json. Endpoints are expected to catch
+            their own expected failure modes (not found, guard failed, ...) and return
+            a typed IResult via ProblemResults -- this only runs for what nobody
+            anticipated, so the response body must never leak exception detail.
+            </summary>
+        </member>
+        <member name="T:Desicon.Workflow.Api.Http.ProblemResults">
+            <summary>
+            Maps the engine's own vocabulary of "why didn't this go through"
+            (TransitionOutcome, via RequestActionResult) onto RFC 7807 problem+json.
+            One place for this mapping so every endpoint that calls
+            RequestActionService reports failures the same way.
+            </summary>
+        </member>
+        <member name="F:Desicon.Workflow.Api.Security.CurrentUserAccessor.ObjectIdClaimTypes">
+            <summary>Entra ID v2.0 tokens carry the object id as "oid". Also
+            accepted: the claim-mapping URI ASP.NET Core's JWT handler produces
+            when MapInboundClaims is left at its (deprecated) default of true, so
+            this keeps working regardless of how that option is set.</summary>
+        </member>
+        <member name="T:Desicon.Workflow.Api.Security.UnprovisionedUserException">
+            <summary>An Entra ID principal authenticated successfully but has no
+            matching (or an inactive) Employee record. Distinct from "not
+            authenticated" -- the token is valid, provisioning is not.</summary>
+        </member>
+        <member name="T:Desicon.Workflow.Api.Security.ICurrentUserAccessor">
+            <summary>
+            Resolves the authenticated Entra ID principal to the Employee record and
+            role set the rest of the API works in terms of. There is no local role
+            table (see Employee's own remarks and doc 04 §1) -- roles come straight
+            off the token's "roles" claim, Entra security groups surfaced as app
+            roles, not a database lookup.
+            </summary>
+        </member>
+        <member name="M:Desicon.Workflow.Api.Security.ICurrentUserAccessor.GetEmployeeAsync(System.Threading.CancellationToken)">
+            <summary>The signed-in employee. Throws if the token's object id does
+            not match any Employee.EntraObjectId -- an authenticated principal with
+            no corresponding staff record is a provisioning gap, not a request this
+            API can serve.</summary>
+        </member>
+        <member name="M:Desicon.Workflow.Api.Security.ICurrentUserAccessor.GetRoles">
+            <summary>The role set from the token's "roles" claim.</summary>
+        </member>
+        <member name="M:Desicon.Workflow.Api.Security.ICurrentUserAccessor.GetActingUserAsync(System.Threading.CancellationToken)">
+            <summary>Employee plus roles, packaged as the engine's own ActingUser.
+            OnBehalfOf is always null here -- this API has no "act as a delegate
+            explicitly" affordance; a delegate reaches the same result by simply
+            being present in the resolved actor set (see
+            EmployeeActorResolver.ExpandWithDelegatesAsync).</summary>
+        </member>
     </members>
 </doc>

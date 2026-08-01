@@ -92,26 +92,41 @@ public sealed class ExpenseRequest : Request
             ? PaymentMethod.BankTransfer
             : PaymentMethod.Cash;
 
+    /// <summary>See <see cref="Request.Accessors"/> -- FieldNames and
+    /// TryGetField both read this same dictionary so they cannot drift.</summary>
+    private static readonly Dictionary<string, Func<ExpenseRequest, object?>> Accessors =
+        new(StringComparer.Ordinal)
+        {
+            [nameof(BeneficiaryId)] = r => r.BeneficiaryId,
+            [nameof(RetiresAdvanceId)] = r => r.RetiresAdvanceId,
+            [nameof(AdvanceAmountNgn)] = r => r.AdvanceAmountNgn,
+            [nameof(NetPayableNgn)] = r => r.NetPayableNgn,
+            [nameof(ReceiptStatus)] = r => r.ReceiptStatus.ToString(),
+            [nameof(PaymentMethod)] = r => r.PaymentMethod.ToString(),
+            [nameof(PostedByUserId)] = r => r.PostedByUserId,
+            [nameof(AuthorisedByUserId)] = r => r.AuthorisedByUserId,
+            [nameof(AcknowledgedByUserId)] = r => r.AcknowledgedByUserId,
+            [nameof(RefundReceivedAmountNgn)] = r => r.RefundReceivedAmountNgn,
+            [nameof(GlDebitTotal)] = r => r.GlDebitTotal,
+            [nameof(GlCreditTotal)] = r => r.GlCreditTotal,
+            ["GlLineCount"] = r => (decimal)r.GlPostingLines.Count,
+            ["LineCount"] = r => (decimal)r.Lines.Count,
+        };
+
+    /// <summary>This module's own fields. A guard's full field surface for
+    /// EXPENSE is this union <see cref="Request.FieldNames"/>.</summary>
+    public new static IReadOnlySet<string> FieldNames { get; } =
+        Accessors.Keys.ToHashSet(StringComparer.Ordinal);
+
     public override bool TryGetField(string name, out object? value)
     {
-        switch (name)
+        if (Accessors.TryGetValue(name, out var accessor))
         {
-            case nameof(BeneficiaryId): value = BeneficiaryId; return true;
-            case nameof(RetiresAdvanceId): value = RetiresAdvanceId; return true;
-            case nameof(AdvanceAmountNgn): value = AdvanceAmountNgn; return true;
-            case nameof(NetPayableNgn): value = NetPayableNgn; return true;
-            case nameof(ReceiptStatus): value = ReceiptStatus.ToString(); return true;
-            case nameof(PaymentMethod): value = PaymentMethod.ToString(); return true;
-            case nameof(PostedByUserId): value = PostedByUserId; return true;
-            case nameof(AuthorisedByUserId): value = AuthorisedByUserId; return true;
-            case nameof(AcknowledgedByUserId): value = AcknowledgedByUserId; return true;
-            case nameof(RefundReceivedAmountNgn): value = RefundReceivedAmountNgn; return true;
-            case nameof(GlDebitTotal): value = GlDebitTotal; return true;
-            case nameof(GlCreditTotal): value = GlCreditTotal; return true;
-            case "GlLineCount": value = (decimal)GlPostingLines.Count; return true;
-            case "LineCount": value = (decimal)Lines.Count; return true;
-            default: return base.TryGetField(name, out value);
+            value = accessor(this);
+            return true;
         }
+
+        return base.TryGetField(name, out value);
     }
 }
 

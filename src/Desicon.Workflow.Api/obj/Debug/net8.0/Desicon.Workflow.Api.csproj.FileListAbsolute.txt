@@ -79,3 +79,5 @@ C:\Users\USER\OneDrive - Desicon Group\Documents\Claude\Projects\desicon-finance
 C:\Users\USER\OneDrive - Desicon Group\Documents\Claude\Projects\desicon-finance-workflow-scaffold\src\Desicon.Workflow.Api\obj\Debug\net8.0\Desicon.Workflow.Api.pdb
 C:\Users\USER\OneDrive - Desicon Group\Documents\Claude\Projects\desicon-finance-workflow-scaffold\src\Desicon.Workflow.Api\obj\Debug\net8.0\Desicon.Workflow.Api.genruntimeconfig.cache
 C:\Users\USER\OneDrive - Desicon Group\Documents\Claude\Projects\desicon-finance-workflow-scaffold\src\Desicon.Workflow.Api\obj\Debug\net8.0\ref\Desicon.Workflow.Api.dll
+C:\Users\USER\OneDrive - Desicon Group\Documents\Claude\Projects\desicon-finance-workflow-scaffold\src\Desicon.Workflow.Api\bin\Debug\net8.0\Microsoft.AspNetCore.Authentication.JwtBearer.dll
+C:\Users\USER\OneDrive - Desicon Group\Documents\Claude\Projects\desicon-finance-workflow-scaffold\src\Desicon.Workflow.Api\obj\Debug\net8.0\Desicon.Workflow.Api.sourcelink.json

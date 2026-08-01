@@ -193,6 +193,22 @@
              anything the evaluator does not explicitly expose.
              </summary>
         </member>
+        <member name="T:Desicon.Workflow.Core.Guards.IGuardFieldSchema">
+            <summary>
+            The set of field names a guard expression may legally reference for a
+            given module. Core defines the contract but cannot implement it -- the
+            actual field names live on Domain's Request subclasses -- so this exists
+            purely to let WorkflowDefinitionValidator check a guard's AST against
+            Domain's field set without Core taking a dependency on Domain.
+            </summary>
+        </member>
+        <member name="M:Desicon.Workflow.Core.Guards.IGuardFieldSchema.GetFieldNames(System.String)">
+            <summary>
+            All field names <see cref="T:Desicon.Workflow.Core.Guards.GuardEvaluator"/> can resolve for the given
+            module key. Throws <see cref="T:System.ArgumentException"/> if the module key
+            is not recognised.
+            </summary>
+        </member>
         <member name="T:Desicon.Workflow.Core.Scheduling.IWorkingCalendar">
              <summary>
              Working-hours arithmetic. Used for SLA deadlines and for the cash advance
@@ -252,6 +268,13 @@
              their claim has not moved in three weeks. That class of defect is caught
              here, in CI, against the real definition files.
              </summary>
+        </member>
+        <member name="M:Desicon.Workflow.Core.Validation.WorkflowDefinitionValidator.CollectFieldNames(Desicon.Workflow.Core.Guards.GuardNode)">
+            <summary>
+            Walks a guard's AST collecting every field reference. No visitor
+            pattern exists in this codebase (see GuardEvaluator.Evaluate), so this
+            follows the same hand-written switch-on-node-type shape.
+            </summary>
         </member>
     </members>
 </doc>

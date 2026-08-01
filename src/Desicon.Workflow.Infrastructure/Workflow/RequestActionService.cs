@@ -60,6 +60,7 @@ public sealed class RequestActionService
     private readonly IWorkflowClock _clock;
     private readonly ISecurityEventWriter _securityEvents;
     private readonly AdvanceRetirementHandler _advanceRetirement;
+    private readonly IActorResolver _actorResolver;
 
     public RequestActionService(
         WorkflowDbContext db,
@@ -67,7 +68,8 @@ public sealed class RequestActionService
         IWorkflowDefinitionProvider definitions,
         IWorkflowClock clock,
         ISecurityEventWriter securityEvents,
-        AdvanceRetirementHandler advanceRetirement)
+        AdvanceRetirementHandler advanceRetirement,
+        IActorResolver actorResolver)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _engine = engine ?? throw new ArgumentNullException(nameof(engine));
@@ -75,6 +77,7 @@ public sealed class RequestActionService
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
         _securityEvents = securityEvents ?? throw new ArgumentNullException(nameof(securityEvents));
         _advanceRetirement = advanceRetirement ?? throw new ArgumentNullException(nameof(advanceRetirement));
+        _actorResolver = actorResolver ?? throw new ArgumentNullException(nameof(actorResolver));
     }
 
     public async Task<RequestActionResult> ExecuteAsync(
@@ -163,6 +166,22 @@ public sealed class RequestActionService
             }
         }
 
+        // Staged for the same reason GlPostingLines is above: SUBMIT's guard
+        // (BLOCK_NEW_ADVANCE_WHEN_OVERDUE) needs to know whether this
+        // requester has another advance currently Overdue, and that is a
+        // cross-request fact CashAdvanceRequest cannot compute on its own.
+        // IX_Advance_Overdue (RetirementStatus, RetirementDueDate) covers
+        // this query.
+        if (request is CashAdvanceRequest thisAdvance)
+        {
+            thisAdvance.HasOverdueAdvance = await _db.CashAdvanceRequests
+                .AsNoTracking()
+                .Where(a => a.RequesterId == thisAdvance.RequesterId
+                    && a.RequestId != requestId
+                    && a.RetirementStatus == RetirementStatus.Overdue)
+                .AnyAsync(cancellationToken);
+        }
+
         var definition = await _definitions.GetAsync(request.ModuleKey, cancellationToken);
 
         var effectiveActorId = actingUser.OnBehalfOf ?? actingUser.UserId;
@@ -230,6 +249,7 @@ public sealed class RequestActionService
                 TransitionOutcome.PolicyViolation, result.FromState, result.ToState, policyViolation, null, null);
         }
 
+        request.CurrentActorId = await ResolveNextActorAsync(request, definition, cancellationToken);
         request.SlaDueAt = _engine.ComputeSlaDueAt(definition, result.ToState!);
 
         var previousHash = await _db.AuditEvents
@@ -385,6 +405,44 @@ public sealed class RequestActionService
         };
 
         return _securityEvents.WriteAsync(securityEvent, cancellationToken);
+    }
+
+    /// <summary>
+    /// Populates Request.CurrentActorId for the state just entered, so a fast
+    /// indexed query (GET /my/inbox) can find "is this in my queue" without
+    /// re-running actor resolution per request. Only resolver-based actor
+    /// specs (Requester, Beneficiary, LineManagerOf, DepartmentHeadOf,
+    /// CurrentActor) ever collapse to a single person in this model; a
+    /// role-only spec (e.g. FinanceOfficer) cannot, and is left null here --
+    /// InboxStateIndex covers that case by state membership instead. A
+    /// resolver whose set spans more than one person (delegation active on a
+    /// resolver step) is also left null rather than guessing which one is
+    /// "current": both the delegator and the delegate remain authorised to
+    /// act, and a caller can still reach them via the engine's own
+    /// authorisation check when they submit an action.
+    /// </summary>
+    private async Task<Guid?> ResolveNextActorAsync(
+        Request request, WorkflowDefinition definition, CancellationToken cancellationToken)
+    {
+        var candidates = new HashSet<Guid>();
+
+        foreach (var transition in definition.TransitionsFrom(request.CurrentState))
+        {
+            if (transition.Actor.Resolver is null)
+            {
+                return null;
+            }
+
+            var resolved = await _actorResolver.ResolveAsync(transition.Actor, request, cancellationToken);
+            candidates.UnionWith(resolved);
+
+            if (candidates.Count > 1)
+            {
+                return null;
+            }
+        }
+
+        return candidates.Count == 1 ? candidates.Single() : null;
     }
 
     private static void ApplyRecordedActor(Request request, string? propertyName, Guid actorId)

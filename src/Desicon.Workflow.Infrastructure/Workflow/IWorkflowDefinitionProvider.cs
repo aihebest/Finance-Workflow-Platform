@@ -11,4 +11,8 @@ namespace Desicon.Workflow.Infrastructure.Workflow;
 public interface IWorkflowDefinitionProvider
 {
     Task<WorkflowDefinition> GetAsync(string moduleKey, CancellationToken cancellationToken = default);
+
+    /// <summary>Every published definition, for module discovery (GET /modules)
+    /// and for building indexes such as InboxStateIndex.</summary>
+    Task<IReadOnlyList<WorkflowDefinition>> GetAllAsync(CancellationToken cancellationToken = default);
 }

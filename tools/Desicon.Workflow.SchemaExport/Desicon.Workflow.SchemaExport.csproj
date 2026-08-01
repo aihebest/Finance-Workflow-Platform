@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Desicon.Workflow.SchemaExport</RootNamespace>
+    <!-- Not part of the shipped product; only exists to hand the guard-field
+         schema to tools/validate-definitions.mjs, so it is excluded from the
+         normal src/ build surface but still built (and so still runs its own
+         AfterTargets="Build" export) whenever the solution builds. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Desicon.Workflow.Domain\Desicon.Workflow.Domain.csproj" />
+  </ItemGroup>
+
+  <!-- Emits the schema to a JSON file at build time: every dotnet build of
+       this project re-runs itself and overwrites tools/guard-field-schema.json,
+       so the JSON file is always in sync with whatever
+       Request/ExpenseRequest/CashAdvanceRequest.FieldNames say; there is no
+       separate manual step to forget. -->
+  <Target Name="EmitGuardFieldSchema" AfterTargets="Build">
+    <Exec Command="dotnet exec &quot;$(TargetPath)&quot; &quot;$(MSBuildThisFileDirectory)..\guard-field-schema.json&quot;" />
+  </Target>
+</Project>

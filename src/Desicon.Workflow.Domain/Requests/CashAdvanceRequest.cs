@@ -93,6 +93,17 @@ public sealed class CashAdvanceRequest : Request
     };
 
     /// <summary>
+    /// Whether this requester currently has another cash advance sitting in
+    /// Overdue retirement status -- the SUBMIT guard's
+    /// BLOCK_NEW_ADVANCE_WHEN_OVERDUE rule. This is a cross-request fact a
+    /// plain POCO cannot answer on its own, so it is not computed here: it is
+    /// staged by RequestActionService.RunTransitionAsync immediately before
+    /// guard evaluation, the same pattern GlPostingLines uses for the POSTING
+    /// guard on this same class.
+    /// </summary>
+    public bool HasOverdueAdvance { get; set; }
+
+    /// <summary>
     /// Starts the retirement clock. Called when Finance releases the cash --
     /// not at approval, and not at recipient acknowledgement.
     ///
@@ -159,29 +170,46 @@ public sealed class CashAdvanceRequest : Request
             : RetirementStatus.Due;
     }
 
+    /// <summary>See <see cref="Request.Accessors"/> -- FieldNames and
+    /// TryGetField both read this same dictionary so they cannot drift.</summary>
+    private static readonly Dictionary<string, Func<CashAdvanceRequest, object?>> Accessors =
+        new(StringComparer.Ordinal)
+        {
+            [nameof(Purpose)] = r => r.Purpose,
+            [nameof(AllocationType)] = r => r.AllocationType.ToString(),
+            [nameof(ProjectCode)] = r => r.ProjectCode,
+            [nameof(CostCentreCode)] = r => r.CostCentreCode,
+            [nameof(StationScope)] = r => r.StationScope.ToString(),
+            [nameof(HasSupportingDocuments)] = r => r.HasSupportingDocuments,
+            [nameof(HasValidAllocation)] = r => r.HasValidAllocation,
+            [nameof(HasOverdueAdvance)] = r => r.HasOverdueAdvance,
+            [nameof(AcknowledgedAt)] = r => r.AcknowledgedAt,
+            [nameof(RetirementDueDate)] = r => r.RetirementDueDate,
+            [nameof(RetirementStatus)] = r => r.RetirementStatus.ToString(),
+            [nameof(RetiredAmountNgn)] = r => r.RetiredAmountNgn,
+            [nameof(RetirementBalanceNgn)] = r => r.RetirementBalanceNgn,
+            [nameof(PostedByUserId)] = r => r.PostedByUserId,
+            [nameof(AuthorisedByUserId)] = r => r.AuthorisedByUserId,
+            [nameof(GlDebitTotal)] = r => r.GlDebitTotal,
+            [nameof(GlCreditTotal)] = r => r.GlCreditTotal,
+            ["GlLineCount"] = r => (decimal)r.GlPostingLines.Count,
+            ["LineCount"] = r => (decimal)r.Lines.Count,
+        };
+
+    /// <summary>This module's own fields. A guard's full field surface for
+    /// CASH_ADVANCE is this union <see cref="Request.FieldNames"/>.</summary>
+    public new static IReadOnlySet<string> FieldNames { get; } =
+        Accessors.Keys.ToHashSet(StringComparer.Ordinal);
+
     public override bool TryGetField(string name, out object? value)
     {
-        switch (name)
+        if (Accessors.TryGetValue(name, out var accessor))
         {
-            case nameof(Purpose): value = Purpose; return true;
-            case nameof(AllocationType): value = AllocationType.ToString(); return true;
-            case nameof(ProjectCode): value = ProjectCode; return true;
-            case nameof(CostCentreCode): value = CostCentreCode; return true;
-            case nameof(StationScope): value = StationScope.ToString(); return true;
-            case nameof(HasSupportingDocuments): value = HasSupportingDocuments; return true;
-            case nameof(AcknowledgedAt): value = AcknowledgedAt; return true;
-            case nameof(RetirementDueDate): value = RetirementDueDate; return true;
-            case nameof(RetirementStatus): value = RetirementStatus.ToString(); return true;
-            case nameof(RetiredAmountNgn): value = RetiredAmountNgn; return true;
-            case nameof(RetirementBalanceNgn): value = RetirementBalanceNgn; return true;
-            case nameof(PostedByUserId): value = PostedByUserId; return true;
-            case nameof(AuthorisedByUserId): value = AuthorisedByUserId; return true;
-            case nameof(GlDebitTotal): value = GlDebitTotal; return true;
-            case nameof(GlCreditTotal): value = GlCreditTotal; return true;
-            case "GlLineCount": value = (decimal)GlPostingLines.Count; return true;
-            case "LineCount": value = (decimal)Lines.Count; return true;
-            default: return base.TryGetField(name, out value);
+            value = accessor(this);
+            return true;
         }
+
+        return base.TryGetField(name, out value);
     }
 }
 

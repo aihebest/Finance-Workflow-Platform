@@ -89,6 +89,12 @@ public sealed class CashAdvanceRequestConfiguration : IEntityTypeConfiguration<C
         // base Request row, not to this table.
         builder.Ignore(a => a.GlPostingLines);
 
+        // Staged onto the tracked entity by RequestActionService immediately
+        // before guard evaluation (see the property's own remarks) -- never
+        // persisted, since it is a snapshot of another row's state at the
+        // moment of the transition, not a fact about this one.
+        builder.Ignore(a => a.HasOverdueAdvance);
+
         // docs/03 section 4 — overdue-advances dashboard index. The doc's
         // INCLUDE list names RetirementBalanceNgn, which (as above) is not a
         // stored column; RetiredAmountNgn is the persisted value the balance

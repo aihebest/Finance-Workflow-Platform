@@ -21,6 +21,26 @@
             owns its own timer.
             </summary>
         </member>
+        <member name="T:Desicon.Workflow.Infrastructure.Observability.WorkflowMetrics">
+             <summary>
+             Process-wide meter for signals that need to page someone, not just sit in
+             a table. SecurityEvent rows are already durable (see SecurityEventWriter)
+             -- this is the same fact restated as a counter so an alerting rule can
+             watch its rate rather than someone remembering to query the table.
+            
+             Built on System.Diagnostics.Metrics (BCL, no package): any OpenTelemetry
+             or Application Insights exporter wired up at the hosting layer picks this
+             meter up by name. No exporter is configured in this project yet -- that is
+             a deployment-time concern (doc 05 §3's Application Insights pipeline), not
+             a code one.
+             </summary>
+        </member>
+        <member name="F:Desicon.Workflow.Infrastructure.Observability.WorkflowMetrics.SecurityEventsWritten">
+            <summary>Incremented once per denied action (NotAuthorised, GuardFailed
+            or PolicyViolation) -- every SecurityEvent written, tagged by module and
+            reason so an alert can distinguish "one user fat-fingering a guard" from
+            "someone probing for a hole".</summary>
+        </member>
         <member name="T:Desicon.Workflow.Infrastructure.Persistence.Configurations.AdvanceLineConfiguration">
             <summary>
             One line of a cash advance request. DEL-AC-FRM-003 does not itemise
@@ -191,6 +211,46 @@
             denied action was attempted under. See SecurityEventWriter.
             </summary>
         </member>
+        <member name="T:Desicon.Workflow.Infrastructure.Security.ReadAccessScope">
+             <summary>
+             The IDOR control doc 04 §1 requires: "Every read goes through an
+             authorisation filter that scopes by requester, reporting line or role --
+             never by trusting an ID in the URL." Deliberately separate from
+             WorkflowEngine's authorisation, which governs whether an action may be
+             taken (write path); this governs whether a request may be seen at all
+             (read path), and is broader -- a line manager can see a report's request
+             without being the current approver on it.
+            
+             A caller can see a request when any of the following holds:
+              - they raised it (or a delegator who raised it delegated to them);
+              - it is currently in their queue (Request.CurrentActorId, or a
+                role-gated queue they hold a role for -- see InboxStateIndex);
+              - they are the requester's line manager or department head (direct
+                reporting line, one level -- the same convention EmployeeActorResolver
+                applies to LineManagerOf/DepartmentHeadOf);
+              - they hold a role with cross-cutting visibility (FinanceOfficer,
+                FinanceManager, ProcurementOfficer): these roles process every
+                request that reaches their stage regardless of department, so
+                scoping them to "their queue only" would hide history they are
+                expected to review. Administrator is deliberately excluded -- doc 04
+                is explicit that Administrator cannot read request line detail.
+             </summary>
+        </member>
+        <member name="M:Desicon.Workflow.Infrastructure.Security.ReadAccessScope.ScopeAsync``1(System.Linq.IQueryable{``0},Desicon.Workflow.Domain.People.Employee,System.Collections.Generic.IReadOnlySet{System.String},System.Threading.CancellationToken)">
+            <summary>Applies the scoping filter to a Requests (or subclass)
+            queryable. Compose this before any caller-supplied filter (state,
+            module, date range) so a caller cannot widen it by construction.</summary>
+        </member>
+        <member name="M:Desicon.Workflow.Infrastructure.Security.ReadAccessScope.CanReadAsync(Desicon.Workflow.Domain.Requests.Request,Desicon.Workflow.Domain.People.Employee,System.Collections.Generic.IReadOnlySet{System.String},System.Threading.CancellationToken)">
+            <summary>True if the viewer may see this single, already-loaded request.
+            Detail endpoints use this rather than re-querying through ScopeAsync.</summary>
+        </member>
+        <member name="M:Desicon.Workflow.Infrastructure.Security.ReadAccessScope.ResolveVisibleActorIdsAsync(System.Guid,System.Threading.CancellationToken)">
+            <summary>The viewer, plus anyone who has delegated to the viewer for
+            the current instant -- one level, matching
+            EmployeeActorResolver.ExpandWithDelegatesAsync's own convention, so a
+            delegate's read access matches exactly what they can act on.</summary>
+        </member>
         <member name="T:Desicon.Workflow.Infrastructure.Security.SecurityEventWriter">
             <summary>
             Opens a brand-new WorkflowDbContext (and therefore a brand-new database
@@ -244,6 +304,27 @@
             reference and correctly falls through to false.
             </summary>
         </member>
+        <member name="T:Desicon.Workflow.Infrastructure.Workflow.InboxStateIndex">
+             <summary>
+             Which states, per module and role, currently sit in that role's queue --
+             built once from the published (data, not code) workflow definitions, the
+             same way WorkflowDefinitionValidator treats them as immutable for the
+             process lifetime.
+            
+             Exists to make GET /my/inbox a single indexed query rather than a guard
+             evaluation over every open request: a transition whose actor is a bare
+             role (no resolver, e.g. FinanceOfficer) never collapses to one person, so
+             unlike a resolver-based transition it cannot be captured by
+             Request.CurrentActorId (see RequestActionService). Membership of a role's
+             queue is instead "the request's CurrentState has an outbound transition
+             gated on that role" -- computable once, ahead of time, from the
+             definitions alone.
+             </summary>
+        </member>
+        <member name="M:Desicon.Workflow.Infrastructure.Workflow.InboxStateIndex.StatesFor(System.Collections.Generic.IEnumerable{System.String})">
+            <summary>Every (module, state) pair where one of the supplied roles
+            currently holds the queue.</summary>
+        </member>
         <member name="T:Desicon.Workflow.Infrastructure.Workflow.IWorkflowDefinitionProvider">
             <summary>
             Resolves the published <see cref="T:Desicon.Workflow.Core.Definitions.WorkflowDefinition"/> for a module. A
@@ -251,6 +332,10 @@
             remarks) -- this is the boundary where that data enters the running
             system.
             </summary>
+        </member>
+        <member name="M:Desicon.Workflow.Infrastructure.Workflow.IWorkflowDefinitionProvider.GetAllAsync(System.Threading.CancellationToken)">
+            <summary>Every published definition, for module discovery (GET /modules)
+            and for building indexes such as InboxStateIndex.</summary>
         </member>
         <member name="T:Desicon.Workflow.Infrastructure.Workflow.JsonWorkflowDefinitionProvider">
             <summary>
@@ -326,6 +411,22 @@
             Self-approval and maker-checker, enforced in code rather than trusted
             to the definition's own guard expressions. Returns a human-readable
             reason when a check fires, otherwise null.
+            </summary>
+        </member>
+        <member name="M:Desicon.Workflow.Infrastructure.Workflow.RequestActionService.ResolveNextActorAsync(Desicon.Workflow.Domain.Requests.Request,Desicon.Workflow.Core.Definitions.WorkflowDefinition,System.Threading.CancellationToken)">
+            <summary>
+            Populates Request.CurrentActorId for the state just entered, so a fast
+            indexed query (GET /my/inbox) can find "is this in my queue" without
+            re-running actor resolution per request. Only resolver-based actor
+            specs (Requester, Beneficiary, LineManagerOf, DepartmentHeadOf,
+            CurrentActor) ever collapse to a single person in this model; a
+            role-only spec (e.g. FinanceOfficer) cannot, and is left null here --
+            InboxStateIndex covers that case by state membership instead. A
+            resolver whose set spans more than one person (delegation active on a
+            resolver step) is also left null rather than guessing which one is
+            "current": both the delegator and the delegate remain authorised to
+            act, and a caller can still reach them via the engine's own
+            authorisation check when they submit an action.
             </summary>
         </member>
         <member name="T:Desicon.Workflow.Infrastructure.Workflow.SqlSequenceRequestNumberGenerator">
