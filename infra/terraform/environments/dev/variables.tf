@@ -54,20 +54,19 @@ variable "keyvault_administrator_object_ids" {
 
 # ── Application ─────────────────────────────────────────────────────────
 variable "container_image" {
-  description = "Fully qualified container image for the API, including tag."
+  description = "Repository and tag only, with NO registry host -- e.g. \"finance-workflow-api:latest\", not \"crdesiconfwdev.azurecr.io/finance-workflow-api:latest\". App Service concatenates docker_registry_url with docker_image_name, so a host in both produces a doubled reference whose pull fails with a 401/403 token error that reads as a credentials problem. Bootstrap value only: modules/app-service ignores subsequent changes to docker_image_name so the CI deploy job owns the tag."
   type        = string
+
+  validation {
+    condition     = !can(regex("\\.(azurecr\\.io|io|com)/", var.container_image))
+    error_message = "container_image must not include a registry host -- give repository:tag only (e.g. \"finance-workflow-api:latest\"). The host comes from the registry module."
+  }
 }
 
-variable "container_registry_url" {
-  description = "Registry login server URL."
-  type        = string
-}
-
-variable "container_registry_id" {
-  description = "Registry resource id, for the AcrPull role assignment. Null if the registry is outside this Terraform's scope and access is granted separately."
-  type        = string
-  default     = null
-}
+# container_registry_url and container_registry_id were root variables when
+# the registry lived outside Terraform (GHCR). The registry is now
+# modules/acr, so app_service takes module.acr.registry_url / module.acr.id
+# directly and these variables no longer exist.
 
 variable "deployer_ip_addresses" {
   description = "Public IPs/CIDRs of Terraform deploy agents (developer laptops, CI runners) to allow through the network_acls/network_rules/firewall rules of Key Vault, SQL, the attachments storage account and the Functions runtime storage account. Dev drops private endpoints entirely (use_private_endpoints = false throughout, see docs/02-Solution-Architecture.md), so each of these must open a narrow, IP-pinned exception or terraform apply cannot reach the data plane it needs (the SQL TDE key / Storage CMK, the database itself, blob/queue/table for the runtime storage). Required precisely because it's dev -- see policy/terraform/azure_security.rego, which denies public access unconditionally outside dev. Give single addresses without a /32 suffix (e.g. \"203.0.113.5\", not \"203.0.113.5/32\") -- Storage's network_rules.ip_rules rejects /31 and /32 CIDR suffixes outright (Azure only accepts /0-/30 there), while Key Vault and SQL's firewall rules accept either form; a bare IP satisfies all three."

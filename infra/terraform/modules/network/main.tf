@@ -56,6 +56,13 @@ resource "azurerm_subnet" "app" {
   virtual_network_name = azurerm_virtual_network.this.name
   address_prefixes     = var.app_subnet_address_prefixes
 
+  # A Key Vault network_acls virtual_network_subnet_ids entry only takes
+  # effect if the subnet advertises the matching service endpoint; without
+  # it the rule is accepted and silently never matches. Dev needs this
+  # because it has no private endpoint to the vault -- see
+  # modules/keyvault/variables.tf, network_acl_subnet_ids.
+  service_endpoints = ["Microsoft.KeyVault"]
+
   # Regional VNet Integration requires an empty subnet delegated to
   # Microsoft.Web/serverFarms. App Service and the Functions Premium plan
   # can share one delegated subnet in the same region.

@@ -48,7 +48,8 @@ locals {
     ASPNETCORE_ENVIRONMENT                = var.environment
     KeyVault__Uri                         = var.key_vault_uri
     ApplicationInsights__ConnectionString = var.app_insights_connection_string
-    ConnectionStrings__Default            = var.sql_connection_uri
+    # "WorkflowDb", not "Default" -- see the note in modules/app-service.
+    ConnectionStrings__WorkflowDb = var.sql_connection_uri
   }
 }
 
@@ -199,6 +200,15 @@ resource "azurerm_role_assignment" "storage_table_contributor" {
 resource "azurerm_role_assignment" "kv_secrets_user" {
   scope                = var.key_vault_id
   role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_linux_function_app.this.identity[0].principal_id
+}
+
+# unwrapKey for the Always Encrypted column master key -- see the equivalent
+# assignment in modules/app-service. Timer functions that touch Beneficiaries
+# need it for exactly the same reason the API does.
+resource "azurerm_role_assignment" "kv_crypto_user" {
+  scope                = var.key_vault_id
+  role_definition_name = "Key Vault Crypto User"
   principal_id         = azurerm_linux_function_app.this.identity[0].principal_id
 }
 

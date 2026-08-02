@@ -45,9 +45,10 @@ resource "azurerm_key_vault" "this" {
   public_network_access_enabled = var.public_network_access_enabled
 
   network_acls {
-    default_action = "Deny"
-    bypass         = "AzureServices"
-    ip_rules       = var.ip_rules
+    default_action             = "Deny"
+    bypass                     = "AzureServices"
+    ip_rules                   = var.ip_rules
+    virtual_network_subnet_ids = var.network_acl_subnet_ids
   }
 
   tags = var.tags

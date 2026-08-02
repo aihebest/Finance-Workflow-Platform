@@ -29,9 +29,19 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0-jammy-chiseled AS runtime
 WORKDIR /app
 COPY --from=build /app/publish ./
 
+# Workflow definitions are part of the artefact, not external configuration.
+# Program.cs resolves Workflow:DefinitionsPath against ContentRootPath, and
+# appsettings.json's "../../modules" is a source-tree path -- inside the
+# image that is /modules, which does not exist. Baking the definitions in
+# and overriding the path below keeps a deployed image self-describing: the
+# workflow rules that were tested are the ones that run, and a definition
+# change is a new image rather than a live edit to a mounted directory.
+COPY modules/ ./modules/
+
 ENV ASPNETCORE_URLS=http://+:8080 \
     ASPNETCORE_ENVIRONMENT=Production \
-    DOTNET_EnableDiagnostics=0
+    DOTNET_EnableDiagnostics=0 \
+    Workflow__DefinitionsPath=modules
 
 EXPOSE 8080
 

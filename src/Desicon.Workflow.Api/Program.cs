@@ -1,6 +1,7 @@
 using System.Threading.RateLimiting;
 using Azure.Identity;
 using Desicon.Workflow.Api.Endpoints;
+using Desicon.Workflow.Api.HealthChecks;
 using Desicon.Workflow.Api.Http;
 using Desicon.Workflow.Api.Security;
 using Desicon.Workflow.Core.Engine;
@@ -10,6 +11,7 @@ using Desicon.Workflow.Infrastructure.Persistence;
 using Desicon.Workflow.Infrastructure.Security;
 using Desicon.Workflow.Infrastructure.Workflow;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.SqlClient.AlwaysEncrypted.AzureKeyVaultProvider;
@@ -146,6 +148,16 @@ builder.Services.AddRateLimiter(options =>
 
 builder.Services.AddEndpointsApiExplorer();
 
+// Two probes, different questions. /health/live asks "is the process up" and
+// must not touch dependencies -- restarting the app does not fix a database
+// outage, and a liveness probe that fails on one will restart-loop the fleet
+// during an incident. /health/ready asks "can this instance actually serve",
+// which means the whole data path: connection, schema version, and the
+// Always Encrypted read that depends on the Key Vault role assignment and
+// the network ACL. See DatabaseReadinessCheck for what each check catches.
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseReadinessCheck>("database", tags: ["ready"]);
+
 var app = builder.Build();
 
 app.UseExceptionHandler();
@@ -161,6 +173,36 @@ app.UseAuthorization();
 // of caller -- fell back to the IP/"unknown" bucket and shared one global
 // rate-limit budget instead of one per user.
 app.UseRateLimiter();
+
+// Anonymous and ahead of the rate limiter: the deploy job's smoke test and
+// App Service's own container warm-up call these before any token exists,
+// and a probe that can be rate-limited will fail exactly when the platform
+// is retrying hardest.
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false // no dependency checks -- process liveness only
+}).AllowAnonymous();
+
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready"),
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new
+        {
+            status = report.Status.ToString(),
+            duration = report.TotalDuration.TotalMilliseconds,
+            checks = report.Entries.Select(e => new
+            {
+                name = e.Key,
+                status = e.Value.Status.ToString(),
+                description = e.Value.Description,
+                data = e.Value.Data
+            })
+        });
+    }
+}).AllowAnonymous();
 
 app.MapAdvanceRetirementEndpoints();
 app.MapModuleEndpoints();

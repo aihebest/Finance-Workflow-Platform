@@ -18,6 +18,16 @@ output "frontdoor_endpoint_hostname" {
   value       = module.frontdoor.endpoint_hostname
 }
 
+output "container_registry_name" {
+  description = "ACR name, for `az acr login` and the CI push step."
+  value       = module.acr.name
+}
+
+output "container_registry_login_server" {
+  description = "ACR login server (bare host, no scheme) -- the prefix for docker tag/push."
+  value       = module.acr.login_server
+}
+
 output "sql_server_fqdn" {
   description = "SQL server FQDN, needed by scripts/create-app-user.ps1|.sh."
   value       = module.sql.server_fqdn

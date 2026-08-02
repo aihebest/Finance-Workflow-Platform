@@ -78,6 +78,12 @@ variable "public_network_access_enabled" {
   default     = false
 }
 
+variable "network_acl_subnet_ids" {
+  description = "Subnets admitted through network_acls. Required in dev, where use_private_endpoints is false: the App Service and Function App reach Key Vault over VNet integration, and network_acls default_action = Deny blocks them otherwise. bypass = AzureServices does not cover App Service or Functions outbound traffic -- that exemption is for a specific list of first-party services, which these are not. Each subnet must have the Microsoft.KeyVault service endpoint enabled. Symptom when missing: the app starts, connects to SQL, and then every read of an Always Encrypted column fails, because unwrapKey against the vault is refused at the network layer."
+  type        = list(string)
+  default     = []
+}
+
 variable "ip_rules" {
   description = "Public IPs/CIDRs allowed through network_acls when public_network_access_enabled is true (e.g. the deploy agent's egress IP). Ignored when public_network_access_enabled is false, since network_acls default_action = Deny + bypass = AzureServices is set unconditionally."
   type        = list(string)

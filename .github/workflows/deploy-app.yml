@@ -1,0 +1,231 @@
+###############################################################################
+# Deploy the API to dev.
+#
+# ci.yml builds, tests and validates. Nothing published the result anywhere --
+# the App Service had been pointed at an image that was never pushed, and the
+# database schema had never been applied outside Testcontainers. This workflow
+# is the missing half of step 5.
+#
+# Three jobs, strictly ordered, because the ordering is the whole point:
+#
+#   build   -- produce an immutable, SHA-tagged image in ACR
+#   migrate -- apply schema under a DDL principal that is NOT the app identity
+#   deploy  -- repoint App Service at the new tag and prove it answers
+#
+# Migrations run before deploy so a schema failure never leaves new code
+# running against an old schema. They run as a separate principal so the
+# application itself remains unable to alter the tables it writes audit
+# records into.
+#
+# No stored cloud credentials: every Azure call authenticates by OIDC
+# federated identity. See docs/04-Security-and-DevSecOps.md.
+#
+# ACTION PINNING: the actions below are tag-pinned, matching ci.yml.
+# scripts/check-action-pinning.mjs exists and requires 40-character SHAs, but
+# nothing currently runs it -- ci.yml would fail its own check today. Pinning
+# both workflows and wiring that script into CI is tracked separately; adding
+# an unpinned workflow while the checker sits unused would quietly widen a gap
+# that is already open.
+###############################################################################
+
+name: Deploy (dev)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # OIDC to Azure -- no stored credentials
+
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false # never interrupt a migration mid-apply
+
+env:
+  AZURE_RESOURCE_GROUP: rg-desicon-fw-dev
+  ACR_NAME: crdesiconfwdev
+  IMAGE_REPOSITORY: finance-workflow-api
+  APP_SERVICE_NAME: app-desicon-fw-api-dev
+  SQL_SERVER_NAME: sql-desicon-fw-dev
+  SQL_DATABASE_NAME: DesiconFinanceWorkflow
+  FRONT_DOOR_HOSTNAME: fde-desicon-fw-dev-e5deetfbdxfvfsfq.z01.azurefd.net
+
+jobs:
+  # ────────────────────────────── Build image ──────────────────────────────
+  build:
+    name: Build and push image
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # The commit SHA, never :latest. A mutable tag makes "which build is
+      # running in dev" unanswerable, and makes rollback a rebuild instead of
+      # a repoint.
+      - name: Compute image tag
+        id: meta
+        run: echo "tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      # az acr build runs the build inside ACR: no docker daemon on the
+      # runner, no registry password, and the source never leaves Azure once
+      # uploaded. The runner's OIDC token is the only credential involved.
+      - name: Build image in ACR
+        run: |
+          az acr build \
+            --registry "$ACR_NAME" \
+            --image "${IMAGE_REPOSITORY}:${{ steps.meta.outputs.tag }}" \
+            --image "${IMAGE_REPOSITORY}:latest" \
+            --file docker/api.Dockerfile \
+            .
+
+  # ─────────────────────────────── Migrations ──────────────────────────────
+  migrate:
+    name: Apply database migrations
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Generated, not applied directly by `dotnet ef database update`: the
+      # script is reviewable, replayable, and idempotent, and the tool never
+      # needs a live connection with DDL rights of its own.
+      - name: Generate idempotent migration script
+        run: |
+          dotnet ef migrations script \
+            --idempotent \
+            --project src/Desicon.Workflow.Infrastructure \
+            --output migrate.sql
+          echo "--- generated $(wc -l < migrate.sql) lines ---"
+
+      # GitHub-hosted runners have no stable egress IP, so the firewall
+      # exception is opened for this run and removed in the always() step
+      # below. A permanent broad rule would be the alternative, and is worse.
+      - name: Open SQL firewall for this runner
+        id: firewall
+        run: |
+          RUNNER_IP=$(curl -s https://api.ipify.org)
+          echo "ip=$RUNNER_IP" >> "$GITHUB_OUTPUT"
+          echo "rule=gh-runner-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+          az sql server firewall-rule create \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --server "$SQL_SERVER_NAME" \
+            --name "gh-runner-${GITHUB_RUN_ID}" \
+            --start-ip-address "$RUNNER_IP" \
+            --end-ip-address "$RUNNER_IP" \
+            --output none
+
+      # Applied as the CI principal, which holds db_ddladmin -- not as the
+      # app's managed identity, which deliberately cannot alter schema. See
+      # scripts/create-migration-user.sql, which must have been run once
+      # against this database before this job can succeed.
+      - name: Apply migrations
+        shell: pwsh
+        run: |
+          Install-Module SqlServer -Scope CurrentUser -Force -AllowClobber
+          $token = (az account get-access-token --resource https://database.windows.net/ --query accessToken -o tsv)
+          Invoke-Sqlcmd `
+            -ServerInstance "${{ env.SQL_SERVER_NAME }}.database.windows.net" `
+            -Database "${{ env.SQL_DATABASE_NAME }}" `
+            -AccessToken $token `
+            -InputFile migrate.sql `
+            -QueryTimeout 600 `
+            -ErrorAction Stop
+          Write-Host "Migrations applied."
+
+      # Sequences are created here rather than by the application. The app
+      # holds db_datawriter, which does not cover sequences: CREATE SEQUENCE
+      # needs DDL, and even NEXT VALUE FOR on an existing sequence needs an
+      # explicit UPDATE grant. See provision-request-sequences.sql.
+      - name: Provision request-number sequences and grants
+        shell: pwsh
+        run: |
+          $token = (az account get-access-token --resource https://database.windows.net/ --query accessToken -o tsv)
+          Invoke-Sqlcmd `
+            -ServerInstance "${{ env.SQL_SERVER_NAME }}.database.windows.net" `
+            -Database "${{ env.SQL_DATABASE_NAME }}" `
+            -AccessToken $token `
+            -InputFile scripts/provision-request-sequences.sql `
+            -Variable @("ApiPrincipal=${{ env.APP_SERVICE_NAME }}","FunctionPrincipal=func-desicon-fw-dev","YearsAhead=2") `
+            -ErrorAction Stop
+
+      - name: Remove SQL firewall exception
+        if: always() && steps.firewall.outputs.rule != ''
+        run: |
+          az sql server firewall-rule delete \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --server "$SQL_SERVER_NAME" \
+            --name "${{ steps.firewall.outputs.rule }}" \
+            --output none || true
+
+  # ──────────────────────────────── Deploy ─────────────────────────────────
+  deploy:
+    name: Deploy to App Service
+    runs-on: ubuntu-latest
+    needs: [build, migrate]
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Terraform ignores changes to docker_image_name precisely so this step
+      # can own the tag without the next `terraform apply` reverting it.
+      - name: Point App Service at the new image
+        run: |
+          LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)
+          az webapp config container set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$APP_SERVICE_NAME" \
+            --container-image-name "${LOGIN_SERVER}/${IMAGE_REPOSITORY}:${{ needs.build.outputs.image_tag }}" \
+            --container-registry-url "https://${LOGIN_SERVER}" \
+            --output none
+
+      - name: Restart
+        run: |
+          az webapp restart \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$APP_SERVICE_NAME" \
+            --output none
+
+      # A deploy that reports success without the app answering is how four
+      # separate misconfigurations survived unnoticed: a wrong connection
+      # string key, a missing Column Encryption Setting, a Key Vault role that
+      # covered secrets but not keys, and a network ACL that excluded the app
+      # subnet. None of them prevented deployment. All of them would fail this.
+      - name: Smoke test
+        run: |
+          for attempt in $(seq 1 30); do
+            code=$(curl -s -o /tmp/body -w "%{http_code}" "https://${FRONT_DOOR_HOSTNAME}/health/ready" || true)
+            if [ "$code" = "200" ]; then
+              echo "Ready after ${attempt} attempt(s)."
+              cat /tmp/body
+              exit 0
+            fi
+            echo "attempt ${attempt}: HTTP ${code}"
+            sleep 10
+          done
+          echo "::error::Application did not become ready. Last body:"
+          cat /tmp/body || true
+          az webapp log tail --resource-group "$AZURE_RESOURCE_GROUP" --name "$APP_SERVICE_NAME" --provider docker &
+          sleep 20
+          exit 1

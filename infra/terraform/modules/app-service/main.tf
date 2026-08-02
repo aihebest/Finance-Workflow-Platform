@@ -40,7 +40,14 @@ locals {
     KeyVault__Uri                         = var.key_vault_uri
     ApplicationInsights__ConnectionString = var.app_insights_connection_string
     # Connection string carries no credential — Managed Identity authenticates.
-    ConnectionStrings__Default = var.sql_connection_uri
+    #
+    # The key must be "WorkflowDb": Program.cs calls
+    # GetConnectionString("WorkflowDb") and throws if it is absent. It was
+    # previously "Default", which does not throw -- appsettings.json defines
+    # WorkflowDb as Server=(local), so the app started cleanly in Azure and
+    # then failed on first query against a database that isn't there. A
+    # startup crash would have been the kinder outcome.
+    ConnectionStrings__WorkflowDb = var.sql_connection_uri
   }
 }
 
@@ -209,6 +216,28 @@ resource "azurerm_role_assignment" "kv_secrets_user" {
   scope                = var.key_vault_id
   role_definition_name = "Key Vault Secrets User"
   principal_id         = azurerm_linux_web_app.this.identity[0].principal_id
+}
+
+# Secrets User covers secrets; it does not cover keys. Program.cs registers
+# SqlColumnEncryptionAzureKeyVaultProvider, which calls unwrapKey on the
+# column master key every time an Always Encrypted column is read. That is a
+# *key* operation, so without Crypto User every read of
+# Beneficiary.BankAccountNumber fails with a Key Vault 403 -- long after
+# startup, and reported by the driver as a decryption failure rather than an
+# authorisation one.
+resource "azurerm_role_assignment" "kv_crypto_user" {
+  for_each = var.enable_keyvault_role_assignment ? toset(["this"]) : toset([])
+
+  scope                = var.key_vault_id
+  role_definition_name = "Key Vault Crypto User"
+  principal_id         = azurerm_linux_web_app.this.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "kv_crypto_user_slot" {
+  count                = var.enable_staging_slot ? 1 : 0
+  scope                = var.key_vault_id
+  role_definition_name = "Key Vault Crypto User"
+  principal_id         = azurerm_linux_web_app_slot.staging[0].identity[0].principal_id
 }
 
 resource "azurerm_role_assignment" "kv_secrets_user_slot" {

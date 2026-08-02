@@ -49,6 +49,20 @@ module "network" {
   tags = local.tags
 }
 
+module "acr" {
+  source = "../../modules/acr"
+
+  # No hyphens permitted in ACR names, unlike everything else here.
+  name                = replace("cr${local.name_prefix}", "-", "")
+  resource_group_name = azurerm_resource_group.main.name
+  location            = var.location
+
+  sku = "Basic"
+
+  log_analytics_workspace_id = module.monitoring.log_analytics_workspace_id
+  tags                       = local.tags
+}
+
 # ── Data services (private endpoints dropped in dev -- IP-restricted public
 #    access instead; see docs/02-Solution-Architecture.md "Environments") ───
 module "keyvault" {
@@ -75,6 +89,12 @@ module "keyvault" {
   use_private_endpoints         = false
   public_network_access_enabled = true
   ip_rules                      = var.deployer_ip_addresses
+
+  # The IP allow-list above admits the deployer, and nothing else. It does
+  # not admit the App Service or Function App, which reach the vault from
+  # the integrated app subnet and need unwrapKey on the Always Encrypted
+  # column master key for every read of Beneficiary.BankAccountNumber.
+  network_acl_subnet_ids = [module.network.app_subnet_id]
 
   log_analytics_workspace_id = module.monitoring.log_analytics_workspace_id
   tags                       = local.tags
@@ -157,24 +177,28 @@ module "app_service" {
   public_network_access_enabled = true # fronted by Front Door
   front_door_id                 = module.frontdoor.frontdoor_id
 
+  # Image name carries no registry host -- App Service composes the pull
+  # reference from docker_registry_url + docker_image_name, and including the
+  # host in both yields "crdesiconfwdev.azurecr.io/crdesiconfwdev.azurecr.io/
+  # ...", whose pull failure is reported as a 401/403 token error rather than
+  # a bad name. Only the initial value: modules/app-service ignores changes to
+  # docker_image_name so CI owns the tag from then on.
   container_image        = var.container_image
-  container_registry_url = var.container_registry_url
-  container_registry_id  = var.container_registry_id
+  container_registry_url = module.acr.registry_url
+  container_registry_id  = module.acr.id
 
   key_vault_id       = module.keyvault.id
   key_vault_uri      = module.keyvault.uri
   storage_account_id = module.storage.id
   sql_connection_uri = module.sql.connection_uri
 
-  # Explicit, not inferred from *_id nullness: both ids above are module
-  # outputs (unknown until apply), and a count/for_each keyed off "is this
-  # unknown value null" is exactly what broke plan before. dev always
-  # provisions its own storage account and Key Vault, so both stay true;
-  # container_registry_id is a root variable, so its presence is knowable
-  # at plan time and can safely gate enable_acr_role_assignment.
+  # Explicit, not inferred from *_id nullness: these ids are module outputs
+  # (unknown until apply), and a count/for_each keyed off "is this unknown
+  # value null" is exactly what broke plan before. dev provisions its own
+  # storage account, Key Vault and registry, so all three stay true.
   enable_keyvault_role_assignment = true
   enable_storage_role_assignment  = true
-  enable_acr_role_assignment      = var.container_registry_id != null
+  enable_acr_role_assignment      = true
 
   app_insights_connection_string = module.monitoring.app_insights_connection_string
   log_analytics_workspace_id     = module.monitoring.log_analytics_workspace_id
