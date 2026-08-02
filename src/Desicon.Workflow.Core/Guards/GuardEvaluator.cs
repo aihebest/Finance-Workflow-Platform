@@ -97,7 +97,15 @@ public sealed class GuardEvaluator
         };
     }
 
+    // Returns object? rather than bool: comparison operators yield booleans,
+    // but this shares a return contract with Evaluate, which also produces
+    // decimals and strings for operand nodes. CA1859 sees only that every
+    // return in this method happens to be a bool and suggests narrowing --
+    // which would force a boxing conversion back at the single call site in
+    // Evaluate, achieving the opposite of the performance the rule is for.
+#pragma warning disable CA1859
     private object? EvaluateBinary(BinaryNode node, IGuardFieldSource fields)
+#pragma warning restore CA1859
     {
         // Short-circuit before evaluating the right-hand side, so that a guard
         // such as "RetiresAdvanceId != null && AdvanceAmountNgn > 0" is safe

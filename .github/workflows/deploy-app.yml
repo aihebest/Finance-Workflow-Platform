@@ -95,9 +95,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Driven by global.json, not "8.0.x". Floating the SDK floats the
+      # analyser set, and with TreatWarningsAsErrors that turns an SDK
+      # release into a build break nobody can reproduce locally.
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "8.0.x"
+          global-json-file: global.json
 
       - uses: azure/login@v2
         with:

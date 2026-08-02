@@ -1,0 +1,22 @@
+{
+  "$comment": [
+    "Pins the .NET SDK so analyser behaviour is identical on every machine.",
+    "",
+    "Without this, actions/setup-dotnet's '8.0.x' resolves to whatever 8.0 SDK",
+    "is newest on the runner while a developer keeps whatever they installed.",
+    "AnalysisLevel is 'latest-recommended' and TreatWarningsAsErrors is on, so",
+    "a newer SDK can introduce rules that turn a clean local build into a red",
+    "pipeline with no source change at all. That is exactly what happened:",
+    "a newer SDK extended IDE0040 to interface members and produced sixteen",
+    "build errors that no developer machine could reproduce.",
+    "",
+    "rollForward is 'latestPatch' rather than 'disable' so security patches",
+    "are still picked up, but the feature band -- which is what governs the",
+    "analyser set -- cannot move without editing this file."
+  ],
+  "sdk": {
+    "version": "8.0.422",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  }
+}

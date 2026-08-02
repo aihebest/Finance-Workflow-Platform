@@ -15,7 +15,12 @@ indent_size = 2
 dotnet_sort_system_directives_first = true
 csharp_new_line_before_open_brace = all
 csharp_style_namespace_declarations = file_scoped:warning
-dotnet_style_require_accessibility_modifiers = always:warning
+# for_non_interface_members, not always. Interface members are public by
+# definition and writing "public" on them is noise -- but newer .NET SDKs
+# extended IDE0040 to cover them under "always", so the same source built
+# clean on one machine and produced sixteen errors on another. With
+# TreatWarningsAsErrors that is a build break, not a style nit.
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
 csharp_style_var_when_type_is_apparent = true:suggestion
 
 # Never build raw SQL by hand -- parameterised EF Core only.
