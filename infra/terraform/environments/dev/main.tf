@@ -220,3 +220,13 @@ module "functions" {
 
   tags = local.tags
 }
+
+resource "azurerm_key_vault_key" "beneficiary_bank_details_cmk" {
+  name         = "cmk-beneficiary-bank-details"
+  key_vault_id = module.keyvault.id
+  key_type     = "RSA-HSM"
+  key_size     = 3072
+  key_opts     = ["wrapKey", "unwrapKey", "sign", "verify"]
+
+  tags = local.tags
+}
