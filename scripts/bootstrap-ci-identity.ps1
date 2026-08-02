@@ -37,6 +37,23 @@
 .PARAMETER Branch
     Branch the workflow runs from. One federated credential per branch.
 
+.PARAMETER Subject
+    Overrides the computed subject. Needed because GitHub does not always
+    emit the documented "repo:owner/repo:ref:refs/heads/main" form. Some
+    accounts present an ID-qualified subject instead:
+
+        repo:aihebest@144573775/Finance-Workflow-Platform@1318978303:ref:refs/heads/main
+
+    which embeds the numeric owner and repository IDs. That form is better
+    -- it survives a rename and cannot be claimed by someone who registers
+    a deleted repository name -- but it does not match a credential
+    registered for the documented form, and the mismatch fails with
+    "AADSTS700213: No matching federated identity record found for presented
+    assertion subject", quoting the string it wanted.
+
+    So: run the workflow once, read the subject out of the azure/login step
+    ("subject claim - ..."), and re-run this script passing it verbatim.
+
 .NOTES
     If the repository moves to a Desicon organisation (an open decision in
     docs/12-Decision-Log.md), the federated credential subject changes with
@@ -49,6 +66,7 @@ param(
     [string]$Repository,
 
     [string]$Branch = "main",
+    [string]$Subject,
     [string]$DisplayName = "github-desicon-finance-workflow",
     [string]$ResourceGroup = "rg-desicon-fw-dev",
     [string]$AcrName = "crdesiconfwdev",
@@ -76,8 +94,12 @@ if (-not $spId) {
 }
 
 # ── Federated credential ─────────────────────────────────────────────────
-$credName = "gh-$($Repository -replace '[^a-zA-Z0-9]', '-')-$Branch"
-$subject = "repo:${Repository}:ref:refs/heads/$Branch"
+$subject = if ($Subject) { $Subject } else { "repo:${Repository}:ref:refs/heads/$Branch" }
+
+# Credential names are limited to 3-120 chars of alphanumerics and hyphens,
+# and the ID-qualified subject is long, so derive a short stable name.
+$credName = "gh-$($Repository.Split('/')[-1] -replace '[^a-zA-Z0-9]', '-')-$Branch"
+$credName = $credName.Substring(0, [Math]::Min(120, $credName.Length))
 
 $credExists = az ad app federated-credential list --id $appId `
     --query "[?subject=='$subject'] | length(@)" -o tsv

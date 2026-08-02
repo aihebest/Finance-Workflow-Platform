@@ -105,9 +105,23 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      # Restore, not install --global. .config/dotnet-tools.json pins
+      # dotnet-ef to 8.0.10 with rollForward false, matching
+      # Microsoft.EntityFrameworkCore.Design in the Infrastructure project.
+      # A global install would ignore that pin, and a tool newer than the
+      # runtime it targets generates subtly different SQL -- which is the
+      # one thing a migration script must never do between environments.
+      - name: Restore local dotnet tools
+        run: dotnet tool restore
+
       # Generated, not applied directly by `dotnet ef database update`: the
       # script is reviewable, replayable, and idempotent, and the tool never
       # needs a live connection with DDL rights of its own.
+      #
+      # No --startup-project: WorkflowDbContextFactory in the Infrastructure
+      # project is an IDesignTimeDbContextFactory, so the tool builds the
+      # context without needing the API project to reference EFCore.Design.
+      # Script generation is offline -- no database is contacted here.
       - name: Generate idempotent migration script
         run: |
           dotnet ef migrations script \
