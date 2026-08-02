@@ -1,0 +1,36 @@
+# Copy to dev.auto.tfvars (gitignored) and fill in. Terraform auto-loads any
+# *.auto.tfvars file, so no -var-file flag is needed -- a plain "dev.tfvars"
+# is NOT auto-loaded and silently falls back to interactive variable
+# prompts, which also hangs a non-interactive CI run. Just run:
+#   terraform apply
+
+subscription_id = "00000000-0000-0000-0000-000000000000"
+
+owner       = "platform-engineering"
+cost_centre = "CC-1234"
+
+# SQL Entra ID administrator. Prefer a security group over an individual user.
+entra_admin_login     = "sql-admins-dev"
+entra_admin_object_id = "00000000-0000-0000-0000-000000000000"
+
+# Entra ID app registration backing the API's auth_settings_v2.
+entra_client_id = "00000000-0000-0000-0000-000000000000"
+
+# Extra Key Vault Administrators beyond the identity running Terraform.
+keyvault_administrator_object_ids = []
+
+container_image        = "ghcr.io/desicon-group/finance-workflow-api:latest"
+container_registry_url = "https://ghcr.io"
+container_registry_id  = null
+
+# Dev drops private endpoints entirely, so Key Vault, SQL and the storage
+# accounts have no route from outside the VNet for a dev deploy agent to use
+# (see docs/02-Solution-Architecture.md). Add the agent's public egress IP
+# (e.g. `curl -s ifconfig.me`) as a bare address -- NOT a /32 CIDR, which
+# Storage's network_rules rejects outright -- or a CI runner's /30-or-wider
+# published range, or terraform apply hangs and then fails reaching the SQL
+# server / TDE key / Storage CMK / Functions runtime storage.
+deployer_ip_addresses = []
+
+allowed_cors_origins  = []
+alert_email_addresses = ["platform-alerts@desicon-group.com"]

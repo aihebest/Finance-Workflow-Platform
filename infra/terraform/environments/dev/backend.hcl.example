@@ -1,0 +1,8 @@
+# Copy to backend.hcl (gitignored) and fill in with the values printed by
+# scripts/bootstrap-state.sh|.ps1. Initialize with:
+#   terraform init -backend-config=backend.hcl
+
+resource_group_name = "rg-desicon-fw-tfstate"
+storage_account_name = "sttfstatedesiconfw"
+container_name        = "tfstate"
+key                    = "dev.terraform.tfstate"

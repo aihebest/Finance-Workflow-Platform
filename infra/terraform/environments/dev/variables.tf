@@ -1,0 +1,107 @@
+variable "subscription_id" {
+  description = "Azure subscription id to deploy into."
+  type        = string
+}
+
+variable "location" {
+  description = "Azure region. South Africa North is the closest region to Lagos with a paired region."
+  type        = string
+  default     = "South Africa North"
+}
+
+variable "environment" {
+  description = "Environment name. Fixed per environments/<env> root."
+  type        = string
+  default     = "dev"
+
+  validation {
+    condition     = contains(["dev", "uat", "prd"], var.environment)
+    error_message = "Environment must be one of: dev, uat, prd."
+  }
+}
+
+variable "owner" {
+  description = "Tag: team or individual accountable for these resources."
+  type        = string
+}
+
+variable "cost_centre" {
+  description = "Tag: cost centre for chargeback."
+  type        = string
+}
+
+# ── Identity ─────────────────────────────────────────────────────────────
+variable "entra_admin_login" {
+  description = "Display name for the SQL Entra ID administrator (typically a security group, e.g. 'sql-admins-dev')."
+  type        = string
+}
+
+variable "entra_admin_object_id" {
+  description = "Object id of the SQL Entra ID administrator (user or, preferably, group)."
+  type        = string
+}
+
+variable "entra_client_id" {
+  description = "Entra ID application (client) id for the API, used by app-service's auth_settings_v2."
+  type        = string
+}
+
+variable "keyvault_administrator_object_ids" {
+  description = "Additional Entra object ids granted 'Key Vault Administrator', beyond the identity running Terraform (which is always included so it can create the SQL TDE key and Storage CMK)."
+  type        = list(string)
+  default     = []
+}
+
+# ── Application ─────────────────────────────────────────────────────────
+variable "container_image" {
+  description = "Fully qualified container image for the API, including tag."
+  type        = string
+}
+
+variable "container_registry_url" {
+  description = "Registry login server URL."
+  type        = string
+}
+
+variable "container_registry_id" {
+  description = "Registry resource id, for the AcrPull role assignment. Null if the registry is outside this Terraform's scope and access is granted separately."
+  type        = string
+  default     = null
+}
+
+variable "deployer_ip_addresses" {
+  description = "Public IPs/CIDRs of Terraform deploy agents (developer laptops, CI runners) to allow through the network_acls/network_rules/firewall rules of Key Vault, SQL, the attachments storage account and the Functions runtime storage account. Dev drops private endpoints entirely (use_private_endpoints = false throughout, see docs/02-Solution-Architecture.md), so each of these must open a narrow, IP-pinned exception or terraform apply cannot reach the data plane it needs (the SQL TDE key / Storage CMK, the database itself, blob/queue/table for the runtime storage). Required precisely because it's dev -- see policy/terraform/azure_security.rego, which denies public access unconditionally outside dev. Give single addresses without a /32 suffix (e.g. \"203.0.113.5\", not \"203.0.113.5/32\") -- Storage's network_rules.ip_rules rejects /31 and /32 CIDR suffixes outright (Azure only accepts /0-/30 there), while Key Vault and SQL's firewall rules accept either form; a bare IP satisfies all three."
+  type        = list(string)
+  default     = []
+}
+
+variable "allowed_cors_origins" {
+  description = "Origins permitted to call the API."
+  type        = list(string)
+  default     = []
+}
+
+variable "alert_email_addresses" {
+  description = "Addresses notified by the monitoring action group."
+  type        = list(string)
+  default     = []
+}
+
+# ── Sizing (scaled down relative to uat/prd) ───────────────────────────────
+variable "app_service_sku_name" {
+  description = "App Service Plan SKU."
+  type        = string
+  default     = "P1v3"
+}
+
+variable "sql_sku_name" {
+  description = "SQL database SKU."
+  type        = string
+  default     = "GP_Gen5_2"
+}
+
+variable "functions_sku_name" {
+  description = "Function App Service Plan SKU."
+  type        = string
+  default     = "EP1"
+}
