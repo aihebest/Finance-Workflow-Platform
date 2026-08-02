@@ -343,6 +343,8 @@
       "actor": {
         "resolver": "Requester"
       },
+      "records": "AcknowledgedByUserId",
+      "effect": "RecordAcknowledgement",
       "note": "Recipient's Acknowledgement. Recorded for the audit trail and the printed form; the clock already started at release."
     },
     {

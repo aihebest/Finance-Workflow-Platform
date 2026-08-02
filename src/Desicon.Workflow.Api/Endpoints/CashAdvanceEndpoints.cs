@@ -221,7 +221,8 @@ public static class CashAdvanceEndpoints
                 new Dictionary<string, object?>
                 {
                     ["JournalVoucherNumber"] = dto.JournalVoucherNumber,
-                    ["GlLineCount"] = dto.Lines.Count
+                    ["GlLineCount"] = dto.Lines.Count,
+                    ["GlPostingLines"] = dto.Lines
                 },
                 dto.IdempotencyKey),
             cancellationToken);

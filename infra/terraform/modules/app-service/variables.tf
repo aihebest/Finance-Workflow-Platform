@@ -79,6 +79,34 @@ variable "key_vault_id" {
   type        = string
 }
 
+# ── Role-assignment toggles ─────────────────────────────────────────────────
+# Whether each of these role assignments exists is decided by these explicit
+# booleans, not by inferring it from container_registry_id/storage_account_id
+# being null. Those ids are typically another module's output (e.g.
+# module.storage.id) and are not known until apply -- a `count` or `for_each`
+# keyed off `var.x == null` fails plan with "Invalid count argument" the
+# moment the id stops being a plan-time-known literal. A for_each keyed off a
+# plain bool has no such requirement. The environment composition must set
+# these explicitly alongside the corresponding *_id variable.
+
+variable "enable_keyvault_role_assignment" {
+  description = "Grant the app's managed identity 'Key Vault Secrets User' on key_vault_id. key_vault_id is a required argument, so this should normally stay true; the toggle exists for symmetry with enable_storage_role_assignment/enable_acr_role_assignment."
+  type        = bool
+  default     = true
+}
+
+variable "enable_storage_role_assignment" {
+  description = "Grant the app's managed identity 'Storage Blob Data Contributor' on storage_account_id. Must be false if storage_account_id is not supplied."
+  type        = bool
+  default     = true
+}
+
+variable "enable_acr_role_assignment" {
+  description = "Grant the app's managed identity 'AcrPull' on container_registry_id. Must be false if container_registry_id is not supplied."
+  type        = bool
+  default     = true
+}
+
 variable "key_vault_uri" {
   description = "Key Vault URI passed to the app."
   type        = string

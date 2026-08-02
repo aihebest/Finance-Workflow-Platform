@@ -1,0 +1,66 @@
+{
+  "$schema": "./workflow-definition.schema.json",
+  "moduleKey": "LEAVE_REQUEST",
+  "displayName": "Leave Request",
+  "formCode": "DEL-HR-FRM-010",
+  "formRevision": "01",
+  "version": 1,
+  "effectiveFrom": "2026-09-01T00:00:00Z",
+  "numberFormat": "LVE-{yyyy}-{seq:000000}",
+  "workingCalendar": "NG_STANDARD",
+  "slaPausesOutsideWorkingHours": true,
+
+  "policyValues": [],
+
+  "states": [
+    { "key": "DRAFT", "type": "initial", "label": "Draft" },
+    { "key": "LINE_MANAGER", "label": "Awaiting Approval (Line Manager)", "sla": { "hours": 24, "reminderEveryHours": 8, "escalateTo": "DEPT_HEAD" } },
+    { "key": "DEPT_HEAD", "label": "Awaiting Approval (Department Head)", "sla": { "hours": 24, "reminderEveryHours": 8 } },
+    { "key": "RETURNED", "type": "rework", "label": "Returned for Correction" },
+    { "key": "REJECTED", "type": "terminal", "label": "Rejected" },
+    { "key": "CLOSED", "type": "terminal", "label": "Closed" }
+  ],
+
+  "transitions": [
+    {
+      "from": "DRAFT", "to": "LINE_MANAGER", "action": "SUBMIT",
+      "actor": { "resolver": "Requester" }
+    },
+
+    {
+      "from": "LINE_MANAGER", "to": "DEPT_HEAD", "action": "APPROVE",
+      "actor": { "resolver": "LineManagerOf", "arg": "RequesterId" },
+      "guard": "ActorId != RequesterId",
+      "guardMessage": "You cannot approve your own leave request.",
+      "note": "First of the two approval stages -- this is the genericity probe's whole point: this guard is expressed purely against base Request fields (ActorId, RequesterId), the same clause EXPENSE and CASH_ADVANCE use at their own first approval stage, with zero C# changes required."
+    },
+    { "from": "LINE_MANAGER", "to": "RETURNED", "action": "RETURN", "actor": { "resolver": "LineManagerOf", "arg": "RequesterId" }, "requiresComment": true },
+    { "from": "LINE_MANAGER", "to": "REJECTED", "action": "REJECT", "actor": { "resolver": "LineManagerOf", "arg": "RequesterId" }, "requiresComment": true },
+
+    {
+      "from": "DEPT_HEAD", "to": "CLOSED", "action": "APPROVE",
+      "actor": { "resolver": "DepartmentHeadOf", "arg": "DepartmentId" },
+      "guard": "ActorId != RequesterId",
+      "guardMessage": "You cannot approve your own leave request.",
+      "note": "Second and final approval stage. No captures, no records, no custom effect -- CLOSED is terminal so the request closes here."
+    },
+    { "from": "DEPT_HEAD", "to": "RETURNED", "action": "RETURN", "actor": { "resolver": "DepartmentHeadOf", "arg": "DepartmentId" }, "requiresComment": true },
+    { "from": "DEPT_HEAD", "to": "REJECTED", "action": "REJECT", "actor": { "resolver": "DepartmentHeadOf", "arg": "DepartmentId" }, "requiresComment": true },
+
+    {
+      "from": "RETURNED", "to": "LINE_MANAGER", "action": "RESUBMIT",
+      "actor": { "resolver": "Requester" },
+      "effect": "IncrementRevisionNumber",
+      "note": "Reuses the same generic, module-agnostic effect EXPENSE and CASH_ADVANCE already use on their own RESUBMIT transitions."
+    }
+  ],
+
+  "notifications": [
+    { "on": "STATE_ENTERED", "to": "CurrentActor", "template": "action-required" },
+    { "on": "SLA_REMINDER", "to": "CurrentActor", "template": "reminder" },
+    { "on": "SLA_BREACHED", "to": ["CurrentActor", "EscalationTarget"], "template": "escalation" },
+    { "on": "RETURNED", "to": "Requester", "template": "returned-for-correction" },
+    { "on": "REJECTED", "to": "Requester", "template": "rejected" },
+    { "on": "CLOSED", "to": "Requester", "template": "closed" }
+  ]
+}

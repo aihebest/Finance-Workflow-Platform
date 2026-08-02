@@ -73,6 +73,11 @@ variable "deployer_ip_addresses" {
   description = "Public IPs/CIDRs of Terraform deploy agents (developer laptops, CI runners) to allow through the network_acls/network_rules/firewall rules of Key Vault, SQL, the attachments storage account and the Functions runtime storage account. Dev drops private endpoints entirely (use_private_endpoints = false throughout, see docs/02-Solution-Architecture.md), so each of these must open a narrow, IP-pinned exception or terraform apply cannot reach the data plane it needs (the SQL TDE key / Storage CMK, the database itself, blob/queue/table for the runtime storage). Required precisely because it's dev -- see policy/terraform/azure_security.rego, which denies public access unconditionally outside dev. Give single addresses without a /32 suffix (e.g. \"203.0.113.5\", not \"203.0.113.5/32\") -- Storage's network_rules.ip_rules rejects /31 and /32 CIDR suffixes outright (Azure only accepts /0-/30 there), while Key Vault and SQL's firewall rules accept either form; a bare IP satisfies all three."
   type        = list(string)
   default     = []
+
+  validation {
+    condition     = alltrue([for v in var.deployer_ip_addresses : can(regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}$", v))])
+    error_message = "Each address must be a bare IPv4 address with no CIDR suffix (e.g. \"203.0.113.5\", not \"203.0.113.5/32\"). Azure SQL firewall rules take a bare IP, not a CIDR, and Storage's network_rules.ip_rules rejects /31 and /32 outright -- only prefixes /0-/30 are valid there. A bare IP is the only form all three services (Key Vault, SQL, Storage) accept."
+  }
 }
 
 variable "allowed_cors_origins" {

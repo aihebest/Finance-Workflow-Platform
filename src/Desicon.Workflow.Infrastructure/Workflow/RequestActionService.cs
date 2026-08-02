@@ -243,7 +243,7 @@ public sealed class RequestActionService
         }
 
         ApplyRecordedActor(request, transition.Records, effectiveActorId);
-        await ApplyEffectAsync(request, transition, transitionRequest, definition, cancellationToken);
+        await ApplyEffectAsync(request, transition, transitionRequest, definition, now, cancellationToken);
 
         // Defence-in-depth, independent of the definition's own guards: the
         // engine has already authorised this transition against the JSON
@@ -499,6 +499,7 @@ public sealed class RequestActionService
         WorkflowTransition transition,
         TransitionRequest transitionRequest,
         WorkflowDefinition definition,
+        DateTimeOffset now,
         CancellationToken cancellationToken)
     {
         switch (transition.Effect)
@@ -508,6 +509,20 @@ public sealed class RequestActionService
 
             case "IncrementRevisionNumber":
                 request.RevisionNumber++;
+                return;
+
+            case "RecordAcknowledgement":
+                // ACKNOWLEDGE's "records": "AcknowledgedByUserId" (see both
+                // modules' JSON) stamps the actor via ApplyRecordedActor, but
+                // that mechanism only ever writes a single Guid? property --
+                // AcknowledgedAt is a companion timestamp with no equivalent
+                // generic wiring, so it is set explicitly here instead.
+                switch (request)
+                {
+                    case ExpenseRequest expenseAck: expenseAck.AcknowledgedAt = now; break;
+                    case CashAdvanceRequest advanceAck: advanceAck.AcknowledgedAt = now; break;
+                }
+
                 return;
 
             case "StartRetirementClock":

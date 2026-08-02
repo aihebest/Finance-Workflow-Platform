@@ -26,10 +26,15 @@ container_registry_id  = null
 # Dev drops private endpoints entirely, so Key Vault, SQL and the storage
 # accounts have no route from outside the VNet for a dev deploy agent to use
 # (see docs/02-Solution-Architecture.md). Add the agent's public egress IP
-# (e.g. `curl -s ifconfig.me`) as a bare address -- NOT a /32 CIDR, which
-# Storage's network_rules rejects outright -- or a CI runner's /30-or-wider
-# published range, or terraform apply hangs and then fails reaching the SQL
-# server / TDE key / Storage CMK / Functions runtime storage.
+# (e.g. `curl -s ifconfig.me`) here, or terraform apply hangs and then fails
+# reaching the SQL server / TDE key / Storage CMK / Functions runtime storage.
+#
+# Format: bare IPv4 addresses only, one per entry, no CIDR suffix -- e.g.
+# "203.0.113.5", not "203.0.113.5/32" or a range. Enforced by a validation
+# block on the variable (variables.tf): Azure SQL firewall rules take a bare
+# IP, not a CIDR, and Storage's network_rules.ip_rules rejects /31 and /32
+# outright (Azure only accepts /0-/30 there) -- a bare IP is the only form
+# Key Vault, SQL and Storage all accept.
 deployer_ip_addresses = []
 
 allowed_cors_origins  = []

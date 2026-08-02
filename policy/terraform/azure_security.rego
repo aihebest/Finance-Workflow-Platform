@@ -32,32 +32,198 @@ is_production if {
 	input.variables.environment.value == "prd"
 }
 
+is_dev if {
+	input.variables.environment.value == "dev"
+}
+
 # ── Network isolation ───────────────────────────────────────────────────────
 # The single highest-value control in the design: no data-plane service is
-# reachable from the public internet.
+# reachable from the public internet -- outside dev.
+#
+# A blanket "public_network_access_enabled must be false" is unachievable
+# from any deploy agent outside the VNet: Terraform itself has to reach the
+# vault/server/account to create the SQL TDE key, Storage CMK and firewall
+# entries, and the private endpoint is invisible to anything not already on
+# the VNet. A rule nobody can satisfy gets switched off rather than fixed,
+# which defeats the point. uat and prd both run from a self-hosted runner
+# inside the app subnet (see docs/02-Solution-Architecture.md) and so have
+# no such excuse -- both stay denied outright, unconditionally, regardless
+# of network_acls/network_rules. Only dev, which has no such runner, may
+# trade the private endpoint (use_private_endpoints = false on the module)
+# for a narrow, IP-pinned exception -- default_action = Deny with a
+# non-empty ip_rules allow-list. Anything looser (default_action = Allow, or
+# no ip_rules at all) is exactly the wide-open resource the ban exists to
+# prevent, so it's denied there too.
 
 deny contains msg if {
+	not is_dev
 	some r in resources_of("azurerm_mssql_server")
 	after(r).public_network_access_enabled == true
 	msg := sprintf(
-		"%s: Azure SQL must not accept public network access. Reach it over the private endpoint from the app subnet.",
+		"%s: Azure SQL must not accept public network access outside dev. Reach it over the private endpoint from the app subnet.",
 		[r.address],
 	)
 }
 
 deny contains msg if {
-	some r in resources_of("azurerm_key_vault")
+	is_dev
+	some r in resources_of("azurerm_mssql_server")
 	after(r).public_network_access_enabled == true
-	msg := sprintf("%s: Key Vault must not accept public network access.", [r.address])
+	not sql_firewall_locked_down(r)
+	msg := sprintf(
+		"%s: Azure SQL allows public network access with no firewall rule allow-listing specific deployer IPs -- an empty ip_rules leaves it open to the internet.",
+		[r.address],
+	)
+}
+
+# SQL has no network_acls-style inline block -- each allowed address is its
+# own azurerm_mssql_firewall_rule resource (modules/sql). "Locked down" here
+# means at least one such rule exists in the same module instance as the
+# server; an empty ip_rules produces none at all.
+sql_firewall_locked_down(r) if {
+	some fw in resources_of("azurerm_mssql_firewall_rule")
+	object.get(fw, "module_address", "") == object.get(r, "module_address", "")
 }
 
 deny contains msg if {
+	not is_dev
+	some r in resources_of("azurerm_key_vault")
+	after(r).public_network_access_enabled == true
+	msg := sprintf(
+		"%s: Key Vault must not accept public network access outside dev. Deploy from the self-hosted runner inside the VNet instead.",
+		[r.address],
+	)
+}
+
+deny contains msg if {
+	is_dev
+	some r in resources_of("azurerm_key_vault")
+	after(r).public_network_access_enabled == true
+	not key_vault_network_acls_locked_down(r)
+	msg := sprintf(
+		"%s: Key Vault allows public network access without a locked-down network_acls -- default_action must be 'Deny' and ip_rules must list specific allowed addresses, not be left open or empty.",
+		[r.address],
+	)
+}
+
+key_vault_network_acls_locked_down(r) if {
+	some acl in after(r).network_acls
+	acl.default_action == "Deny"
+	count([ip | some ip in acl.ip_rules]) > 0
+}
+
+deny contains msg if {
+	not is_dev
 	some r in resources_of("azurerm_storage_account")
 	after(r).public_network_access_enabled == true
 	msg := sprintf(
-		"%s: the attachments storage account must not accept public network access. Receipts are personal and financial data.",
+		"%s: storage accounts must not accept public network access outside dev. Receipts are personal and financial data. Deploy from the self-hosted runner inside the VNet instead.",
 		[r.address],
 	)
+}
+
+deny contains msg if {
+	is_dev
+	some r in resources_of("azurerm_storage_account")
+	after(r).public_network_access_enabled == true
+	not storage_network_rules_locked_down(r)
+	msg := sprintf(
+		"%s: storage account allows public network access without a locked-down network_rules -- default_action must be 'Deny' and ip_rules must list specific allowed addresses, not be left open or empty.",
+		[r.address],
+	)
+}
+
+storage_network_rules_locked_down(r) if {
+	some rules in after(r).network_rules
+	rules.default_action == "Deny"
+	count([ip | some ip in rules.ip_rules]) > 0
+}
+
+# No Service Bus module exists in this codebase yet, but the same rule
+# applies the moment one does -- azurerm_servicebus_namespace has its own
+# network_rule_set block, same shape as Storage's network_rules.
+deny contains msg if {
+	not is_dev
+	some r in resources_of("azurerm_servicebus_namespace")
+	after(r).public_network_access_enabled == true
+	msg := sprintf(
+		"%s: Service Bus must not accept public network access outside dev. Reach it over the private endpoint from the app subnet.",
+		[r.address],
+	)
+}
+
+deny contains msg if {
+	is_dev
+	some r in resources_of("azurerm_servicebus_namespace")
+	after(r).public_network_access_enabled == true
+	not servicebus_network_rules_locked_down(r)
+	msg := sprintf(
+		"%s: Service Bus allows public network access without a locked-down network_rule_set -- default_action must be 'Deny' and ip_rules must list specific allowed addresses, not be left open or empty.",
+		[r.address],
+	)
+}
+
+servicebus_network_rules_locked_down(r) if {
+	some ruleset in after(r).network_rule_set
+	ruleset.default_action == "Deny"
+	count([ip | some ip in ruleset.ip_rules]) > 0
+}
+
+# uat and prd don't just forbid public access -- they require the private
+# endpoint actually be there. Same unknown-until-apply problem as
+# covered_by_diagnostics below (the endpoint's target is a resource created
+# in the same plan, so private_connection_resource_id is absent from
+# `after`), same config-tree fix: match on what the private endpoint's
+# expression statically references, not on the resolved id.
+requires_private_endpoint := {
+	"azurerm_mssql_server",
+	"azurerm_key_vault",
+	"azurerm_storage_account",
+	"azurerm_servicebus_namespace",
+}
+
+deny contains msg if {
+	not is_dev
+	some kind in requires_private_endpoint
+	some r in resources_of(kind)
+	not has_private_endpoint(r)
+	msg := sprintf(
+		"%s: no private endpoint found for this resource outside dev. uat and prd must reach every data service over its private endpoint, not the network_acls/network_rules exception dev uses.",
+		[r.address],
+	)
+}
+
+has_private_endpoint(r) if {
+	some pe in resources_of("azurerm_private_endpoint")
+	some ref in private_endpoint_config_refs[instance_address(pe.address)]
+	target_address(object.get(pe, "module_address", ""), ref) == r.address
+}
+
+# Every private endpoint here is `count = var.use_private_endpoints ? 1 : 0`
+# (modules/keyvault, modules/sql, modules/storage), so its resource_changes
+# address carries an instance key ("...azurerm_private_endpoint.this[0]")
+# that the static config address it's matched against never has. Strips it.
+instance_address(addr) := base if {
+	contains(addr, "[")
+	base := substring(addr, 0, indexof(addr, "["))
+}
+
+instance_address(addr) := addr if {
+	not contains(addr, "[")
+}
+
+# Full address of every azurerm_private_endpoint's config, mapped to the set
+# of resource addresses its private_service_connection.private_connection_
+# resource_id expression references. Reuses target_address/config_address/
+# module_names below, which were built for the same problem in
+# covered_by_diagnostics.
+private_endpoint_config_refs[addr] := refs if {
+	walk(input.configuration.root_module, [path, cfg])
+	is_object(cfg)
+	cfg.type == "azurerm_private_endpoint"
+	some psc in cfg.expressions.private_service_connection
+	refs := psc.private_connection_resource_id.references
+	addr := config_address(path, cfg.address)
 }
 
 deny contains msg if {
@@ -171,11 +337,6 @@ required_diagnostics := {
 	"azurerm_storage_account",
 }
 
-diagnostic_targets contains target if {
-	some r in resources_of("azurerm_monitor_diagnostic_setting")
-	target := after(r).target_resource_id
-}
-
 warn contains msg if {
 	some kind in required_diagnostics
 	some r in resources_of(kind)
@@ -186,10 +347,70 @@ warn contains msg if {
 	)
 }
 
+# `target_resource_id` on a freshly-created azurerm_monitor_diagnostic_setting
+# is the .id of a resource that is *also* being created in this plan, so it is
+# unknown-until-apply: `after(r).target_resource_id` is simply absent for
+# every diagnostic setting in a from-scratch plan, and matching against it
+# (or against `after(r).name`, which has the same problem one hop removed)
+# silently fails for every resource, every time. What plan-time *does* know,
+# regardless of whether the referenced value itself is known yet, is the
+# static config: which resource address the `target_resource_id` expression
+# refers to. That lives in `input.configuration`, keyed by module path rather
+# than by resolved value, so it's available on every plan.
 covered_by_diagnostics(r) if {
-	some target in diagnostic_targets
-	contains(target, r.name)
+	some d in resources_of("azurerm_monitor_diagnostic_setting")
+	some ref in diagnostic_config_refs[d.address]
+	target_address(object.get(d, "module_address", ""), ref) == r.address
 }
+
+# Full address (as it appears in resource_changes[].address) of every
+# azurerm_monitor_diagnostic_setting's config, mapped to the set of resource
+# addresses its `target_resource_id` expression references. `walk` traverses
+# `configuration.root_module` at whatever module depth it's nested to, so
+# this doesn't need bespoke recursion to follow module_calls.
+diagnostic_config_refs[addr] := refs if {
+	walk(input.configuration.root_module, [path, cfg])
+	is_object(cfg)
+	cfg.type == "azurerm_monitor_diagnostic_setting"
+	refs := cfg.expressions.target_resource_id.references
+	addr := config_address(path, cfg.address)
+}
+
+# `references` lists both the attribute reference ("azurerm_x.y.id") and the
+# bare resource reference ("azurerm_x.y") for the same expression -- the
+# latter, prefixed with the referencing resource's own module address, is
+# exactly the target resource's `resource_changes[].address`. Shared by
+# has_private_endpoint above and covered_by_diagnostics here -- both resolve
+# a plan-time-unknown `.id` reference back to the resource it targets.
+target_address(module_addr, ref) := ref if {
+	module_addr == ""
+}
+
+target_address(module_addr, ref) := sprintf("%s.%s", [module_addr, ref]) if {
+	module_addr != ""
+}
+
+# Reconstructs a config-tree resource's full address from the walk() path
+# that led to it, by collecting the module name following every
+# "module_calls" segment (["module_calls", "app_service", "module", ...] ->
+# "module.app_service"), then prefixing the resource's module-relative
+# address with it. A root-module resource has no such segments.
+config_address(path, local_addr) := local_addr if {
+	module_names(path) == []
+}
+
+config_address(path, local_addr) := addr if {
+	names := module_names(path)
+	count(names) > 0
+	prefix := concat(".", [sprintf("module.%s", [n]) | some n in names])
+	addr := sprintf("%s.%s", [prefix, local_addr])
+}
+
+module_names(path) := [name |
+	some i, seg in path
+	seg == "module_calls"
+	name := path[i + 1]
+]
 
 # ── Production-only requirements ────────────────────────────────────────────
 

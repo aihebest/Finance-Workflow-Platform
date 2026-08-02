@@ -193,9 +193,13 @@ module "functions" {
 
   name                 = "func-${local.name_prefix}"
   storage_account_name = replace("st${local.name_prefix}fn", "-", "")
-  resource_group_name  = azurerm_resource_group.main.name
-  location             = var.location
-  environment          = var.environment
+  # stdesiconfwdevfn has 404'd on the blob data plane on four straight applies
+  # despite ARM reporting it Succeeded -- abandon that name for a fresh one
+  # rather than keep retrying against a possibly permanently wedged account.
+  storage_name_suffix = "2"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = var.location
+  environment         = var.environment
 
   sku_name = var.functions_sku_name
 

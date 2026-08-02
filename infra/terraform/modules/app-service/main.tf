@@ -24,7 +24,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = ">= 3.100.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -33,23 +33,23 @@ locals {
   # Only these headers/settings are environment-specific; everything security
   # related is fixed here so an environment cannot opt out of a control.
   common_app_settings = {
-    WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
-    WEBSITE_RUN_FROM_PACKAGE            = "0"
-    ASPNETCORE_ENVIRONMENT              = var.environment
-    ASPNETCORE_FORWARDEDHEADERS_ENABLED = "true"
-    KeyVault__Uri                       = var.key_vault_uri
+    WEBSITES_ENABLE_APP_SERVICE_STORAGE   = "false"
+    WEBSITE_RUN_FROM_PACKAGE              = "0"
+    ASPNETCORE_ENVIRONMENT                = var.environment
+    ASPNETCORE_FORWARDEDHEADERS_ENABLED   = "true"
+    KeyVault__Uri                         = var.key_vault_uri
     ApplicationInsights__ConnectionString = var.app_insights_connection_string
     # Connection string carries no credential — Managed Identity authenticates.
-    ConnectionStrings__Default          = var.sql_connection_uri
+    ConnectionStrings__Default = var.sql_connection_uri
   }
 }
 
 resource "azurerm_service_plan" "this" {
-  name                = "plan-${var.name}"
-  resource_group_name = var.resource_group_name
-  location            = var.location
-  os_type             = "Linux"
-  sku_name            = var.sku_name
+  name                   = "plan-${var.name}"
+  resource_group_name    = var.resource_group_name
+  location               = var.location
+  os_type                = "Linux"
+  sku_name               = var.sku_name
   zone_balancing_enabled = var.zone_redundant
 
   tags = var.tags
@@ -62,10 +62,10 @@ resource "azurerm_linux_web_app" "this" {
   service_plan_id     = azurerm_service_plan.this.id
 
   # ── Hard security posture ────────────────────────────────────────────────
-  https_only                      = true
-  public_network_access_enabled   = var.public_network_access_enabled
-  virtual_network_subnet_id       = var.subnet_id
-  client_certificate_enabled      = false
+  https_only                                     = true
+  public_network_access_enabled                  = var.public_network_access_enabled
+  virtual_network_subnet_id                      = var.subnet_id
+  client_certificate_enabled                     = false
   ftp_publish_basic_authentication_enabled       = false
   webdeploy_publish_basic_authentication_enabled = false
 
@@ -85,8 +85,8 @@ resource "azurerm_linux_web_app" "this" {
     worker_count                      = var.worker_count
 
     application_stack {
-      docker_image_name        = var.container_image
-      docker_registry_url      = var.container_registry_url
+      docker_image_name   = var.container_image
+      docker_registry_url = var.container_registry_url
       # Registry pull uses the app's managed identity — no admin credentials.
       docker_registry_username = null
       docker_registry_password = null
@@ -108,9 +108,15 @@ resource "azurerm_linux_web_app" "this" {
       }
     }
 
-    cors {
-      allowed_origins     = var.allowed_cors_origins
-      support_credentials = true
+    # provider 4.81 rejects allowed_origins with an empty list -- omit the
+    # block entirely rather than send cors { allowed_origins = [] } when no
+    # frontend origin has been configured yet.
+    dynamic "cors" {
+      for_each = length(var.allowed_cors_origins) > 0 ? [1] : []
+      content {
+        allowed_origins     = var.allowed_cors_origins
+        support_credentials = true
+      }
     }
   }
 
@@ -176,11 +182,12 @@ resource "azurerm_linux_web_app_slot" "staging" {
   }
 
   site_config {
-    always_on           = true
-    ftps_state          = "Disabled"
-    minimum_tls_version = "1.2"
-    health_check_path   = "/health/ready"
-    vnet_route_all_enabled = true
+    always_on                         = true
+    ftps_state                        = "Disabled"
+    minimum_tls_version               = "1.2"
+    health_check_path                 = "/health/ready"
+    health_check_eviction_time_in_min = 5
+    vnet_route_all_enabled            = true
 
     application_stack {
       docker_image_name   = var.container_image
@@ -194,7 +201,11 @@ resource "azurerm_linux_web_app_slot" "staging" {
 }
 
 # ── Key Vault access via Managed Identity (RBAC, not access policies) ───────
+# for_each over a static set gated by a plain bool, not `count` keyed off a
+# value's nullness -- see the enable_* variable block in variables.tf for why.
 resource "azurerm_role_assignment" "kv_secrets_user" {
+  for_each = var.enable_keyvault_role_assignment ? toset(["this"]) : toset([])
+
   scope                = var.key_vault_id
   role_definition_name = "Key Vault Secrets User"
   principal_id         = azurerm_linux_web_app.this.identity[0].principal_id
@@ -208,14 +219,16 @@ resource "azurerm_role_assignment" "kv_secrets_user_slot" {
 }
 
 resource "azurerm_role_assignment" "storage_blob_contributor" {
-  count                = var.storage_account_id == null ? 0 : 1
+  for_each = var.enable_storage_role_assignment ? toset(["this"]) : toset([])
+
   scope                = var.storage_account_id
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = azurerm_linux_web_app.this.identity[0].principal_id
 }
 
 resource "azurerm_role_assignment" "acr_pull" {
-  count                = var.container_registry_id == null ? 0 : 1
+  for_each = var.enable_acr_role_assignment ? toset(["this"]) : toset([])
+
   scope                = var.container_registry_id
   role_definition_name = "AcrPull"
   principal_id         = azurerm_linux_web_app.this.identity[0].principal_id
@@ -234,5 +247,5 @@ resource "azurerm_monitor_diagnostic_setting" "this" {
   enabled_log { category = "AppServiceIPSecAuditLogs" }
   enabled_log { category = "AppServicePlatformLogs" }
 
-  metric { category = "AllMetrics" }
+  enabled_metric { category = "AllMetrics" }
 }

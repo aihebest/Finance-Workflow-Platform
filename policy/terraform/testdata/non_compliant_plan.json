@@ -1,0 +1,35 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.15.7",
+  "variables": {
+    "environment": { "value": "dev" }
+  },
+  "resource_changes": [
+    {
+      "address": "module.sql.azurerm_mssql_server.this",
+      "module_address": "module.sql",
+      "mode": "managed",
+      "type": "azurerm_mssql_server",
+      "name": "this",
+      "provider_name": "registry.terraform.io/hashicorp/azurerm",
+      "change": {
+        "actions": ["create"],
+        "after": {
+          "name": "sql-canary-noncompliant",
+          "public_network_access_enabled": true,
+          "minimum_tls_version": "1.2",
+          "outbound_network_restriction_enabled": true,
+          "azuread_administrator": [
+            { "login_username": "sql-admins-dev", "azuread_authentication_only": true }
+          ],
+          "tags": {
+            "environment": "dev",
+            "owner": "platform-engineering",
+            "cost_centre": "CC-1234",
+            "data_classification": "Confidential"
+          }
+        }
+      }
+    }
+  ]
+}

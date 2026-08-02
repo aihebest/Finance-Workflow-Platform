@@ -150,9 +150,17 @@ var app = builder.Build();
 
 app.UseExceptionHandler();
 app.UseHttpsRedirection();
-app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Must run after UseAuthentication: the GlobalLimiter partition key reads
+// context.User.FindFirst("oid") to bucket by authenticated user, falling
+// back to remote IP only for anonymous callers. Before this middleware
+// ran ahead of authentication, context.User was always the unauthenticated
+// default principal at partition-key time, so every request -- regardless
+// of caller -- fell back to the IP/"unknown" bucket and shared one global
+// rate-limit budget instead of one per user.
+app.UseRateLimiter();
 
 app.MapAdvanceRetirementEndpoints();
 app.MapModuleEndpoints();
@@ -162,3 +170,11 @@ app.MapCashAdvanceEndpoints();
 app.MapBeneficiaryEndpoints();
 
 app.Run();
+
+// Exposes the top-level-statement-generated Program class to
+// WebApplicationFactory<Program> in Desicon.Workflow.IntegrationTests --
+// the SDK's auto-generated partial is internal, which a separate test
+// assembly cannot see.
+public partial class Program
+{
+}

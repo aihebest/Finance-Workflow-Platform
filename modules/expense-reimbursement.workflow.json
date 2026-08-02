@@ -139,6 +139,8 @@
     {
       "from": "AWAITING_ACK", "to": "CLOSED", "action": "ACKNOWLEDGE",
       "actor": { "resolver": "Beneficiary" },
+      "records": "AcknowledgedByUserId",
+      "effect": "RecordAcknowledgement",
       "note": "Only the beneficiary can close the request. Finance marking it paid is not sufficient."
     },
     {

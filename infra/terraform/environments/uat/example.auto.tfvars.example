@@ -1,0 +1,32 @@
+# Copy to uat.auto.tfvars (gitignored) and fill in. Terraform auto-loads any
+# *.auto.tfvars file, so no -var-file flag is needed -- a plain "uat.tfvars"
+# is NOT auto-loaded and silently falls back to interactive variable
+# prompts, which also hangs a non-interactive CI run.
+#
+# uat has no public path to any data service (see docs/02-Solution-
+# Architecture.md "Environments") -- run apply from the self-hosted runner
+# inside the app subnet, not from a developer workstation or a GitHub-hosted
+# runner. Then:
+#   terraform apply
+
+subscription_id = "00000000-0000-0000-0000-000000000000"
+
+owner       = "platform-engineering"
+cost_centre = "CC-1234"
+
+# SQL Entra ID administrator. Prefer a security group over an individual user.
+entra_admin_login     = "sql-admins-uat"
+entra_admin_object_id = "00000000-0000-0000-0000-000000000000"
+
+# Entra ID app registration backing the API's auth_settings_v2.
+entra_client_id = "00000000-0000-0000-0000-000000000000"
+
+# Extra Key Vault Administrators beyond the identity running Terraform.
+keyvault_administrator_object_ids = []
+
+container_image        = "ghcr.io/desicon-group/finance-workflow-api:latest"
+container_registry_url = "https://ghcr.io"
+container_registry_id  = null
+
+allowed_cors_origins  = []
+alert_email_addresses = ["platform-alerts@desicon-group.com"]

@@ -1,0 +1,5 @@
+# conftest's default namespace is "main"; policy/terraform/azure_security.rego
+# declares package terraform.azure.security, so without this config,
+# `conftest test --policy policy/terraform <plan>.json` silently evaluates
+# zero rules (0 tests, exit 0) instead of actually checking anything.
+namespace = ["terraform.azure.security"]

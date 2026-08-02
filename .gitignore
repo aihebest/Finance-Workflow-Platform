@@ -19,7 +19,9 @@ dist/
 tfplan
 plan.txt
 *.tfvars
-!example.tfvars
+!example.auto.tfvars.example
+backend.hcl
+!backend.hcl.example
 
 # Secrets and local config
 *.pfx
