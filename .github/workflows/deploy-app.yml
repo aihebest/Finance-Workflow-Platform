@@ -114,6 +114,17 @@ jobs:
       - name: Restore local dotnet tools
         run: dotnet tool restore
 
+      # Built explicitly, then generated with --no-build.
+      #
+      # `dotnet ef` builds the project itself and, on failure, prints only
+      # "Build failed. Use dotnet build to see the errors." -- discarding the
+      # compiler output that says what actually broke. Directory.Build.props
+      # sets TreatWarningsAsErrors, so any analyser warning fails the build,
+      # and the useful message is exactly the one dotnet ef throws away.
+      # Building here means CI reports the real error.
+      - name: Build Infrastructure project
+        run: dotnet build src/Desicon.Workflow.Infrastructure/Desicon.Workflow.Infrastructure.csproj
+
       # Generated, not applied directly by `dotnet ef database update`: the
       # script is reviewable, replayable, and idempotent, and the tool never
       # needs a live connection with DDL rights of its own.
@@ -126,6 +137,7 @@ jobs:
         run: |
           dotnet ef migrations script \
             --idempotent \
+            --no-build \
             --project src/Desicon.Workflow.Infrastructure \
             --output migrate.sql
           echo "--- generated $(wc -l < migrate.sql) lines ---"
