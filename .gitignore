@@ -42,3 +42,7 @@ reports/
 .idea/
 *.swp
 .DS_Store
+
+# Azure Functions local development settings. Holds connection strings and
+# AzureWebJobsStorage for the local host; never committed.
+local.settings.json

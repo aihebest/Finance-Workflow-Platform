@@ -157,10 +157,12 @@ public static class WorkflowSteps
     }
 
     public static async Task<Guid> CreateAndSubmitCashAdvanceAsync(
-        WorkflowApiFixture fixture, OrgChart org, string purpose, decimal amount)
+        WorkflowApiFixture fixture, OrgChart org, string purpose, decimal amount,
+        string stationScope = "InStation")
     {
         var requesterClient = fixture.CreateClient(org.Requester);
-        var created = await (await CreateCashAdvanceDraftAsync(requesterClient, purpose, amount)).ShouldSucceedAsync();
+        var created = await (await CreateCashAdvanceDraftAsync(
+            requesterClient, purpose, amount, stationScope: stationScope)).ShouldSucceedAsync();
         var id = created.GetGuid("requestId");
 
         await (await SubmitAsync(requesterClient, id)).ShouldSucceedAsync();
@@ -171,9 +173,10 @@ public static class WorkflowSteps
     /// (posted, authorised, awaiting release).</summary>
     public static async Task<Guid> DriveCashAdvanceToCashReleaseAsync(
         WorkflowApiFixture fixture, OrgChart org, string purpose, decimal amount,
-        string treasuryNumber, string journalVoucherNumber)
+        string treasuryNumber, string journalVoucherNumber,
+        string stationScope = "InStation")
     {
-        var id = await CreateAndSubmitCashAdvanceAsync(fixture, org, purpose, amount);
+        var id = await CreateAndSubmitCashAdvanceAsync(fixture, org, purpose, amount, stationScope);
 
         await (await ActionAsync(fixture.CreateClient(org.LineManager), id, "VERIFY")).ShouldSucceedAsync();
         await (await ActionAsync(fixture.CreateClient(org.DeptHead), id, "VERIFY")).ShouldSucceedAsync();
@@ -197,9 +200,11 @@ public static class WorkflowSteps
     /// acknowledged).</summary>
     public static async Task<Guid> DriveCashAdvanceToOutstandingAsync(
         WorkflowApiFixture fixture, OrgChart org, string purpose, decimal amount,
-        string treasuryNumber, string journalVoucherNumber, DateTimeOffset releasedAt)
+        string treasuryNumber, string journalVoucherNumber, DateTimeOffset releasedAt,
+        string stationScope = "InStation")
     {
-        var id = await DriveCashAdvanceToCashReleaseAsync(fixture, org, purpose, amount, treasuryNumber, journalVoucherNumber);
+        var id = await DriveCashAdvanceToCashReleaseAsync(
+            fixture, org, purpose, amount, treasuryNumber, journalVoucherNumber, stationScope);
 
         await (await ReleaseCashAsync(fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer"), id, releasedAt))
             .ShouldSucceedAsync();

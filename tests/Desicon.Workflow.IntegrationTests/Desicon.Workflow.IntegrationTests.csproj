@@ -23,5 +23,6 @@
     <ProjectReference Include="..\..\src\Desicon.Workflow.Domain\Desicon.Workflow.Domain.csproj" />
     <ProjectReference Include="..\..\src\Desicon.Workflow.Infrastructure\Desicon.Workflow.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Desicon.Workflow.Api\Desicon.Workflow.Api.csproj" />
+    <ProjectReference Include="..\..\src\Desicon.Workflow.Functions\Desicon.Workflow.Functions.csproj" />
   </ItemGroup>
 </Project>

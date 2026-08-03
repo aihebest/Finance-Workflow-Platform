@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AzureFunctionsVersion>v4</AzureFunctionsVersion>
+    <OutputType>Exe</OutputType>
+    <!--
+      Isolated worker, not in-process. In-process Functions pin the host's
+      .NET version and share its assembly load context, which would put the
+      host's Microsoft.Data.SqlClient in front of the one Always Encrypted
+      needs. Isolated keeps this a normal console app that happens to be
+      triggered by the host.
+    -->
+    <_FunctionsSkipCleanOutput>true</_FunctionsSkipCleanOutput>
+    <RootNamespace>Desicon.Workflow.Functions</RootNamespace>
+    <StartupObject>Desicon.Workflow.Functions.FunctionsHost</StartupObject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Azure.Functions.Worker" Version="1.22.0" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Sdk" Version="1.17.4" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.Extensions.Timer" Version="4.3.1" />
+    <PackageReference Include="Microsoft.Azure.Functions.Worker.ApplicationInsights" Version="1.4.0" />
+    <PackageReference Include="Microsoft.ApplicationInsights.WorkerService" Version="2.22.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <!--
+      1.12.0, not the API's 1.11.4. Microsoft.Azure.Functions.Worker.
+      ApplicationInsights depends on Azure.Identity >= 1.12.0, and pinning
+      lower is a NU1605 downgrade error rather than a warning here because
+      TreatWarningsAsErrors is on. The two hosts may legitimately differ;
+      what matters is that each resolves without a downgrade.
+    -->
+    <PackageReference Include="Azure.Identity" Version="1.12.0" />
+    <PackageReference Include="Microsoft.Data.SqlClient.AlwaysEncrypted.AzureKeyVaultProvider" Version="3.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The functions and the application lock are internal: nothing outside
+      this assembly should construct them in production. The integration
+      suite does construct them, deliberately, because the sweep is only
+      meaningful against a real SQL Server: sp_getapplock has no in-memory
+      equivalent and the retirement clock is stored data, not computation.
+    -->
+    <InternalsVisibleTo Include="Desicon.Workflow.IntegrationTests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Desicon.Workflow.Core\Desicon.Workflow.Core.csproj" />
+    <ProjectReference Include="..\Desicon.Workflow.Domain\Desicon.Workflow.Domain.csproj" />
+    <ProjectReference Include="..\Desicon.Workflow.Infrastructure\Desicon.Workflow.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="host.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="local.settings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

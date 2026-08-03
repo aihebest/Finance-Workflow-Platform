@@ -71,6 +71,7 @@ param(
     [string]$ResourceGroup = "rg-desicon-fw-dev",
     [string]$AcrName = "crdesiconfwdev",
     [string]$AppServiceName = "app-desicon-fw-api-dev",
+    [string]$FunctionAppName = "func-desicon-fw-dev",
     [string]$SqlServerName = "sql-desicon-fw-dev"
 )
 
@@ -128,6 +129,9 @@ if ($credExists -ne "0") {
 $scopes = @(
     @{ Role = "Contributor"; Scope = (az acr show -n $AcrName -g $ResourceGroup --query id -o tsv) }
     @{ Role = "Website Contributor"; Scope = (az webapp show -n $AppServiceName -g $ResourceGroup --query id -o tsv) }
+    # The Function App is a separate resource and needs its own assignment --
+    # Website Contributor on the App Service does not extend to it.
+    @{ Role = "Website Contributor"; Scope = (az functionapp show -n $FunctionAppName -g $ResourceGroup --query id -o tsv) }
     @{ Role = "SQL Server Contributor"; Scope = (az sql server show -n $SqlServerName -g $ResourceGroup --query id -o tsv) }
 )
 
