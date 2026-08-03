@@ -1,39 +1,51 @@
 using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
 using Microsoft.Data.SqlClient;
 
 namespace Desicon.Workflow.IntegrationTests.Infrastructure;
 
 /// <summary>
-/// Production's Always Encrypted column master key is Key-Vault-backed (see
-/// Program.cs's SqlColumnEncryptionAzureKeyVaultProvider registration and
-/// scripts/Provision-AlwaysEncryptedKeys.ps1) which requires a live Azure Key
-/// Vault and an Azure identity -- neither exists for an ephemeral
-/// Testcontainers SQL Server instance. This provisions an equivalent
-/// CMK/CEK pair against a throwaway self-signed certificate instead, using
-/// the driver's built-in MSSQL_CERTIFICATE_STORE provider. That provider is
-/// a "system" provider baked into Microsoft.Data.SqlClient -- unlike the AKV
-/// provider it needs no call to
-/// SqlConnection.RegisterColumnEncryptionKeyStoreProviders (which may only
-/// run once per process and is already spent by Program.cs), so it works
-/// for both this one-time provisioning step and every later query the
-/// application itself makes against Beneficiary.BankAccountNumber.
+/// Creates the CMK/CEK pair that
+/// Migrations/*_ApplyAlwaysEncryptedToBeneficiaryBankAccountNumber.cs
+/// requires, against a throwaway Testcontainers SQL Server instance.
+///
+/// Production's column master key is Key-Vault-backed (see Program.cs and
+/// scripts/Provision-AlwaysEncryptedKeys.ps1), which needs a live vault and
+/// an Azure identity -- neither exists here. An earlier version used the
+/// driver's built-in MSSQL_CERTIFICATE_STORE provider instead, on the
+/// reasoning that a "system" provider needs no registration. That is true,
+/// but it is implemented against the Windows certificate store and throws
+/// PlatformNotSupportedException on Linux, so the suite could never run on
+/// a GitHub-hosted runner.
+///
+/// TestColumnEncryptionKeyStoreProvider replaces it with an in-memory RSA
+/// key and no platform dependency at all.
+///
+/// REGISTRATION ORDER MATTERS. SqlConnection.RegisterColumnEncryptionKey-
+/// StoreProviders is process-wide and throws InvalidOperationException on a
+/// second call. This must therefore run before WorkflowApiFactory builds the
+/// host, and Program.cs skips its own Key Vault registration when the
+/// environment is IntegrationTests -- otherwise whichever ran second would
+/// throw.
 /// </summary>
 internal static class AlwaysEncryptedTestKeyProvisioner
 {
     private const string ColumnMasterKeyName = "CMK_Beneficiary_BankDetails";
     private const string ColumnEncryptionKeyName = "CEK_Beneficiary_BankDetails";
 
+    private static readonly object RegistrationGate = new();
+    private static bool _registered;
+
     public static async Task ProvisionAsync(string databaseConnectionString, CancellationToken cancellationToken = default)
     {
-        using var certificate = CreateSelfSignedCertificate();
-        InstallIntoCurrentUserStore(certificate);
+        RegisterProviderOnce();
 
-        var masterKeyPath = $"CurrentUser/My/{certificate.Thumbprint}";
+        var provider = new TestColumnEncryptionKeyStoreProvider();
 
+        // A fresh 256-bit CEK, wrapped by the in-memory master key. SQL
+        // Server stores only the wrapped value; it never sees the plaintext.
         var plainTextKey = RandomNumberGenerator.GetBytes(32);
-        var provider = new SqlColumnEncryptionCertificateStoreProvider();
-        var encryptedKey = provider.EncryptColumnEncryptionKey(masterKeyPath, "RSA_OAEP", plainTextKey);
+        var encryptedKey = provider.EncryptColumnEncryptionKey(
+            TestColumnEncryptionKeyStoreProvider.MasterKeyPath, "RSA_OAEP", plainTextKey);
         var encryptedValueHex = "0x" + Convert.ToHexString(encryptedKey);
 
         await using var connection = new SqlConnection(databaseConnectionString);
@@ -43,8 +55,8 @@ internal static class AlwaysEncryptedTestKeyProvisioner
             IF NOT EXISTS (SELECT 1 FROM sys.column_master_keys WHERE name = '{ColumnMasterKeyName}')
             CREATE COLUMN MASTER KEY {ColumnMasterKeyName}
             WITH (
-                KEY_STORE_PROVIDER_NAME = 'MSSQL_CERTIFICATE_STORE',
-                KEY_PATH = '{masterKeyPath}'
+                KEY_STORE_PROVIDER_NAME = '{TestColumnEncryptionKeyStoreProvider.ProviderName}',
+                KEY_PATH = '{TestColumnEncryptionKeyStoreProvider.MasterKeyPath}'
             );
             """, cancellationToken);
 
@@ -59,6 +71,25 @@ internal static class AlwaysEncryptedTestKeyProvisioner
             """, cancellationToken);
     }
 
+    private static void RegisterProviderOnce()
+    {
+        lock (RegistrationGate)
+        {
+            if (_registered)
+            {
+                return;
+            }
+
+            SqlConnection.RegisterColumnEncryptionKeyStoreProviders(
+                new Dictionary<string, SqlColumnEncryptionKeyStoreProvider>(StringComparer.OrdinalIgnoreCase)
+                {
+                    [TestColumnEncryptionKeyStoreProvider.ProviderName] = new TestColumnEncryptionKeyStoreProvider()
+                });
+
+            _registered = true;
+        }
+    }
+
     // The interpolated values are this class's own generated key names/paths/
     // hex blobs, never external input -- CA2100 can't see that, so this is a
     // deliberate, scoped suppression rather than a missing parameterization.
@@ -70,36 +101,4 @@ internal static class AlwaysEncryptedTestKeyProvisioner
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 #pragma warning restore CA2100
-
-    private static X509Certificate2 CreateSelfSignedCertificate()
-    {
-        using var rsa = RSA.Create(2048);
-        var request = new CertificateRequest(
-            "CN=Desicon.Workflow.IntegrationTests.AlwaysEncrypted",
-            rsa,
-            HashAlgorithmName.SHA256,
-            RSASignaturePadding.Pkcs1);
-
-        using var ephemeral = request.CreateSelfSigned(
-            DateTimeOffset.UtcNow.AddMinutes(-5),
-            DateTimeOffset.UtcNow.AddDays(1));
-
-        // CreateSelfSigned's private key lives only in memory on this X509Certificate2
-        // instance. SqlColumnEncryptionCertificateStoreProvider re-opens the certificate
-        // from the X509Store by thumbprint later (it doesn't reuse this instance), so the
-        // private key needs to actually be persisted alongside the cert in the store, not
-        // just attached in-process. Round-tripping through a PFX export/import with
-        // PersistKeySet forces that persistence.
-        return new X509Certificate2(
-            ephemeral.Export(X509ContentType.Pfx),
-            (string?)null,
-            X509KeyStorageFlags.PersistKeySet | X509KeyStorageFlags.Exportable);
-    }
-
-    private static void InstallIntoCurrentUserStore(X509Certificate2 certificate)
-    {
-        using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
-        store.Open(OpenFlags.ReadWrite);
-        store.Add(certificate);
-    }
 }

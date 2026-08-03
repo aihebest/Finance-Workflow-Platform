@@ -125,6 +125,16 @@ the repo reads as if both were enforced.
   schema the shipped migration could not produce. Deleted;
   `WorkflowApiFixture` now calls `Database.MigrateAsync()` so the tests
   exercise exactly what deploys.
+- `AlwaysEncryptedTestKeyProvisioner` used `MSSQL_CERTIFICATE_STORE`, whose
+  driver implementation is the Windows certificate store and throws
+  `PlatformNotSupportedException` on Linux. The integration suite could
+  therefore never have run on `ubuntu-latest` — masked for as long as CI
+  failed earlier, at the build step. Replaced with
+  `TestColumnEncryptionKeyStoreProvider`, an in-memory RSA key with no
+  platform dependency. `Program.cs` skips its own Key Vault provider
+  registration under the `IntegrationTests` environment, since
+  `RegisterColumnEncryptionKeyStoreProviders` is process-wide and may only
+  be called once.
 
 **Positions now committed**
 

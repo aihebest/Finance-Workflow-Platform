@@ -29,11 +29,21 @@ var connectionString = builder.Configuration.GetConnectionString("WorkflowDb")
 // before any SqlConnection opens -- to unwrap the column encryption key.
 // DefaultAzureCredential resolves to Managed Identity in Azure and falls
 // back to az-cli/VS credentials for local dev against a dev Key Vault.
-SqlConnection.RegisterColumnEncryptionKeyStoreProviders(new Dictionary<string, SqlColumnEncryptionKeyStoreProvider>
+// Skipped under IntegrationTests, where the test assembly has already
+// registered its own in-memory provider. RegisterColumnEncryptionKey-
+// StoreProviders is process-wide and throws InvalidOperationException on a
+// second call, so exactly one of the two may run -- see
+// tests/.../AlwaysEncryptedTestKeyProvisioner.cs. A Testcontainers SQL
+// Server has no Key Vault to unwrap against, so registering the AKV
+// provider there would be useless as well as fatal.
+if (!builder.Environment.IsEnvironment("IntegrationTests"))
 {
-    [SqlColumnEncryptionAzureKeyVaultProvider.ProviderName] =
-        new SqlColumnEncryptionAzureKeyVaultProvider(new DefaultAzureCredential())
-});
+    SqlConnection.RegisterColumnEncryptionKeyStoreProviders(new Dictionary<string, SqlColumnEncryptionKeyStoreProvider>
+    {
+        [SqlColumnEncryptionAzureKeyVaultProvider.ProviderName] =
+            new SqlColumnEncryptionAzureKeyVaultProvider(new DefaultAzureCredential())
+    });
+}
 
 builder.Services.AddDbContext<WorkflowDbContext>(options => options.UseSqlServer(connectionString));
 
