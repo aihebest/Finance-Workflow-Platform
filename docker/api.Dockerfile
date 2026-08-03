@@ -20,11 +20,25 @@ RUN dotnet publish src/Desicon.Workflow.Api/Desicon.Workflow.Api.csproj \
         /p:UseAppHost=false
 
 # ── Runtime ────────────────────────────────────────────────────────────────
-FROM mcr.microsoft.com/dotnet/aspnet:8.0-jammy-chiseled AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-jammy-chiseled-extra AS runtime
 
 # Chiselled image ships no shell and no package manager, which removes most of
 # what a container escape would want to use. It also keeps the Trivy image scan
 # quiet, because there is almost no OS surface left to have CVEs.
+#
+# -extra, not plain chiseled. The plain variant omits ICU and sets
+# DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=true. Microsoft.Data.SqlClient
+# requests the en-US culture while opening a connection and throws
+#
+#   Only the invariant culture is supported in globalization-invariant mode.
+#   ... en-us is an invalid culture identifier.
+#
+# so every database call fails with a message about culture rather than
+# about SQL, which sends you looking at the wrong subsystem entirely.
+#
+# -extra adds ICU (and tzdata) while keeping the no-shell,
+# no-package-manager posture the paragraph above is about. The image is
+# roughly 12 MB larger; that is the whole cost.
 
 WORKDIR /app
 COPY --from=build /app/publish ./
