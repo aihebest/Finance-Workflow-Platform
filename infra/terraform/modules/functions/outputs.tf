@@ -18,6 +18,16 @@ output "default_hostname" {
   value       = azurerm_linux_function_app.this.default_hostname
 }
 
+output "storage_account_name" {
+  description = "Functions runtime storage account, which also holds the deployment package container."
+  value       = azurerm_storage_account.functions.name
+}
+
+output "deployments_container_name" {
+  description = "Blob container the deploy job uploads the published package to, and that WEBSITE_RUN_FROM_PACKAGE points into."
+  value       = azurerm_storage_container.deployments.name
+}
+
 output "service_plan_id" {
   description = "Function App Service Plan resource id."
   value       = azurerm_service_plan.this.id

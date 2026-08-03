@@ -179,6 +179,27 @@ resource "azurerm_linux_function_app" "this" {
 }
 
 # ── Identity-based AzureWebJobsStorage: Blob/Queue/Table data-plane roles ───
+# ── Deployment package container ───────────────────────────────────────────
+# The Function App runs from a package rather than a Kudu zip deploy.
+#
+# az functionapp deployment source config-zip cannot be used here: it reaches
+# the SCM site with basic authentication, which
+# webdeploy_publish_basic_authentication_enabled = false disables. The command
+# receives a 401 with an empty body and fails parsing it as JSON, which reads
+# as an Azure CLI bug rather than a deliberate lockdown.
+#
+# Instead CI uploads the published zip here and points
+# WEBSITE_RUN_FROM_PACKAGE at the resulting blob URL. The Function App reads
+# it with its own managed identity (Storage Blob Data Owner, below), so no
+# SAS token, storage key or publishing profile exists anywhere in the
+# pipeline. That is also why app_settings["WEBSITE_RUN_FROM_PACKAGE"] is in
+# this resource's ignore_changes: the value is owned by the deploy job.
+resource "azurerm_storage_container" "deployments" {
+  name                  = "deployments"
+  storage_account_id    = azurerm_storage_account.functions.id
+  container_access_type = "private"
+}
+
 resource "azurerm_role_assignment" "storage_blob_owner" {
   scope                = azurerm_storage_account.functions.id
   role_definition_name = "Storage Blob Data Owner"

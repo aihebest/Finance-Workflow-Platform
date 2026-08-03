@@ -72,6 +72,7 @@ param(
     [string]$AcrName = "crdesiconfwdev",
     [string]$AppServiceName = "app-desicon-fw-api-dev",
     [string]$FunctionAppName = "func-desicon-fw-dev",
+    [string]$FunctionStorageAccount = "stdesiconfwdevfn2",
     [string]$SqlServerName = "sql-desicon-fw-dev"
 )
 
@@ -133,6 +134,10 @@ $scopes = @(
     # Website Contributor on the App Service does not extend to it.
     @{ Role = "Website Contributor"; Scope = (az functionapp show -n $FunctionAppName -g $ResourceGroup --query id -o tsv) }
     @{ Role = "SQL Server Contributor"; Scope = (az sql server show -n $SqlServerName -g $ResourceGroup --query id -o tsv) }
+    # Upload the Functions deployment package. The runtime storage account has
+    # shared_access_key_enabled = false, so this must be a data-plane RBAC
+    # grant -- there is no key to fall back on, which is the point.
+    @{ Role = "Storage Blob Data Contributor"; Scope = (az storage account show -n $FunctionStorageAccount -g $ResourceGroup --query id -o tsv) }
 )
 
 foreach ($assignment in $scopes) {

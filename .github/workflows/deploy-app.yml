@@ -49,6 +49,10 @@ env:
   IMAGE_REPOSITORY: finance-workflow-api
   APP_SERVICE_NAME: app-desicon-fw-api-dev
   FUNCTION_APP_NAME: func-desicon-fw-dev
+  # Runtime storage for the Function App, which also holds the deployment
+  # package container. Terraform output functions.storage_account_name.
+  FUNCTION_STORAGE_ACCOUNT: stdesiconfwdevfn2
+  FUNCTION_PACKAGE_CONTAINER: deployments
   SQL_SERVER_NAME: sql-desicon-fw-dev
   SQL_DATABASE_NAME: DesiconFinanceWorkflow
   FRONT_DOOR_HOSTNAME: fde-desicon-fw-dev-e5deetfbdxfvfsfq.z01.azurefd.net
@@ -250,13 +254,46 @@ jobs:
           cd ..
           unzip -l functions.zip | head -20
 
-      - name: Deploy
+      # Run-from-package via blob, not `az functionapp deployment source
+      # config-zip`. That command talks to the Kudu SCM site with basic
+      # authentication, which modules/functions disables
+      # (webdeploy_publish_basic_authentication_enabled = false). It receives
+      # a 401 with an empty body and fails trying to parse it as JSON, so the
+      # symptom is an Azure CLI stack trace rather than an access denial.
+      #
+      # Uploading with --auth-mode login uses this job's OIDC identity; the
+      # Function App then reads the package with its own managed identity.
+      # No SAS, no storage key, no publishing profile.
+      - name: Upload package
+        id: package
         run: |
-          az functionapp deployment source config-zip \
+          BLOB="functions-${GITHUB_SHA}.zip"
+
+          az storage blob upload \
+            --account-name "$FUNCTION_STORAGE_ACCOUNT" \
+            --container-name "$FUNCTION_PACKAGE_CONTAINER" \
+            --name "$BLOB" \
+            --file functions.zip \
+            --auth-mode login \
+            --overwrite \
+            --output none
+
+          echo "url=https://${FUNCTION_STORAGE_ACCOUNT}.blob.core.windows.net/${FUNCTION_PACKAGE_CONTAINER}/${BLOB}" >> "$GITHUB_OUTPUT"
+
+      # Terraform ignores changes to this setting precisely so the deploy job
+      # can own it -- see modules/functions. Setting it restarts the app and
+      # the host mounts the new package read-only.
+      - name: Point the Function App at the package
+        run: |
+          az functionapp config appsettings set \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --name "$FUNCTION_APP_NAME" \
-            --src functions.zip \
-            --build-remote false \
+            --settings "WEBSITE_RUN_FROM_PACKAGE=${{ steps.package.outputs.url }}" \
+            --output none
+
+          az functionapp restart \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$FUNCTION_APP_NAME" \
             --output none
 
       # A deployment that reports success while the host loaded no functions
