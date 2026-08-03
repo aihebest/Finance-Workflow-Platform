@@ -45,6 +45,12 @@ variable "entra_admin_object_id" {
   type        = string
 }
 
+variable "vnet_rule_subnet_ids" {
+  description = "Subnets whose outbound traffic may reach this server, as azurerm_mssql_virtual_network_rule entries. Required in dev, where use_private_endpoints is false: ip_rules admits deployer public addresses, but the App Service and Function App reach SQL from the integrated app subnet with a private source address that no firewall rule can match. Each subnet must advertise the Microsoft.Sql service endpoint -- a rule naming a subnet without it is accepted and never matches. Ignored when use_private_endpoints is true, since the private endpoint is then the only path."
+  type        = list(string)
+  default     = []
+}
+
 variable "pe_subnet_id" {
   description = "Subnet for the private endpoint. Required when use_private_endpoints is true; unused (and safe to omit) otherwise."
   type        = string

@@ -141,6 +141,11 @@ module "sql" {
   public_network_access_enabled = true
   ip_rules                      = var.deployer_ip_addresses
 
+  # ip_rules covers deployers reaching SQL from the public internet. The App
+  # Service and Function App do not: their outbound traffic leaves through
+  # the integrated app subnet, so they need a VNet rule instead.
+  vnet_rule_subnet_ids = [module.network.app_subnet_id]
+
   log_analytics_workspace_id = module.monitoring.log_analytics_workspace_id
   tags                       = local.tags
 }

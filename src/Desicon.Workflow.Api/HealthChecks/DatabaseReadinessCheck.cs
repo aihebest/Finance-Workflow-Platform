@@ -51,10 +51,17 @@ internal sealed class DatabaseReadinessCheck : IHealthCheck
         try
         {
             // 1. Connectivity and authentication as the managed identity.
-            if (!await _db.Database.CanConnectAsync(cancellationToken))
-            {
-                return HealthCheckResult.Unhealthy("Cannot connect to the workflow database.");
-            }
+            //
+            // OpenConnectionAsync, not CanConnectAsync. CanConnectAsync
+            // catches everything and returns a bare false, collapsing
+            // "login failed for the managed identity", "rejected by the
+            // firewall", "no network route" and "database paused" into one
+            // indistinguishable message -- which is precisely the
+            // information this probe exists to provide. Opening the
+            // connection lets the SqlException reach the handler below,
+            // where the error number is mapped to something actionable.
+            await _db.Database.OpenConnectionAsync(cancellationToken);
+            await _db.Database.CloseConnectionAsync();
 
             data["connection"] = "ok";
 

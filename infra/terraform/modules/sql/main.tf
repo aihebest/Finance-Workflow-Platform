@@ -129,6 +129,27 @@ resource "azurerm_mssql_firewall_rule" "deployer" {
   end_ip_address   = each.value
 }
 
+# ── VNet rules: how the application reaches SQL when there is no private
+#    endpoint. The firewall rules above admit the *deployer*, which is a
+#    developer laptop or a CI runner -- not the App Service, whose outbound
+#    traffic leaves through the integrated app subnet with a private source
+#    address that no ip_rules entry can ever match.
+#
+#    Without this the app starts cleanly, answers /health/live, and fails
+#    every database call. The failure is a connection timeout, so it reads
+#    as "SQL is down" rather than "this subnet was never admitted".
+#
+#    Requires the Microsoft.Sql service endpoint on each subnet -- see
+#    modules/network. A rule naming a subnet without that endpoint is
+#    accepted and silently never matches. ──────────────────────────────────
+resource "azurerm_mssql_virtual_network_rule" "app" {
+  for_each = var.use_private_endpoints ? toset([]) : toset(var.vnet_rule_subnet_ids)
+
+  name      = "vnet-${substr(md5(each.value), 0, 8)}"
+  server_id = azurerm_mssql_server.this.id
+  subnet_id = each.value
+}
+
 # ── Private endpoint: the only network path to this server (skipped when
 #    use_private_endpoints is false -- dev only, see variables.tf) ─────────
 resource "azurerm_private_endpoint" "this" {

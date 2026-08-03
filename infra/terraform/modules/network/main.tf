@@ -56,12 +56,14 @@ resource "azurerm_subnet" "app" {
   virtual_network_name = azurerm_virtual_network.this.name
   address_prefixes     = var.app_subnet_address_prefixes
 
-  # A Key Vault network_acls virtual_network_subnet_ids entry only takes
-  # effect if the subnet advertises the matching service endpoint; without
-  # it the rule is accepted and silently never matches. Dev needs this
-  # because it has no private endpoint to the vault -- see
-  # modules/keyvault/variables.tf, network_acl_subnet_ids.
-  service_endpoints = ["Microsoft.KeyVault"]
+  # Service endpoints are what make a subnet nameable in another resource's
+  # network rules. A Key Vault network_acls entry or a SQL virtual network
+  # rule that references a subnet lacking the matching endpoint is accepted
+  # by Azure and then silently never matches -- so the symptom is a timeout,
+  # not a configuration error. Dev needs both because it has no private
+  # endpoints: see modules/keyvault (network_acl_subnet_ids) and modules/sql
+  # (vnet_rule_subnet_ids).
+  service_endpoints = ["Microsoft.KeyVault", "Microsoft.Sql"]
 
   # Regional VNet Integration requires an empty subnet delegated to
   # Microsoft.Web/serverFarms. App Service and the Functions Premium plan
