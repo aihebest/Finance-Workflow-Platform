@@ -59,10 +59,28 @@ public sealed class WorkflowApiFixture : IAsyncLifetime
 
         Factory = new WorkflowApiFactory(_connectionString, TimeProvider);
 
+        // The normal migrator, deliberately. This used to call
+        // EnclaveFreeMigrationRunner, which skipped the
+        // ApplyAlwaysEncryptedToBeneficiaryBankAccountNumber migration and
+        // hand-applied an equivalent schema change instead, because that
+        // migration's in-place ALTER COLUMN needed a secure enclave the
+        // Linux SQL Server image cannot provide.
+        //
+        // The consequence was a suite that passed against a schema the
+        // shipped migration could not actually produce -- and it could not
+        // produce it anywhere, not just in tests: Azure SQL has no enclave
+        // here either, so the migration had never once run successfully.
+        // The workaround was load-bearing and the artefact it compensated
+        // for was broken, which is the worst arrangement of the two.
+        //
+        // The migration now performs the same guarded drop-and-re-add
+        // itself, so running the real migrator exercises exactly what
+        // deploys. If this line ever needs special-casing again, that is a
+        // signal the migration is wrong, not the test.
         await using (var scope = Factory.Services.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<WorkflowDbContext>();
-            await EnclaveFreeMigrationRunner.MigrateAsync(db, _connectionString);
+            await db.Database.MigrateAsync();
         }
 
         await using var respawnConnection = new SqlConnection(_connectionString);

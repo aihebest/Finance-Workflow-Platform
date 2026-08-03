@@ -113,6 +113,19 @@ because nothing had ever executed the deployed path.
 | 11 | Plain chiselled image has no ICU; SqlClient asks for en-US | "invalid culture identifier" |
 | 12 | App subnet had no path to SQL or Key Vault: no VNet rule, NSG denied the service tags, and the SQL Redirect range 11000–11999 was closed | 85s timeout, error 40 |
 
+**Controls that existed but never ran**
+
+Two were found switched off rather than absent, which is worse than missing —
+the repo reads as if both were enforced.
+
+- `scripts/check-action-pinning.mjs` was never referenced by any workflow, so
+  both workflows had drifted to mutable tag pins while holding an OIDC token
+  for the subscription. Now a CI step, and every action is SHA-pinned.
+- `EnclaveFreeMigrationRunner` made the integration suite green against a
+  schema the shipped migration could not produce. Deleted;
+  `WorkflowApiFixture` now calls `Database.MigrateAsync()` so the tests
+  exercise exactly what deploys.
+
 **Positions now committed**
 
 - **Enclave-free encryption.** The Always Encrypted migration drops and
@@ -131,11 +144,6 @@ because nothing had ever executed the deployed path.
 
 **Still open from this work**
 
-- `EnclaveFreeMigrationRunner` in the integration tests is now redundant, and
-  while it remains the suite exercises the workaround rather than the shipped
-  migration — the clearest instance of pattern 4 above.
-- `scripts/check-action-pinning.mjs` requires 40-character SHA pins and
-  nothing runs it. Both workflows would fail it today.
 - `FRONT_DOOR_HOSTNAME` is hardcoded in `deploy-app.yml`; it should come from
   a Terraform output.
 - The Entra SQL admin is a person, not a group — a single point of failure.

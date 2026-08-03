@@ -12,19 +12,19 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       # global.json, not "8.0.x" -- see the comment in that file. A floating
       # SDK floats AnalysisLevel="latest-recommended", and with
       # TreatWarningsAsErrors an SDK release becomes a build break with no
       # source change behind it.
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           global-json-file: global.json
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
 
@@ -61,6 +61,18 @@ jobs:
             echo "::error::tools/guard-field-schema.json is out of date. Run 'dotnet build Desicon.FinanceWorkflow.sln' and commit the regenerated file."
             exit 1
           fi
+
+      # Every action must be pinned to a full commit SHA. A tag is a mutable
+      # pointer, and these workflows hold an OIDC token for the Azure
+      # subscription -- a moved tag would run unreviewed code with it.
+      #
+      # This script has existed since the scaffold and was never wired into
+      # CI, so the workflows drifted to tag pins and the check that would
+      # have caught it sat unused. That is the same shape as the guard-field
+      # seam and the conftest canary: a control that exists but never runs.
+      # Placed before the heavier steps so it fails fast.
+      - name: Check GitHub Actions are pinned to commit SHAs
+        run: node scripts/check-action-pinning.mjs
 
       - name: Setup conftest
         run: |
