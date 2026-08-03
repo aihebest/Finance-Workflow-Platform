@@ -264,6 +264,28 @@ jobs:
       # Uploading with --auth-mode login uses this job's OIDC identity; the
       # Function App then reads the package with its own managed identity.
       # No SAS, no storage key, no publishing profile.
+      # The runtime storage account runs network_rules default_action = Deny
+      # with only deployer IPs admitted, and GitHub-hosted runners have no
+      # stable egress address. Same arrangement as the SQL firewall in the
+      # migrate job: open a scoped exception for this run, remove it in the
+      # always() step below. A standing broad rule would be the alternative,
+      # and is worse.
+      - name: Open storage firewall for this runner
+        id: storage_firewall
+        run: |
+          RUNNER_IP=$(curl -s https://api.ipify.org)
+          echo "ip=$RUNNER_IP" >> "$GITHUB_OUTPUT"
+
+          az storage account network-rule add \
+            --account-name "$FUNCTION_STORAGE_ACCOUNT" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --ip-address "$RUNNER_IP" \
+            --output none
+
+          # Storage network ACLs are eventually consistent; an upload issued
+          # immediately after can still be refused.
+          sleep 30
+
       - name: Upload package
         id: package
         run: |
@@ -300,6 +322,15 @@ jobs:
       # is the failure mode worth catching here: the timers simply never fire,
       # and nothing surfaces until someone notices overdue advances were never
       # flagged.
+      - name: Remove storage firewall exception
+        if: always() && steps.storage_firewall.outputs.ip != ''
+        run: |
+          az storage account network-rule remove \
+            --account-name "$FUNCTION_STORAGE_ACCOUNT" \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --ip-address "${{ steps.storage_firewall.outputs.ip }}" \
+            --output none || true
+
       - name: Verify the host loaded the expected functions
         run: |
           for attempt in $(seq 1 20); do

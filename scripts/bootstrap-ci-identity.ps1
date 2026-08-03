@@ -138,6 +138,11 @@ $scopes = @(
     # shared_access_key_enabled = false, so this must be a data-plane RBAC
     # grant -- there is no key to fall back on, which is the point.
     @{ Role = "Storage Blob Data Contributor"; Scope = (az storage account show -n $FunctionStorageAccount -g $ResourceGroup --query id -o tsv) }
+    # Data-plane access is not enough: the account runs network_rules
+    # default_action = Deny, and the deploy job opens and closes a scoped
+    # firewall exception for the runner's ephemeral IP around the upload.
+    # That is a control-plane operation.
+    @{ Role = "Storage Account Contributor"; Scope = (az storage account show -n $FunctionStorageAccount -g $ResourceGroup --query id -o tsv) }
 )
 
 foreach ($assignment in $scopes) {
