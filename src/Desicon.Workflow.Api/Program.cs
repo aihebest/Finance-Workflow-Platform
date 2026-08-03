@@ -183,12 +183,29 @@ app.MapHealthChecks("/health/live", new HealthCheckOptions
     Predicate = _ => false // no dependency checks -- process liveness only
 }).AllowAnonymous();
 
+// Detail is environment-dependent. These paths are excluded from Easy Auth
+// (see auth_settings_v2.excluded_paths in modules/app-service) so that the
+// platform health probe and the deploy smoke test can reach them -- which
+// also makes them reachable by anyone who can reach Front Door. In
+// development that trade is worth it: the per-check data names the exact
+// misconfiguration and turns a 503 into a diagnosis. In production it is
+// not, because those same messages carry SQL error numbers, principal names
+// and Key Vault status codes.
+var exposeHealthDetail = !app.Environment.IsProduction();
+
 app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
     Predicate = check => check.Tags.Contains("ready"),
     ResponseWriter = async (context, report) =>
     {
         context.Response.ContentType = "application/json";
+
+        if (!exposeHealthDetail)
+        {
+            await context.Response.WriteAsJsonAsync(new { status = report.Status.ToString() });
+            return;
+        }
+
         await context.Response.WriteAsJsonAsync(new
         {
             status = report.Status.ToString(),

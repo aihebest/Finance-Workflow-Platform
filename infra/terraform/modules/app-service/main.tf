@@ -91,10 +91,18 @@ resource "azurerm_linux_web_app" "this" {
     health_check_eviction_time_in_min = 5
     worker_count                      = var.worker_count
 
+    # Managed-identity pull is opt-in and must be stated. Leaving
+    # docker_registry_username/password null does NOT select it -- it selects
+    # an anonymous pull, which a private registry answers with 401
+    # "Failed to fetch token", the same error a wrong password produces. The
+    # AcrPull role assignment is necessary but not sufficient without this.
+    container_registry_use_managed_identity = true
+
     application_stack {
       docker_image_name   = var.container_image
       docker_registry_url = var.container_registry_url
-      # Registry pull uses the app's managed identity — no admin credentials.
+      # No credentials by design -- see container_registry_use_managed_identity
+      # above, which is what actually makes that true.
       docker_registry_username = null
       docker_registry_password = null
     }
@@ -134,6 +142,21 @@ resource "azurerm_linux_web_app" "this" {
     require_authentication = true
     unauthenticated_action = "Return401"
     default_provider       = "azureactivedirectory"
+
+    # Easy Auth runs as a front-end module *before* the container, so
+    # AllowAnonymous() inside ASP.NET cannot exempt anything from it. Without
+    # these exclusions every probe gets 401: the deploy job's smoke test, and
+    # -- less obviously -- site_config.health_check_path, which means App
+    # Service concludes the instance is unhealthy and evicts it. A perfectly
+    # healthy app looks like a crash loop.
+    #
+    # Exposure is bounded deliberately: ip_restriction admits only Front
+    # Door, /health/live returns status with no dependency detail, and
+    # /health/ready suppresses diagnostic detail outside development (see
+    # the ResponseWriter in Program.cs). What remains public through Front
+    # Door is a Healthy/Unhealthy word, which is what an uptime check needs
+    # and nothing more.
+    excluded_paths = ["/health/live", "/health/ready"]
 
     active_directory_v2 {
       client_id                  = var.entra_client_id
