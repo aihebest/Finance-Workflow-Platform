@@ -134,6 +134,64 @@ resource "azurerm_network_security_group" "app" {
     description                = "Application Insights / Log Analytics telemetry ingestion."
   }
 
+  # ── Service-endpoint destinations (dev only) ─────────────────────────────
+  # When use_private_endpoints is true, SQL and Key Vault are private
+  # endpoints inside the VNet and AllowVNetOutbound above already covers
+  # them. Dev has no private endpoints: it reaches both at their public
+  # FQDNs over service endpoints, and NSG classifies that traffic under the
+  # Sql and AzureKeyVault service tags -- which are subsets of Internet, so
+  # DenyInternetOutbound below swallows it.
+  #
+  # The symptom is a TCP timeout ("error: 40 - Could not open a connection
+  # to SQL Server") roughly 85 seconds in, with the SQL firewall, the VNet
+  # rule and the service endpoint all correctly configured. Nothing in the
+  # SQL configuration is wrong; the packets never leave the subnet.
+  dynamic "security_rule" {
+    for_each = var.use_private_endpoints ? [] : [1]
+    content {
+      name                    = "AllowSqlOutbound"
+      priority                = 130
+      direction               = "Outbound"
+      access                  = "Allow"
+      protocol                = "Tcp"
+      source_port_range       = "*"
+      source_address_prefix   = "*"
+      destination_address_prefix = "Sql"
+
+      # 1433 alone is not enough. Azure SQL's connection policy for clients
+      # inside Azure defaults to Redirect: the client opens 1433 to the
+      # gateway, the gateway hands back a node address on a port in
+      # 11000-11999, and the real session runs there. Allowing only 1433
+      # lets the handshake start and then drops the redirect, which
+      # surfaces as "error: 40 - Could not open a connection" -- identical
+      # to having no rule at all, just faster.
+      #
+      # Forcing the server to Proxy policy would avoid this at the cost of
+      # routing every query through the gateway; Redirect plus this range
+      # is the documented arrangement.
+      destination_port_ranges = ["1433", "11000-11999"]
+
+      # Azure caps security_rule.description at 140 characters.
+      description = "Azure SQL via the Microsoft.Sql service endpoint, including the Redirect port range. Dev only -- uat/prd use a private endpoint."
+    }
+  }
+
+  dynamic "security_rule" {
+    for_each = var.use_private_endpoints ? [] : [1]
+    content {
+      name                       = "AllowKeyVaultOutbound"
+      priority                   = 140
+      direction                  = "Outbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      source_port_range          = "*"
+      destination_port_range     = "443"
+      source_address_prefix      = "*"
+      destination_address_prefix = "AzureKeyVault"
+      description                = "Unwrapping the Always Encrypted column master key. Dev only -- uat/prd reach Key Vault over a private endpoint."
+    }
+  }
+
   security_rule {
     name                       = "DenyInternetOutbound"
     priority                   = 4000
