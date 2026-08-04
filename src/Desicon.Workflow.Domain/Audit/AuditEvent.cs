@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 
 namespace Desicon.Workflow.Domain.Audit;
@@ -72,6 +72,33 @@ public sealed class AuditEvent
     public bool VerifyAgainst(byte[]? previousHash) =>
         CryptographicOperations.FixedTimeEquals(EventHash, ComputeHash(this, previousHash));
 
+    /// <summary>
+    /// Fields covered by the hash.
+    ///
+    /// Reason, OnBehalfOfUserId, ClientIpAddress and CorrelationId were
+    /// originally omitted, which left them silently editable: changing an
+    /// approver's stated reason for a rejection altered no behaviour and
+    /// broke no hash, so nothing could ever have detected it. That is the
+    /// one field a person with database access would most want to revise
+    /// after the fact.
+    ///
+    /// OnBehalfOfUserId matters at least as much. It records delegation --
+    /// who acted for whom -- and EscalationSweep uses it to name the actor
+    /// who failed to act. Both are claims about people, and neither was
+    /// tamper-evident.
+    ///
+    /// IdempotencyKey is deliberately excluded: it is a de-duplication
+    /// mechanism rather than a record of what happened, it is already
+    /// protected by a unique index, and including it would make the hash
+    /// depend on how a request arrived rather than on what it did.
+    ///
+    /// CHANGING THIS INVALIDATES EXISTING CHAINS. Any event sealed under the
+    /// old field set fails verification, because its recorded hash was
+    /// computed over less. Acceptable now, before the platform holds real
+    /// approvals; not later, at which point the answer is a version marker
+    /// on the event and a verifier that checks each event against the rules
+    /// in force when it was sealed.
+    /// </summary>
     private static byte[] ComputeHash(AuditEvent e, byte[]? previousHash)
     {
         var builder = new StringBuilder()
@@ -86,6 +113,14 @@ public sealed class AuditEvent
             .Append(e.ActorId.ToString("N"))
             .Append('\u001f')
             .Append(e.ActorRole)
+            .Append('\u001f')
+            .Append(e.OnBehalfOfUserId?.ToString("N"))
+            .Append('\u001f')
+            .Append(e.Reason)
+            .Append('\u001f')
+            .Append(e.ClientIpAddress)
+            .Append('\u001f')
+            .Append(e.CorrelationId)
             .Append('\u001f')
             .Append(e.OccurredAtUtc.UtcDateTime.ToString("O"))
             .Append('\u001f')

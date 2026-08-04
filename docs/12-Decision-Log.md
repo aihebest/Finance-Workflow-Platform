@@ -225,11 +225,72 @@ A service endpoint is also required for a subnet to be *nameable* in another
 resource's rules. A rule referencing a subnet without the matching endpoint
 is accepted by Azure and silently never matches.
 
-**Remaining in step 6**
+## Step 6 (part 2) — Reminder, escalation, audit verification
 
-`ReminderSweep`, `EscalationSweep`, `AuditChainVerification`. Escalation is
-the substantive one: it must transfer authority, not merely notify, or the
-SLA is advisory and the delay stays hidden.
+**Escalation transfers authority, and that is now asserted.** `sla.escalateTo`
+names a *state*, so moving the request there hands authority to that state's
+actor — authorisation derives from current state, not from a field naming an
+approver. The test that matters is not that `CurrentState` changed but that
+the Department Head can subsequently `VERIFY`; asserting the column alone
+would pass for a notification-only escalation, which is exactly the failure
+the build plan warns about.
+
+**Escalation deliberately bypasses `RequestActionService`.** That service
+resolves a declared transition, evaluates its guards and checks the caller is
+an authorised actor. Escalation is none of those: it is not in the
+transitions list, no human performs it, and it must succeed *because* the
+authorised actor did not act. The cost is that `EscalationSweep` maintains
+by hand the invariants that service normally maintains — current actor, SLA,
+`StateEnteredAt`, `ReminderCount`, audit chain, outbox. A future field
+joining that set must be added in two places. Named here because it is
+precisely the seam this log keeps recording.
+
+**Reminders count calendar hours, not working hours** — unlike the SLA
+deadline itself. A working-hours cadence goes quiet over a weekend, which is
+when a Friday submission is most likely to be forgotten. Cadence is derived
+from `StateEnteredAt + ReminderCount x reminderEveryHours`, so a missed tick
+(deploy, outage, lock contention) catches up rather than pushing every later
+reminder back.
+
+**`AddWorkflowPlatform` extracted.** The API and Functions host had each
+registered the database context, calendar, clock, definitions and actor
+resolver independently — including two copies of the holiday seeding, where
+a silent divergence moves SLA deadlines and retirement due dates without any
+code looking wrong.
+
+### The audit hash did not cover what it needed to
+
+`AuditChainVerification` was written with a tamper test as well as a
+happy-path test, on the reasoning that a checker which always returns "fine"
+passes the happy path — and this log already records three controls that did
+exactly that. The tamper test failed, and the checker was right.
+
+`ComputeHash` covered `RequestId`, `EventType`, `FromState`, `ToState`,
+`ActorId`, `ActorRole`, `OccurredAtUtc` and `PayloadJson`. It did **not**
+cover `Reason`, `OnBehalfOfUserId`, `ClientIpAddress` or `CorrelationId`.
+
+So an approver's stated reason for a rejection could be edited directly in
+the database: no behaviour changes, no hash breaks, nothing detects it. And
+`OnBehalfOfUserId` records both delegation and — since this step — the actor
+who failed to act on an escalated request. Claims about people, outside the
+tamper-evidence.
+
+All four are now hashed. `IdempotencyKey` remains excluded: it is a
+de-duplication mechanism rather than a record of what happened, and it is
+already protected by a unique index.
+
+**This invalidates chains sealed under the old field set.** Free now, before
+the platform holds real approvals. Once it does, the answer is a version
+marker on each event and a verifier that checks it against the rules in
+force when it was sealed — a materially larger piece of work, which is why
+it was worth doing today.
+
+`AuditChainVerification` logs at Critical and then throws, so a failed
+invocation raises an alert. A nightly job reporting success quietly is how
+this class of problem stays invisible. It is a full scan, which is correct
+while the table is small and will not stay affordable; incremental
+verification is deferred deliberately, because a checker that skips the rows
+an attacker edited is worse than no checker.
 
 ## Status after step 5b
 
@@ -242,6 +303,16 @@ UAT topology written, not applied — needs the self-hosted runner first. Note
 that uat/prd use private endpoints, so the dev-only NSG rules, VNet rules and
 Key Vault ACL subnet entries added here are all correctly gated off there.
 
-Step 6 part 1 done: RetirementSweep deployed and registered with the host,
-proven by the deploy job rather than assumed. Next: ReminderSweep,
-EscalationSweep, AuditChainVerification.
+Step 6 complete. `RetirementSweep`, `ReminderSweep`, `EscalationSweep` and
+`AuditChainVerification` are implemented, tested against a real SQL Server,
+and deployed; the deploy job verifies the host registered them rather than
+assuming it. 107 unit and 30 integration tests pass.
+
+Both of step 6's acceptance criteria are now numbers the build checks: an
+out-of-station advance released Friday 16:00 is overdue exactly twelve
+calendar days later, and an SLA breach transfers authority to the escalation
+target — proven by that target successfully actioning the request, not by a
+column changing.
+
+Next: step 7 (notifications and pipeline activation). The outbox now has
+three producers and still no dispatcher, which is the gap step 7 closes.
