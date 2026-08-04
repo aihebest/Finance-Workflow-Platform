@@ -3,6 +3,7 @@
     <RootNamespace>Desicon.Workflow.Infrastructure</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Azure.Identity" Version="1.21.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.10" />
     <!--
       Azure.Core for TokenCredential only, so the Graph sender can take a
@@ -10,7 +11,7 @@
       Graph SDK. Which credential to use is the host's decision: managed
       identity in Azure, az login locally.
     -->
-    <PackageReference Include="Azure.Core" Version="1.42.0" />
+    <PackageReference Include="Azure.Core" Version="1.53.0" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.10">
