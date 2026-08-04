@@ -325,13 +325,28 @@ jobs:
           # portal shows no functions, and — on a consumption or elastic plan
           # — the scale controller has no triggers to scale on, so timers may
           # not fire at all. Restart alone does not do it.
+          #
+          # Best-effort with retries, and deliberately not fatal. ARM forwards
+          # this call to the host, so it fails while the host is still coming
+          # up: BadGateway immediately after a restart, InternalServerError if
+          # the host cannot reach its storage. Neither tells us whether the
+          # deployment worked — the verify step below does, by asking what
+          # functions actually registered. Failing here would stop us before
+          # reaching the check that gives a usable answer.
           SITE_ID=$(az functionapp show \
             --resource-group "$AZURE_RESOURCE_GROUP" --name "$FUNCTION_APP_NAME" \
             --query id -o tsv)
 
-          az rest --method post \
-            --uri "${SITE_ID}/syncfunctiontriggers?api-version=2016-08-01" \
-            --output none
+          for attempt in $(seq 1 6); do
+            sleep 20
+            if az rest --method post \
+                 --uri "${SITE_ID}/syncfunctiontriggers?api-version=2016-08-01" \
+                 --output none 2>/tmp/sync_err; then
+              echo "Trigger sync accepted on attempt ${attempt}."
+              break
+            fi
+            echo "attempt ${attempt}: $(tr -d '\n' < /tmp/sync_err | cut -c1-200)"
+          done
 
       # A deployment that reports success while the host loaded no functions
       # is the failure mode worth catching here: the timers simply never fire,
