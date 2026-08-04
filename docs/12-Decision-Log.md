@@ -32,10 +32,9 @@ were never committed.
 - Does BC hold Projects, Cost Centres, Employees — if so, sync read-only from BC
 - Is NGN 30,000 still current at Rev 05
 - Consequence of an overdue advance (payroll deduction / block / escalation)
-- GHAS licensing: private repo means CodeQL, Dependency Review and every
-  upload-sarif step fail. ~$30/mo Code Security for this repo, or restructure
-  scanners to fail-on-exit-code with artefacts. Decide before step 7.
-- Repo ownership: currently a personal GitHub account, should move to a Desicon org
+- Repo ownership: currently a personal GitHub account, should move to a Desicon
+  org. No longer blocks any control (see step 7 part 2) but the IP belongs to
+  Desicon, and moving changes the OIDC federated-credential subject.
 - Multi-entity scope
 - Migrate the historical backlog or start clean at cut-over
 
@@ -357,6 +356,66 @@ none of it code:
 - Branch protection per `docs/06-DevSecOps-Maturity.md`, including
   **Include administrators**.
 - A `production` GitHub Environment with required reviewers.
+
+## Step 7 (part 2) — Repository configuration
+
+The maturity document's checklist could not be applied as written, for three
+reasons found only by trying:
+
+- It requires a **`Security Gate`** status check. The CI job is called
+  `build-test-validate`. Requiring a check that does not exist blocks every
+  merge permanently.
+- It requires **two approvals, one from CODEOWNERS**, on a repository with one
+  contributor. Any non-zero count freezes `main` for the only person who can
+  work on it.
+- It requires **signed commits**, and commits are unsigned. Enabling it would
+  reject every push until a signing key is configured.
+
+A checklist applied without reading it against the repository produces
+controls nobody can satisfy, which get waived, which is worse than not having
+them.
+
+**Repository made public.** Branch protection, environment protection rules,
+secret scanning and push protection are all unavailable on a private
+repository on a free personal account — four controls blocked by the plan,
+not by the GHAS licence. Public makes every one of them free, and closes the
+GHAS licensing question outright rather than answering it: CodeQL, SARIF
+upload, secret scanning and push protection cost nothing here.
+
+What that discloses is resource naming — the SQL FQDN, registry, storage
+accounts and Front Door hostname, all from `deploy-app.yml`, all dev. That is
+reconnaissance value, not access. Verified before publishing with gitleaks
+over the full history (29 commits, no leaks) and confirmed `*.tfvars` is
+gitignored, so no subscription id, object id or allow-listed IP is published.
+
+**Branch protection applied** — see `scripts/README-branch-protection.md` for
+the configuration and reasoning, kept in the repository so what is enforced is
+reviewable and reproducible on the org repo later.
+
+On: required `build-test-validate` (strict), linear history, no force pushes
+or deletions, required conversation resolution, and **`enforce_admins: true`**
+— the item the build plan names as most often waived, and the only one that
+matters while the owner is the only contributor.
+
+Off, with the trigger recorded: approvals stay at `0` until a second engineer
+can approve (raise to 2 and enable `require_code_owner_reviews`;
+`.github/CODEOWNERS` already exists so it is one setting). Signatures stay off
+until a signing key is configured and one commit verifies as `G`.
+
+**Consequence: direct pushes to `main` are now blocked, including the owner's.**
+Work moves to branch, PR, wait for CI, merge. Until today the pipeline could
+be bypassed by the person most able to bypass it.
+
+**`production` environment created** with a ten-minute wait timer and required
+reviewer. The reviewer is currently the same person who deploys, which is
+theatre; the wait timer is not, and nothing deploys to it yet, which is the
+right time to have set it up. `prevent_self_review` should be enabled when a
+second reviewer exists.
+
+**Dependabot** tracks `github-actions` and `nuget`. The action ecosystem
+matters most here: every action is SHA-pinned and enforced in CI, and an
+immutable pin never picks up a security fix on its own — pinning without a
+bump mechanism just trades one risk for another.
 
 ## Status after step 5b
 
