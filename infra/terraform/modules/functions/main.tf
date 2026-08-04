@@ -50,6 +50,15 @@ locals {
     ApplicationInsights__ConnectionString = var.app_insights_connection_string
     # "WorkflowDb", not "Default" -- see the note in modules/app-service.
     ConnectionStrings__WorkflowDb = var.sql_connection_uri
+
+    # Notifications. UseGraph is stated explicitly rather than left to a
+    # default: a Function App that silently logs mail instead of sending it,
+    # while reporting success, is the worst available failure for this
+    # component. Making it configuration means the value is visible in the
+    # plan and in `az functionapp config appsettings list`.
+    Notifications__UseGraph           = tostring(var.notifications_use_graph)
+    Notifications__SenderMailbox      = var.notifications_sender_mailbox
+    Notifications__ApplicationBaseUrl = var.notifications_application_base_url
   }
 }
 

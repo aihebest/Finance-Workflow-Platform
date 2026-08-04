@@ -1,5 +1,6 @@
 using Azure.Identity;
 using Desicon.Workflow.Infrastructure.DependencyInjection;
+using Desicon.Workflow.Infrastructure.Notifications;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.SqlClient.AlwaysEncrypted.AzureKeyVaultProvider;
 using Microsoft.Extensions.Configuration;
@@ -72,6 +73,22 @@ internal static class FunctionsHost
                 // SLA deadlines and retirement due dates without any code
                 // looking wrong.
                 services.AddWorkflowPlatform(connectionString, definitionsPath);
+
+                // Notifications. UseGraph is explicit configuration rather
+                // than inferred from whether a mailbox is set: inference
+                // would let a deployment that lost its configuration
+                // silently downgrade to sending nothing while reporting
+                // success, which is the failure a notification system can
+                // least afford.
+                var notifications = new NotificationOptions
+                {
+                    ApplicationBaseUrl = context.Configuration["Notifications:ApplicationBaseUrl"] ?? string.Empty,
+                    SenderMailbox = context.Configuration["Notifications:SenderMailbox"] ?? string.Empty
+                };
+
+                var useGraph = context.Configuration.GetValue("Notifications:UseGraph", false);
+
+                services.AddNotifications(notifications, new DefaultAzureCredential(), useGraph);
             })
             .Build();
 

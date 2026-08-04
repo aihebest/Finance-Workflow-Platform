@@ -149,13 +149,13 @@ resource "azurerm_network_security_group" "app" {
   dynamic "security_rule" {
     for_each = var.use_private_endpoints ? [] : [1]
     content {
-      name                    = "AllowSqlOutbound"
-      priority                = 130
-      direction               = "Outbound"
-      access                  = "Allow"
-      protocol                = "Tcp"
-      source_port_range       = "*"
-      source_address_prefix   = "*"
+      name                       = "AllowSqlOutbound"
+      priority                   = 130
+      direction                  = "Outbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      source_port_range          = "*"
+      source_address_prefix      = "*"
       destination_address_prefix = "Sql"
 
       # 1433 alone is not enough. Azure SQL's connection policy for clients

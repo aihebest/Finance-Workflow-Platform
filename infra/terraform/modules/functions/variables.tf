@@ -142,3 +142,21 @@ variable "vnet_rule_subnet_ids" {
   type        = list(string)
   default     = []
 }
+
+variable "notifications_use_graph" {
+  description = "Send notifications via Microsoft Graph. False makes the dispatcher log what it would have sent instead, which is correct until Exchange provisions the shared mailbox and grants Mail.Send. Stated explicitly per environment rather than inferred from whether a mailbox is configured: a deployment that lost its configuration must fail visibly, not quietly stop sending mail while reporting success."
+  type        = bool
+  default     = false
+}
+
+variable "notifications_sender_mailbox" {
+  description = "Shared mailbox the platform sends as, e.g. finance-workflow@desicongroup.com. Must be constrained by an Exchange application access policy limited to this one mailbox -- Mail.Send as an application permission otherwise lets the platform email as anyone in the tenant. That policy is Exchange configuration and cannot be enforced from here."
+  type        = string
+  default     = ""
+}
+
+variable "notifications_application_base_url" {
+  description = "Base URL used to build the deep link in every notification, e.g. https://fde-desicon-fw-dev-xxxx.z01.azurefd.net. No trailing slash. Empty renders notifications without a link rather than with a broken one."
+  type        = string
+  default     = ""
+}

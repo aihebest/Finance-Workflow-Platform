@@ -245,6 +245,14 @@ module "functions" {
   # run-from-package blob from the integrated app subnet.
   vnet_rule_subnet_ids = [module.network.app_subnet_id]
 
+  # No shared mailbox exists yet, so the dispatcher logs what it would have
+  # sent rather than sending it. Flipping this to true requires
+  # notifications_sender_mailbox and an Exchange application access policy
+  # scoping Mail.Send to that one mailbox -- see docs/12-Decision-Log.md.
+  notifications_use_graph            = false
+  notifications_sender_mailbox       = ""
+  notifications_application_base_url = "https://${module.frontdoor.endpoint_hostname}"
+
   key_vault_id       = module.keyvault.id
   key_vault_uri      = module.keyvault.uri
   sql_connection_uri = module.sql.connection_uri

@@ -292,6 +292,72 @@ while the table is small and will not stay affordable; incremental
 verification is deferred deliberately, because a checker that skips the rows
 an attacker edited is worse than no checker.
 
+## Step 7 (part 1) — Notifications
+
+The outbox had three producers and no consumer. Rows accumulated as Pending,
+which looks healthy from the writing side and means nobody was told anything.
+
+**Decisions**
+
+- **Deep link, no action token.** The architecture promises "a deep link and
+  an action token, so an approver can act in two clicks". Only the link ships.
+  A token that authorises a state change from a mailbox is a bearer
+  credential sitting in an inbox and a mail relay — forwardable, loggable,
+  and outside maker-checker. On a finance system, possession of a forwarded
+  email would be possession of approval authority. That deserves its own
+  design, not an afternoon alongside a dispatcher.
+- **`INotificationSender` takes a rendered message, not an `OutboxMessage`.**
+  The scaffolded interface would have made every transport responsible for
+  recipient resolution and templating as well as sending. Nothing implemented
+  it, so narrowing it was free.
+- **Two senders, selected by explicit configuration.** Graph for real, and a
+  logging sender until Exchange provisions the shared mailbox. `UseGraph` is
+  stated per environment rather than inferred from whether a mailbox is set:
+  inference would let a deployment that lost its configuration silently
+  downgrade to sending nothing while reporting success — this repo's
+  signature failure, and the one a notification system can least afford.
+- **Raw HTTP to Graph, not the SDK.** sendMail is one POST. The SDK's
+  transitive graph is a large scanning surface for a Function App that needs
+  one operation.
+- **Recipient resolution reuses `IActorResolver`.** A person authorised to
+  act and a person told to act must not drift apart, which they would
+  immediately with two copies of the rules. It also means notifications
+  follow delegations the same way authority does, for free.
+
+**The role-recipient gap, surfaced rather than papered over**
+
+`FinanceManager` appears in the workflow definitions as a notification
+recipient and there is no role-membership store to resolve it against.
+`EmployeeActorResolver` returns an empty set for role-only specs and the
+engine reads that as "everyone in the role" — correct for authorisation,
+where it widens access, and exactly wrong for notification, where it means
+"send to nobody".
+
+So unresolved specifiers come back named, and the dispatcher parks those
+messages as Failed with the specifier in `LastError` after one attempt, not
+five. `LastError` reading "could not resolve FinanceManager" points at the
+missing role store; "no recipients" would have sent someone to inspect the
+mail transport instead.
+
+Either a role-membership store or a per-module configured address is needed
+before the definitions can rely on role recipients. Until then those
+notifications fail loudly, which is the correct behaviour for a finance
+approval nobody was told about.
+
+**Still outstanding in step 7** — all repository and tenant configuration,
+none of it code:
+
+- Shared mailbox, Graph `Mail.Send` consent, and an Exchange **application
+  access policy scoping it to that one mailbox**. Without the policy the
+  platform can email as anyone in the tenant. Nothing in this repository can
+  enforce or verify that, which is why it is written in three places.
+- Entra app registrations per environment with federated OIDC scoped so a dev
+  workflow cannot obtain a production token. Currently one registration
+  serves dev.
+- Branch protection per `docs/06-DevSecOps-Maturity.md`, including
+  **Include administrators**.
+- A `production` GitHub Environment with required reviewers.
+
 ## Status after step 5b
 
 Dev is deployed and verified end to end: `/health/ready` returns Healthy with
@@ -314,5 +380,14 @@ calendar days later, and an SLA breach transfers authority to the escalation
 target — proven by that target successfully actioning the request, not by a
 column changing.
 
-Next: step 7 (notifications and pipeline activation). The outbox now has
-three producers and still no dispatcher, which is the gap step 7 closes.
+Step 7 part 1 done: the outbox has a consumer. `OutboxDispatchSweep` drains
+it every five minutes, resolving recipients through the same actor resolver
+that decides authority, rendering eleven templates with a deep link, and
+sending via Graph or logging depending on explicit configuration. 107 unit
+and 33 integration tests pass.
+
+Remaining in step 7 is entirely repository and tenant configuration — shared
+mailbox and the Exchange application access policy, per-environment Entra
+registrations, branch protection, and the production environment with
+required reviewers. None of it is code, and none of it can be verified from
+inside this repository.
