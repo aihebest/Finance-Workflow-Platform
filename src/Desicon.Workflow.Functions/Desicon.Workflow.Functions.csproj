@@ -51,6 +51,19 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!--
+      Workflow definitions travel with the package, the same way
+      docker/api.Dockerfile bakes them into the API image. A deployed host
+      then describes itself: the rules that were tested are the rules that
+      run, and changing one is a deployment rather than an edit to a mounted
+      directory nothing versions.
+    -->
+    <Content Include="..\..\modules\*.workflow.json" LinkBase="modules">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="host.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

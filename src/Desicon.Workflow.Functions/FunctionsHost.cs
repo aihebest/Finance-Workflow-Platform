@@ -1,10 +1,7 @@
 using Azure.Identity;
-using Desicon.Workflow.Core.Engine;
-using Desicon.Workflow.Core.Scheduling;
-using Desicon.Workflow.Infrastructure.Persistence;
+using Desicon.Workflow.Infrastructure.DependencyInjection;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.SqlClient.AlwaysEncrypted.AzureKeyVaultProvider;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -60,30 +57,21 @@ internal static class FunctionsHost
                             new SqlColumnEncryptionAzureKeyVaultProvider(new DefaultAzureCredential())
                     });
 
-                services.AddDbContext<WorkflowDbContext>(options => options.UseSqlServer(connectionString));
+                // Workflow definitions ship inside the image — see
+                // docker/api.Dockerfile for the equivalent on the API side.
+                // The Functions package puts them alongside the assemblies,
+                // so the path is relative to the app's base directory rather
+                // than a source-tree path.
+                var definitionsPath = Path.GetFullPath(Path.Combine(
+                    AppContext.BaseDirectory,
+                    context.Configuration["Workflow:DefinitionsPath"] ?? "modules"));
 
-                // Holidays are a maintained table, not an algorithm — see
-                // WorkingCalendarOptions.Holidays. Seeded for the current and
-                // next calendar year so a sweep running in late December
-                // still resolves a due date falling in January.
-                //
-                // Duplicated from the API deliberately for now: the two hosts
-                // have genuinely different lifetimes, and a shared
-                // AddWorkflowCore() extension is the right refactor once the
-                // remaining sweeps land and the shape stops moving. A stale
-                // holiday set here produces false overdue flags, and the
-                // people who notice first are the ones being wrongly chased.
-                services.AddSingleton<IWorkingCalendar>(_ =>
-                {
-                    var thisYear = DateTime.UtcNow.Year;
-                    var holidays = NigerianHolidays.FixedDatesFor(thisYear)
-                        .Concat(NigerianHolidays.FixedDatesFor(thisYear + 1))
-                        .ToHashSet();
-
-                    return new WorkingCalendar(new WorkingCalendarOptions { Holidays = holidays });
-                });
-
-                services.AddSingleton<IWorkflowClock, WorkflowClock>();
+                // The same registrations the API uses. Previously duplicated
+                // here, holiday seeding included, which is the one piece
+                // where a silent divergence between the two hosts would move
+                // SLA deadlines and retirement due dates without any code
+                // looking wrong.
+                services.AddWorkflowPlatform(connectionString, definitionsPath);
             })
             .Build();
 
