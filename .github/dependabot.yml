@@ -31,6 +31,34 @@ updates:
       prefix: "chore(deps)"
     labels:
       - dependencies
+
+    # This solution is deliberately on .NET 8: net8.0 everywhere, global.json
+    # pinned to 8.0.422, and dotnet-ef pinned to 8.0.10 with rollForward
+    # false. Dependabot cannot see that intent and will happily propose EF
+    # Core 10 and a v10 tool against an 8.0 runtime -- the same version skew
+    # that produced a CI-only build failure no developer machine could
+    # reproduce (see docs/12-Decision-Log.md).
+    #
+    # Majors are ignored, not the packages: patch and minor updates within
+    # 8.0.x still arrive, which is where the security fixes are. Moving to
+    # .NET 10 is a deliberate migration with a global.json change, not
+    # something to arrive by pull request on a Monday morning.
+    ignore:
+      - dependency-name: "Microsoft.EntityFrameworkCore*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Microsoft.AspNetCore.*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Microsoft.Extensions.*"
+        update-types: ["version-update:semver-major"]
+
+      # From .config/dotnet-tools.json. Pinned to 8.0.10 with rollForward
+      # false precisely so the tool cannot drift from the runtime it
+      # generates migration SQL for -- a newer tool against an older runtime
+      # emits subtly different SQL, which is the one thing a migration script
+      # must never do between environments.
+      - dependency-name: "dotnet-ef"
+        update-types: ["version-update:semver-major"]
+
     groups:
       # EF Core, the SqlClient stack and the Functions worker packages each
       # move as a set. Ungrouped, a minor bump to one half produces a PR that
