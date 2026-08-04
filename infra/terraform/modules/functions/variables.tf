@@ -136,3 +136,9 @@ variable "storage_ip_rules" {
   type        = list(string)
   default     = []
 }
+
+variable "vnet_rule_subnet_ids" {
+  description = "Subnets admitted through the runtime storage account's network_rules. Required in dev, where use_private_endpoints is false: the Function App reaches AzureWebJobsStorage and its run-from-package blob from the integrated app subnet, and storage_ip_rules only covers public deployer addresses. Each subnet must advertise the Microsoft.Storage service endpoint -- a rule naming a subnet without it is accepted and silently never matches. Symptom when missing: the host will not start, and syncfunctiontriggers reports an InternalServerError from the host runtime."
+  type        = list(string)
+  default     = []
+}

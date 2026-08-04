@@ -63,7 +63,7 @@ resource "azurerm_subnet" "app" {
   # not a configuration error. Dev needs both because it has no private
   # endpoints: see modules/keyvault (network_acl_subnet_ids) and modules/sql
   # (vnet_rule_subnet_ids).
-  service_endpoints = ["Microsoft.KeyVault", "Microsoft.Sql"]
+  service_endpoints = ["Microsoft.KeyVault", "Microsoft.Sql", "Microsoft.Storage"]
 
   # Regional VNet Integration requires an empty subnet delegated to
   # Microsoft.Web/serverFarms. App Service and the Functions Premium plan
@@ -189,6 +189,22 @@ resource "azurerm_network_security_group" "app" {
       source_address_prefix      = "*"
       destination_address_prefix = "AzureKeyVault"
       description                = "Unwrapping the Always Encrypted column master key. Dev only -- uat/prd reach Key Vault over a private endpoint."
+    }
+  }
+
+  dynamic "security_rule" {
+    for_each = var.use_private_endpoints ? [] : [1]
+    content {
+      name                       = "AllowStorageOutbound"
+      priority                   = 150
+      direction                  = "Outbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      source_port_range          = "*"
+      destination_port_range     = "443"
+      source_address_prefix      = "*"
+      destination_address_prefix = "Storage"
+      description                = "Functions runtime storage and the run-from-package blob, via the Microsoft.Storage service endpoint. Dev only."
     }
   }
 

@@ -72,6 +72,18 @@ resource "azurerm_storage_account" "functions" {
     default_action = "Deny"
     bypass         = ["AzureServices"]
     ip_rules       = var.storage_ip_rules
+
+    # The Function App reads AzureWebJobsStorage and its run-from-package
+    # blob from the integrated app subnet, with a private source address no
+    # ip_rules entry can match. bypass = AzureServices does not cover it:
+    # that exemption is for a specific list of first-party services, and a
+    # Function App reaching its own storage is not on it.
+    #
+    # Without this the host cannot start, and the failure is remote from the
+    # cause: `syncfunctiontriggers` returns "BadRequest ... Encountered an
+    # error (InternalServerError) from host runtime", which reads as a
+    # platform fault rather than a network ACL.
+    virtual_network_subnet_ids = var.vnet_rule_subnet_ids
   }
 
   blob_properties {

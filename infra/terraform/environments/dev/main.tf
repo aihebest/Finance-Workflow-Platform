@@ -240,6 +240,11 @@ module "functions" {
   storage_public_network_access_enabled = true
   storage_ip_rules                      = var.deployer_ip_addresses
 
+  # storage_ip_rules admits deployers reaching the account from the public
+  # internet. The Function App does not: it reads AzureWebJobsStorage and its
+  # run-from-package blob from the integrated app subnet.
+  vnet_rule_subnet_ids = [module.network.app_subnet_id]
+
   key_vault_id       = module.keyvault.id
   key_vault_uri      = module.keyvault.uri
   sql_connection_uri = module.sql.connection_uri
