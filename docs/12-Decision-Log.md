@@ -160,6 +160,77 @@ the repo reads as if both were enforced.
 - Sequence rollover past 2028 has no owner. A December timer function is the
   natural fit and lands squarely in step 6.
 
+## Step 6 (part 1) — RetirementSweep
+
+`src/Desicon.Workflow.Functions`, isolated worker, deployed and verified.
+
+**Decisions**
+
+- **Singleton by SQL application lock**, not the WebJobs `[Singleton]`
+  attribute. `sp_getapplock` puts the lock in the same database as the work
+  it guards and uses the same mechanism as the action pipeline's UPDLOCK,
+  rather than a blob lease in a storage account with its own identity,
+  network and lifecycle. Session-scoped and non-blocking: an instance that
+  loses the race skips the tick rather than queueing behind the winner and
+  sweeping again immediately.
+- **The sweep compares against the stored `RetirementDueDate`**, which
+  `ReleaseCash` computed from the working calendar at release, rather than
+  recomputing the window each run. The build plan says the sweep "must use
+  the working calendar, not AddHours"; comparing against a calendar-derived
+  stored instant satisfies that, and recomputing would not — it would
+  silently re-date every outstanding advance whenever the holiday table
+  changed, including ones already flagged overdue. Nigerian holidays are
+  declared days ahead, so that would happen in practice.
+- **One audit event per crossing into Overdue**, keyed on the due date
+  rather than the sweep date. A daily sweep that appended per run would put
+  one entry per day per overdue advance into the hash chain.
+- **Run-from-package over blob, not Kudu zip deploy.**
+  `az functionapp deployment source config-zip` authenticates to the SCM
+  site with basic auth, which `webdeploy_publish_basic_authentication_enabled
+  = false` disables; it receives a 401 with an empty body and fails parsing
+  it as JSON. CI uploads the package with its own OIDC identity and the
+  Function App reads it with its managed identity, so the credential-free
+  property holds through deployment as well as runtime.
+
+**Measured, not assumed**
+
+An out-of-station advance released Friday 16:00 is overdue **exactly twelve
+calendar days later** — asserted in `RetirementSweepTests`, not stated in
+prose. A public holiday inside the window makes it thirteen. That second
+figure is correct behaviour and worth knowing: an unmaintained holiday table
+does not only cause false overdue flags, it also quietly grants extra time
+nobody agreed to.
+
+`RetirementStatus.NotDue` means "no due date set", not "not yet late" — an
+advance inside its window is `Due`. Easy to misread, and now asserted.
+
+**Pattern 6 — deny-by-default with an allow-list nobody added the app to**
+
+Four resources today, identical shape, each reported as something else:
+
+| Resource | Missing | Reported as |
+|---|---|---|
+| Key Vault | app subnet in `network_acls` | 403, looks like RBAC |
+| SQL | VNet rule, NSG rule, Redirect ports 11000-11999 | 85s timeout, looks like SQL down |
+| Functions storage | subnet rule, service endpoint, NSG rule | `InternalServerError from host runtime` |
+| ACR | `container_registry_use_managed_identity` | 401 pull, looks like bad credentials |
+
+All four exist only because dev has no private endpoints. uat and prd use
+private endpoints and a self-hosted runner inside the VNet, so none of these
+exceptions apply there — which is exactly why someone will copy this
+workflow to prod and wonder why it opens firewalls. Every one is gated on
+`use_private_endpoints`.
+
+A service endpoint is also required for a subnet to be *nameable* in another
+resource's rules. A rule referencing a subnet without the matching endpoint
+is accepted by Azure and silently never matches.
+
+**Remaining in step 6**
+
+`ReminderSweep`, `EscalationSweep`, `AuditChainVerification`. Escalation is
+the substantive one: it must transfer authority, not merely notify, or the
+SLA is advisory and the delay stays hidden.
+
 ## Status after step 5b
 
 Dev is deployed and verified end to end: `/health/ready` returns Healthy with
@@ -171,4 +242,6 @@ UAT topology written, not applied — needs the self-hosted runner first. Note
 that uat/prd use private endpoints, so the dev-only NSG rules, VNet rules and
 Key Vault ACL subnet entries added here are all correctly gated off there.
 
-Next: step 6 (timer functions).
+Step 6 part 1 done: RetirementSweep deployed and registered with the host,
+proven by the deploy job rather than assumed. Next: ReminderSweep,
+EscalationSweep, AuditChainVerification.
