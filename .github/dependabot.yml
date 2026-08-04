@@ -1,0 +1,50 @@
+# Dependabot.
+#
+# The github-actions ecosystem is the one that matters most here, and for a
+# reason specific to this repository: every action is pinned to a full commit
+# SHA (enforced by scripts/check-action-pinning.mjs, wired into CI). A SHA pin
+# is immutable, which is the point — and also means it never picks up a
+# security fix on its own. Pinning without a bump mechanism trades one risk
+# for another; this is the other half of that decision.
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(actions)"
+    labels:
+      - dependencies
+      - github-actions
+
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+    labels:
+      - dependencies
+    groups:
+      # EF Core, the SqlClient stack and the Functions worker packages each
+      # move as a set. Ungrouped, a minor bump to one half produces a PR that
+      # fails to restore and looks like Dependabot is broken.
+      entity-framework:
+        patterns:
+          - "Microsoft.EntityFrameworkCore*"
+      azure-functions:
+        patterns:
+          - "Microsoft.Azure.Functions.Worker*"
+      test:
+        patterns:
+          - "xunit*"
+          - "FluentAssertions"
+          - "Testcontainers*"
+          - "Respawn"
+          - "Microsoft.NET.Test.Sdk"

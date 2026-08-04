@@ -1,0 +1,31 @@
+# Code owners.
+#
+# Added ahead of the branch-protection rule that will use it. Requiring a
+# CODEOWNERS review while this repository has one contributor would freeze
+# main entirely — nobody else can approve — so that rule stays off until
+# there is a second reviewer. The file exists now so switching it on later
+# is one setting rather than another round of decisions.
+#
+# The paths below are the ones where a wrong change is expensive and quiet:
+# infrastructure that holds the data plane open, the pipeline that deploys
+# with an OIDC token, the policy that gates it, and the audit primitives.
+
+*                                   @aihebest
+
+# Infrastructure and pipeline: a change here can open a network path, widen a
+# role assignment, or alter what deploys, and none of those show up in the
+# application's tests.
+/infra/                             @aihebest
+/.github/workflows/                 @aihebest
+/policy/                            @aihebest
+/scripts/                           @aihebest
+
+# Audit primitives. AuditEvent.ComputeHash defines what the tamper-evidence
+# actually covers — a field quietly dropped from that hash is undetectable by
+# design, which is exactly how Reason and OnBehalfOfUserId went uncovered
+# until AuditChainVerification was written. See docs/12-Decision-Log.md.
+/src/Desicon.Workflow.Domain/Audit/  @aihebest
+
+# Workflow definitions are configuration with the force of code: they decide
+# who may approve what, and what the SLA is.
+/modules/                           @aihebest
