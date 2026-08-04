@@ -318,6 +318,21 @@ jobs:
             --name "$FUNCTION_APP_NAME" \
             --output none
 
+          # Sync triggers explicitly. With run-from-package the host mounts a
+          # zip it fetched itself, and ARM has no idea what triggers are
+          # inside until it is told to look. Without this the app runs
+          # correctly but `az functionapp function list` reports nothing, the
+          # portal shows no functions, and — on a consumption or elastic plan
+          # — the scale controller has no triggers to scale on, so timers may
+          # not fire at all. Restart alone does not do it.
+          SITE_ID=$(az functionapp show \
+            --resource-group "$AZURE_RESOURCE_GROUP" --name "$FUNCTION_APP_NAME" \
+            --query id -o tsv)
+
+          az rest --method post \
+            --uri "${SITE_ID}/syncfunctiontriggers?api-version=2016-08-01" \
+            --output none
+
       # A deployment that reports success while the host loaded no functions
       # is the failure mode worth catching here: the timers simply never fire,
       # and nothing surfaces until someone notices overdue advances were never
@@ -331,13 +346,22 @@ jobs:
             --ip-address "${{ steps.storage_firewall.outputs.ip }}" \
             --output none || true
 
+      # A deployment that reports success while the host loaded no functions
+      # is the failure mode worth catching: the timers simply never fire, and
+      # nothing surfaces until someone notices overdue advances were never
+      # flagged.
+      #
+      # Each probe is wrapped in `timeout` because az functionapp function
+      # list blocks rather than failing fast while the host is still starting
+      # — an unbounded loop here ran for 41 minutes before the job gave up.
       - name: Verify the host loaded the expected functions
+        timeout-minutes: 8
         run: |
-          for attempt in $(seq 1 20); do
-            names=$(az functionapp function list \
+          for attempt in $(seq 1 15); do
+            names=$(timeout 45 az functionapp function list \
               --resource-group "$AZURE_RESOURCE_GROUP" \
               --name "$FUNCTION_APP_NAME" \
-              --query "[].name" -o tsv 2>/dev/null || true)
+              --query "[].name" -o tsv --only-show-errors 2>/dev/null || true)
 
             if echo "$names" | grep -q "RetirementSweep"; then
               echo "Functions registered:"
@@ -346,9 +370,14 @@ jobs:
             fi
 
             echo "attempt ${attempt}: host reports [${names:-none}]"
-            sleep 15
+            sleep 20
           done
+
           echo "::error::RetirementSweep was not registered after deployment."
+          echo "Current WEBSITE_RUN_FROM_PACKAGE:"
+          az functionapp config appsettings list \
+            --resource-group "$AZURE_RESOURCE_GROUP" --name "$FUNCTION_APP_NAME" \
+            --query "[?name=='WEBSITE_RUN_FROM_PACKAGE'].value" -o tsv --only-show-errors || true
           exit 1
 
   # ──────────────────────────────── Deploy ─────────────────────────────────
