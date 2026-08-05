@@ -25,10 +25,14 @@ namespace Desicon.Workflow.IntegrationTests.Infrastructure;
 /// WebApplicationFactory's ConfigureAppConfiguration hooks are actually
 /// spliced in via HostFactoryResolver. Environment variables, by contrast,
 /// are read into WebApplicationBuilder.CreateBuilder(args)'s configuration as
-/// soon as it runs, which is early enough. AzureAd:TenantId/Instance/Audience
-/// don't need the same treatment: appsettings.json already carries non-null
-/// placeholder values that satisfy Program.cs's `?? throw` checks, and real
-/// JWT validation never runs because TestAuthHandler replaces it below.
+/// soon as it runs, which is early enough.
+///
+/// AzureAd:TenantId/Instance/Audience are threaded in the same way, and used
+/// to rely on appsettings.json's placeholders instead. That worked only
+/// because Program.cs accepted any non-null string -- the same leniency that
+/// let the deployed API validate tokens against "REPLACE_WITH_TENANT_ID" and
+/// reject every request. Now that placeholders are rejected, the tests supply
+/// real-shaped values rather than being exempted from the check.
 /// </summary>
 public sealed class WorkflowApiFactory : WebApplicationFactory<Program>
 {
@@ -41,6 +45,24 @@ public sealed class WorkflowApiFactory : WebApplicationFactory<Program>
         _timeProvider = timeProvider;
 
         Environment.SetEnvironmentVariable("ConnectionStrings__WorkflowDb", _connectionString);
+
+        // Plausible Entra values, not the appsettings.json placeholders.
+        //
+        // Program.cs now rejects "REPLACE_WITH_..." as well as null, because
+        // a placeholder and a missing value are the same defect to a caller:
+        // the deployed API validated every token against a tenant that does
+        // not exist and answered 401, with the `?? throw` guards satisfied
+        // throughout. Supplying real-shaped values here rather than exempting
+        // the test environment keeps that guard on the path the tests
+        // exercise -- an exemption would mean nothing ever runs it.
+        //
+        // None of these is used for validation: TestAuthHandler replaces the
+        // JWT bearer scheme entirely, so no token is ever verified against
+        // this tenant. They exist to get past startup, which is exactly what
+        // the placeholders used to do.
+        Environment.SetEnvironmentVariable("AzureAd__TenantId", "00000000-0000-0000-0000-000000000001");
+        Environment.SetEnvironmentVariable("AzureAd__Instance", "https://login.microsoftonline.com/");
+        Environment.SetEnvironmentVariable("AzureAd__Audience", "00000000-0000-0000-0000-000000000002");
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
