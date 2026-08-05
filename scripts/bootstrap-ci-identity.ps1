@@ -72,6 +72,7 @@ param(
     [string]$AcrName = "crdesiconfwdev",
     [string]$AppServiceName = "app-desicon-fw-api-dev",
     [string]$FunctionAppName = "func-desicon-fw-dev",
+    [string]$WebAppName = "app-desicon-fw-web-dev",
     [string]$FunctionStorageAccount = "stdesiconfwdevfn2",
     [string]$SqlServerName = "sql-desicon-fw-dev"
 )
@@ -130,9 +131,14 @@ if ($credExists -ne "0") {
 $scopes = @(
     @{ Role = "Contributor"; Scope = (az acr show -n $AcrName -g $ResourceGroup --query id -o tsv) }
     @{ Role = "Website Contributor"; Scope = (az webapp show -n $AppServiceName -g $ResourceGroup --query id -o tsv) }
-    # The Function App is a separate resource and needs its own assignment --
-    # Website Contributor on the App Service does not extend to it.
+    # Every App Service resource needs its own assignment: Website Contributor
+    # is scoped to a single site, not to the resource group, so each new app
+    # is invisible to CI until it is added here. Both the Function App and the
+    # SPA hit this in turn, each surfacing as an AuthorizationFailed on
+    # Microsoft.Web/sites/config/list/action at deploy time rather than at
+    # apply time.
     @{ Role = "Website Contributor"; Scope = (az functionapp show -n $FunctionAppName -g $ResourceGroup --query id -o tsv) }
+    @{ Role = "Website Contributor"; Scope = (az webapp show -n $WebAppName -g $ResourceGroup --query id -o tsv) }
     @{ Role = "SQL Server Contributor"; Scope = (az sql server show -n $SqlServerName -g $ResourceGroup --query id -o tsv) }
     # Upload the Functions deployment package. The runtime storage account has
     # shared_access_key_enabled = false, so this must be a data-plane RBAC
