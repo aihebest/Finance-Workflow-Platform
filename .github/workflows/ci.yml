@@ -27,6 +27,11 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
+          # npm's cache keyed on the lockfile. Without this every run
+          # re-downloads the full dependency tree, which for this project is
+          # ~250 packages.
+          cache: npm
+          cache-dependency-path: src/Desicon.Workflow.Web/package-lock.json
 
       - name: Restore
         run: dotnet restore Desicon.FinanceWorkflow.sln
@@ -81,6 +86,30 @@ jobs:
           sudo mv conftest /usr/local/bin/conftest
           rm conftest.tar.gz
           conftest --version
+
+      # The frontend, built in the same job rather than a parallel one.
+      #
+      # A separate job would be faster, but it would also need adding to the
+      # required status checks on main -- and until someone remembers to do
+      # that, a pull request touching only web code merges without the
+      # frontend ever being compiled. Keeping it inside the check that is
+      # already required means it cannot be forgotten. Revisit when the job
+      # duration justifies the extra wiring.
+      #
+      # `npm ci`, not `npm install`: it installs exactly what package-lock.json
+      # pins and fails if the two disagree, which is the same reasoning as the
+      # SHA-pinned actions and the pinned SDK.
+      - name: Restore web dependencies
+        working-directory: src/Desicon.Workflow.Web
+        run: npm ci
+
+      # Type-checks with the strict settings in tsconfig.json
+      # (exactOptionalPropertyTypes, noUncheckedIndexedAccess) and then builds
+      # for the browser targets that include mobile Safari, which is a
+      # required browser for the approval path rather than a nice-to-have.
+      - name: Build web
+        working-directory: src/Desicon.Workflow.Web
+        run: npm run build
 
       # A conftest run that silently matches zero policy rules exits 0 and
       # is indistinguishable from a genuinely clean plan -- this bit us once
