@@ -417,6 +417,88 @@ matters most here: every action is SHA-pinned and enforced in CI, and an
 immutable pin never picks up a security fix on its own — pinning without a
 bump mechanism just trades one risk for another.
 
+## Step 8 (part 1) — Frontend scaffold, auth and the approval path
+
+`src/Desicon.Workflow.Web`: React 18, TypeScript, Vite, Tailwind core
+utilities, deployed behind the same Front Door as the API.
+
+**Decisions**
+
+- **One origin, not two.** Front Door routes `/api/*` and `/health/*` to the
+  API and everything else to the SPA. Same-origin means no preflight, no CORS
+  allow-list to get wrong, and the SPA's CSP keeps `connect-src 'self'`.
+- **The SPA is served anonymously**, so `modules/web-app` is a separate module
+  rather than a reuse of `modules/app-service`. Easy Auth in front of static
+  files would return 401 to the very request that loads MSAL.
+- **Tokens in `sessionStorage`, not `localStorage`.** A shared site machine is
+  the normal case; a token that outlives the browser session means the next
+  person to open it is still signed in as the last.
+- **No action tokens** — see step 7. Email carries a deep link only.
+- **Vite build args, not runtime config.** Vite inlines `import.meta.env`, so
+  a static bundle has no runtime configuration. The Entra client and tenant
+  ids are build args and are not secrets: they are visible to anyone who opens
+  the sign-in page, and the boundary is the redirect-URI allow-list plus token
+  validation.
+
+**The 401 that took an hour: two auth layers, one configured**
+
+Sign-in succeeded, the SPA rendered, and every API call returned a bare 401.
+Three separate faults, each individually plausible:
+
+1. **Token version.** `modules/app-service` pointed Easy Auth at the v2 issuer
+   (`tenant_auth_endpoint .../v2.0`) while the registration defaulted to v1
+   tokens. A v1 token carries `aud = api://<client-id>` — which matched — and
+   `iss = sts.windows.net/<tenant>/` — which did not. The audience being
+   right is what made this hard to see.
+2. **The API validates tokens too**, independently of Easy Auth, reading
+   `AzureAd:TenantId` and `AzureAd:Audience`. Terraform set neither, so the
+   deployed API used `appsettings.json`'s `REPLACE_WITH_TENANT_ID` and
+   rejected everything. Easy Auth accepted the token; ASP.NET refused it;
+   the response named neither layer.
+3. **`?? throw` checks presence, not validity.** A placeholder is not null,
+   so every guard passed. `Program.cs` now rejects `REPLACE_WITH` values as
+   well, on the reasoning that absent and present-but-wrong are the same
+   defect to a caller.
+
+`WorkflowApiFactory` had a comment stating that the tests relied on
+"placeholder values that satisfy Program.cs's `?? throw` checks" — accurate
+documentation of the weakness, recorded as a convenience. Fixing the guard
+broke 30 of 33 integration tests, which is the correct outcome: the tests now
+supply real-shaped values rather than being exempted, so the guard stays on
+the path they exercise.
+
+**Pattern 7 — a control that only fails at the boundary it does not cover**
+
+`/health/ready` is excluded from Easy Auth so the platform probe and the
+deploy smoke test can reach it. That exclusion is necessary, and it meant the
+readiness check passed throughout while every authenticated call failed. A
+probe proving the app can reach its database says nothing about whether a
+user can reach the app. Worth an authenticated smoke test in the deploy job.
+
+**Form layout extracted** into `docs/13-Form-Layout-Reference.md` from the
+controlled spreadsheets. Two details are absent from `docs/01`'s field
+mapping and change the capture screens materially: the cash advance form has
+**six** line rows rather than eleven, and carries a **separate minor-unit
+column** (`k/¢/p`) — amounts are entered as naira and kobo in two boxes, not
+as a decimal.
+
+Both forms also print policy in their body text: the NGN 30,000 transfer
+threshold and the 24/72-hour retirement note. Those values live in the system
+with effective dating, and the retirement window is counted in *working*
+hours. Rendering the printed wording as a literal would eventually contradict
+the engine — the disagreement already open with Finance, made visible to a
+user.
+
+**Still open in step 8**
+
+- Capture forms for DEL-AC-FRM-002 and 003, to be reviewed by someone from
+  Accounts against the paper rather than against `docs/13`.
+- Playwright across Chrome, Edge and mobile Safari — the step's stated
+  acceptance test, none of which exists yet.
+- My Requests, My Advances, dashboards and admin screens.
+- Employee data has no source. `scripts/seed-dev-employee.sql` inserts one
+  person for dev; a directory or HR feed is a step 10 concern.
+
 ## Status after step 5b
 
 Dev is deployed and verified end to end: `/health/ready` returns Healthy with
