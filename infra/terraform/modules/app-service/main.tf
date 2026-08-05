@@ -48,6 +48,20 @@ locals {
     # then failed on first query against a database that isn't there. A
     # startup crash would have been the kinder outcome.
     ConnectionStrings__WorkflowDb = var.sql_connection_uri
+
+    # The API validates bearer tokens itself, in addition to Easy Auth in
+    # front of it. appsettings.json ships placeholders for these
+    # ("REPLACE_WITH_TENANT_ID"), and without them here the deployed API
+    # validated every token against a tenant that does not exist and answered
+    # 401 to all of them -- after Easy Auth had already accepted the same
+    # token. Two layers of validation, one configured and one not, and the
+    # response said nothing about which.
+    AzureAd__TenantId = var.tenant_id
+    AzureAd__Instance = "https://login.microsoftonline.com/"
+
+    # Bare client id: the Authority is the v2 issuer, and a v2 token carries
+    # aud = <client-id>. Program.cs accepts the api:// form as well.
+    AzureAd__Audience = var.entra_client_id
   }
 }
 
@@ -161,7 +175,27 @@ resource "azurerm_linux_web_app" "this" {
     active_directory_v2 {
       client_id                  = var.entra_client_id
       tenant_auth_endpoint       = "https://login.microsoftonline.com/${var.tenant_id}/v2.0"
-      allowed_audiences          = ["api://${var.entra_client_id}"]
+      # Both forms, because the audience depends on the token version and the
+      # two are easy to mix up:
+      #
+      #   v1 token: aud = api://<client-id>, iss = sts.windows.net/<tenant>/
+      #   v2 token: aud = <client-id>,       iss = login.microsoftonline.com/<tenant>/v2.0
+      #
+      # tenant_auth_endpoint above is the v2 issuer, so the platform must
+      # issue v2 tokens -- which requires api.requestedAccessTokenVersion = 2
+      # on the app registration, set by
+      # scripts/bootstrap-spa-registration.ps1. Left at the default (null =
+      # v1), the registration issues a token whose audience matches this list
+      # and whose issuer does not, and Easy Auth returns a bare 401 before
+      # ASP.NET ever sees the request. Nothing in the response says "issuer",
+      # which is what makes it expensive to find.
+      #
+      # Listing both means a registration in either state authenticates, so
+      # the audience can never be the half that is wrong.
+      allowed_audiences = [
+        "api://${var.entra_client_id}",
+        var.entra_client_id,
+      ]
       client_secret_setting_name = null # Managed Identity federated credential
     }
 

@@ -86,6 +86,27 @@ if ($api.identifierUris -notcontains $identifierUri) {
     $api = az ad app show --id $ApiClientId | ConvertFrom-Json
 }
 
+# ── Token version ────────────────────────────────────────────────────────
+# The registration must issue v2 tokens, because modules/app-service points
+# Easy Auth at the v2 issuer (tenant_auth_endpoint .../v2.0) and MSAL v3 is a
+# v2-endpoint library.
+#
+# Left at the default (null = v1), the token's audience is api://<client-id>
+# -- which matches -- but its issuer is https://sts.windows.net/<tenant>/,
+# which does not. Easy Auth then returns a bare 401 with no indication that
+# the issuer was the problem, before the request reaches ASP.NET at all. The
+# sign-in succeeds, the SPA renders, and every API call fails.
+if ($api.api.requestedAccessTokenVersion -ne 2) {
+    Write-Host "Setting requestedAccessTokenVersion to 2 (was $($api.api.requestedAccessTokenVersion)) ..."
+
+    Invoke-Graph -Method PATCH -Uri "https://graph.microsoft.com/v1.0/applications/$($api.id)" `
+        -Body @{ api = @{ requestedAccessTokenVersion = 2 } } | Out-Null
+
+    $api = az ad app show --id $ApiClientId | ConvertFrom-Json
+} else {
+    Write-Host "requestedAccessTokenVersion already 2." -ForegroundColor DarkGray
+}
+
 $existingScope = $api.api.oauth2PermissionScopes | Where-Object { $_.value -eq $ScopeName }
 
 if ($existingScope) {
