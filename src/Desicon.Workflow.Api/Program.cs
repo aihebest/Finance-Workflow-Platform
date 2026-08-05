@@ -83,16 +83,51 @@ builder.Services.AddScoped<ReadAccessScope>();
 // turned off so "oid" and "roles" keep their short names instead of being
 // rewritten onto long http://schemas... claim-mapping URIs.
 var azureAd = builder.Configuration.GetSection("AzureAd");
-var tenantId = azureAd["TenantId"] ?? throw new InvalidOperationException("Configuration 'AzureAd:TenantId' is not set.");
-var instance = azureAd["Instance"] ?? throw new InvalidOperationException("Configuration 'AzureAd:Instance' is not set.");
-var audience = azureAd["Audience"] ?? throw new InvalidOperationException("Configuration 'AzureAd:Audience' is not set.");
+
+// Present-and-wrong is the failure these guards exist to catch, not just
+// absent. appsettings.json ships "REPLACE_WITH_TENANT_ID" and
+// "api://REPLACE_WITH_APP_ID" as placeholders, and a `?? throw` accepts them
+// happily -- they are non-null strings. Terraform then set no AzureAd__*
+// app settings at all, so the deployed API validated every token against a
+// tenant that does not exist and answered 401 to all of them. Sign-in
+// succeeded, the SPA rendered, and nothing in the 401 said why.
+//
+// A missing value and a placeholder value are the same defect from the
+// caller's point of view, so they get the same treatment: fail at startup,
+// naming the setting.
+string Required(string key)
+{
+    var value = azureAd[key];
+
+    if (string.IsNullOrWhiteSpace(value) || value.Contains("REPLACE_WITH", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException(
+            $"Configuration 'AzureAd:{key}' is not set (or is still the placeholder). " +
+            "Set AzureAd__{key} on the app -- see modules/app-service in Terraform.");
+    }
+
+    return value;
+}
+
+var tenantId = Required("TenantId");
+var instance = Required("Instance");
+var audience = Required("Audience");
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
         options.Authority = $"{instance.TrimEnd('/')}/{tenantId}/v2.0";
-        options.Audience = audience;
         options.MapInboundClaims = false;
+
+        // Both audience forms accepted, for the same reason
+        // modules/app-service lists both: a v1 token carries
+        // aud = api://<client-id> and a v2 token carries aud = <client-id>.
+        // The Authority above is the v2 issuer, so v2 is what should arrive
+        // -- but accepting the other form costs nothing and removes a class
+        // of 401 that says nothing about its cause.
+        options.TokenValidationParameters.ValidAudiences = audience.StartsWith("api://", StringComparison.OrdinalIgnoreCase)
+            ? [audience, audience["api://".Length..]]
+            : [audience, $"api://{audience}"];
     });
 
 builder.Services.AddAuthorization();

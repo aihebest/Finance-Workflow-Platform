@@ -48,6 +48,20 @@ locals {
     # then failed on first query against a database that isn't there. A
     # startup crash would have been the kinder outcome.
     ConnectionStrings__WorkflowDb = var.sql_connection_uri
+
+    # The API validates bearer tokens itself, in addition to Easy Auth in
+    # front of it. appsettings.json ships placeholders for these
+    # ("REPLACE_WITH_TENANT_ID"), and without them here the deployed API
+    # validated every token against a tenant that does not exist and answered
+    # 401 to all of them -- after Easy Auth had already accepted the same
+    # token. Two layers of validation, one configured and one not, and the
+    # response said nothing about which.
+    AzureAd__TenantId = var.tenant_id
+    AzureAd__Instance = "https://login.microsoftonline.com/"
+
+    # Bare client id: the Authority is the v2 issuer, and a v2 token carries
+    # aud = <client-id>. Program.cs accepts the api:// form as well.
+    AzureAd__Audience = var.entra_client_id
   }
 }
 
