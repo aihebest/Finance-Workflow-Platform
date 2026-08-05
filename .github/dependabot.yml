@@ -21,6 +21,44 @@ updates:
       - dependencies
       - github-actions
 
+  # The frontend. Omitted when this file was first written, which meant the
+  # web dependencies were unwatched from the moment they landed -- twenty-odd
+  # alerts appeared on the default branch within the hour, none of them
+  # tracked by anything here.
+  - package-ecosystem: npm
+    directory: /src/Desicon.Workflow.Web
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(web)"
+    labels:
+      - dependencies
+      - frontend
+    groups:
+      # Build tooling moves together and never reaches the browser -- only
+      # dist/ is copied into the nginx image. Grouping keeps a routine
+      # toolchain bump to one reviewable PR instead of five.
+      build-tooling:
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+          - "esbuild"
+          - "postcss"
+          - "autoprefixer"
+          - "tailwindcss"
+          - "typescript"
+      # MSAL's browser and react packages are versioned together; bumping one
+      # alone produces a peer-dependency conflict rather than an upgrade.
+      msal:
+        patterns:
+          - "@azure/msal-*"
+      lint:
+        patterns:
+          - "eslint*"
+          - "@typescript-eslint/*"
+
   - package-ecosystem: nuget
     directory: /
     schedule:
