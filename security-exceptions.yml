@@ -21,6 +21,36 @@ exceptions:
     accepted_on: 2026-07-31
     expires_on: 2027-01-27
 
+  - id: EX-2026-002
+    tool: npm-audit
+    rule: GHSA-qwww-vcr4-c8h2
+    scope: src/Desicon.Workflow.Web
+    severity: high
+    justification: >
+      React Router RSC Mode CSRF bypass, affecting react-router 7.12.0-8.2.0.
+      Not reachable in this application: the advisory concerns React Server
+      Components request handling, and this is a client-only SPA using
+      BrowserRouter with no server-rendered routes, no RSC and no router
+      actions. There is no code path that executes a router action, which is
+      what the advisory allows to run early.
+
+      The reason this is an exception rather than an upgrade is that no
+      version satisfies every advisory at once. npm's suggested fix is
+      react-router-dom@7.11.0, which sits inside the range of GHSA-2w69-qvjg
+      (open redirect via Link/useNavigate) and GHSA-337j-9hxr (SSR hydration),
+      both fixed in 7.18.2. Taking the suggested fix would reintroduce two
+      advisories to silence one -- optimising for a clean audit report rather
+      than for risk. We hold 7.18.2, which resolves both of those.
+
+      Compensating control: every route in this application is built from a
+      system-generated GUID, never from user input, so the open-redirect class
+      of issue has no entry point either way. Revisit when a react-router
+      release exists above 8.2.0, at which point this becomes a routine bump.
+    owner: "@aihebest"
+    issue: https://github.com/aihebest/Finance-Workflow-Platform/issues/25
+    accepted_on: 2026-08-05
+    expires_on: 2026-09-04
+
   # Template — copy, do not edit the entry above.
   #
   # - id: EX-YYYY-NNN

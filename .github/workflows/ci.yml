@@ -111,6 +111,15 @@ jobs:
         working-directory: src/Desicon.Workflow.Web
         run: npm run build
 
+      # security-exceptions.yml records accepted findings with an owner, a
+      # justification and an expiry date. Nothing ran this script until now,
+      # which made every expiry decorative: an exception with a deadline
+      # nobody enforces is a permanent suppression that merely looks
+      # temporary. SECURITY.md and docs/06 both describe it as a control, and
+      # docs/06 counts open exceptions as a maturity metric.
+      - name: Check accepted security exceptions have not expired
+        run: node scripts/check-exceptions.mjs
+
       # A conftest run that silently matches zero policy rules exits 0 and
       # is indistinguishable from a genuinely clean plan -- this bit us once
       # already (the bare `conftest test --policy policy/terraform` command
