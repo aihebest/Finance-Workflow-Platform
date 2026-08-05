@@ -14,13 +14,13 @@
     "@azure/msal-browser": "3.27.0",
     "@azure/msal-react": "2.2.0",
     "react": "18.3.1",
-    "react-dom": "18.3.1",
+    "react-dom": "19.2.8",
     "react-router-dom": "^7.18.2"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
     "@types/react": "18.3.12",
-    "@types/react-dom": "18.3.1",
+    "@types/react-dom": "19.2.4",
     "@typescript-eslint/eslint-plugin": "8.15.0",
     "@typescript-eslint/parser": "8.15.0",
     "@vitejs/plugin-react": "^6.0.5",
