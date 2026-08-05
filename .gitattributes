@@ -1,0 +1,39 @@
+# Line-ending normalisation.
+#
+# Without this, every file touched on a Windows machine shows as wholly
+# modified: a recent `git status` reported 7,913 changed lines across fifteen
+# migration files, of which `git diff --ignore-all-space` showed exactly none.
+# That is not cosmetic. A diff nobody can read is a diff nobody reviews, and
+# the pull-request workflow enforced on main only works if the diff means
+# something.
+#
+# text=auto normalises to LF in the repository while checking out whatever the
+# platform prefers. Committed content becomes LF everywhere, so the same file
+# produced on Windows, in CI on Linux, and inside the build container is
+# byte-identical.
+
+* text=auto
+
+# Explicit for the shell scripts that run inside Linux containers and on the
+# runners. A CRLF shebang line makes a script fail with "bad interpreter",
+# which reads as a missing binary rather than a line ending.
+*.sh    text eol=lf
+*.bash  text eol=lf
+
+# PowerShell is Windows-first here (see scripts/) and CRLF is what its authors
+# and editors expect.
+*.ps1   text eol=crlf
+
+# Dockerfiles and anything the container build reads must be LF: a CRLF in a
+# RUN line ends up in the shell command.
+Dockerfile      text eol=lf
+*.Dockerfile    text eol=lf
+docker/nginx.conf text eol=lf
+
+# Binary, never diffed or normalised.
+*.png   binary
+*.jpg   binary
+*.pdf   binary
+*.xls   binary
+*.xlsx  binary
+*.pfx   binary
