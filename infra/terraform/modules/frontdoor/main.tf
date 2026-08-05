@@ -86,11 +86,73 @@ resource "azurerm_cdn_frontdoor_origin" "this" {
   weight             = 1000
 }
 
+# ── SPA origin (optional) ─────────────────────────────────────────────────
+# Present only when web_origin_hostname is set. Serving the SPA and the API
+# from one origin matters beyond tidiness: same-origin means the browser sends
+# no preflight and the API needs no CORS entry, so there is no allow-list to
+# get wrong and no third-party origin to trust. It also means the SPA's
+# Content-Security-Policy can keep connect-src at 'self'.
+resource "azurerm_cdn_frontdoor_origin_group" "web" {
+  count                    = var.web_origin_hostname == null ? 0 : 1
+  name                     = "og-web-${var.name}"
+  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.this.id
+  session_affinity_enabled = false # Static files; any instance serves any request.
+
+  health_probe {
+    protocol            = "Https"
+    interval_in_seconds = 30
+    request_type        = "GET"
+    path                = var.web_health_probe_path
+  }
+
+  load_balancing {
+    additional_latency_in_milliseconds = 0
+    sample_size                        = 4
+    successful_samples_required        = 3
+  }
+}
+
+resource "azurerm_cdn_frontdoor_origin" "web" {
+  count                         = var.web_origin_hostname == null ? 0 : 1
+  name                          = "origin-web-${var.name}"
+  cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.web[0].id
+  enabled                       = true
+
+  certificate_name_check_enabled = true
+
+  host_name          = var.web_origin_hostname
+  http_port          = 80
+  https_port         = 443
+  origin_host_header = var.web_origin_hostname
+  priority           = 1
+  weight             = 1000
+}
+
+# ── Routes ────────────────────────────────────────────────────────────────
+# Front Door matches the most specific pattern, so /api/* wins over /* and
+# ordering here does not matter. When no SPA origin exists the API keeps /*,
+# which is the shape this module had before the frontend existed.
 resource "azurerm_cdn_frontdoor_route" "this" {
   name                          = "route-${var.name}"
   cdn_frontdoor_endpoint_id     = azurerm_cdn_frontdoor_endpoint.this.id
   cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.this.id
   cdn_frontdoor_origin_ids      = [azurerm_cdn_frontdoor_origin.this.id]
+
+  patterns_to_match      = var.web_origin_hostname == null ? ["/*"] : ["/api/*", "/health/*"]
+  supported_protocols    = ["Http", "Https"]
+  forwarding_protocol    = "HttpsOnly"
+  https_redirect_enabled = true
+  link_to_default_domain = true
+
+  # No cache block: API responses are per-user and must not be cached at the edge.
+}
+
+resource "azurerm_cdn_frontdoor_route" "web" {
+  count                         = var.web_origin_hostname == null ? 0 : 1
+  name                          = "route-web-${var.name}"
+  cdn_frontdoor_endpoint_id     = azurerm_cdn_frontdoor_endpoint.this.id
+  cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.web[0].id
+  cdn_frontdoor_origin_ids      = [azurerm_cdn_frontdoor_origin.web[0].id]
 
   patterns_to_match      = ["/*"]
   supported_protocols    = ["Http", "Https"]
@@ -98,7 +160,12 @@ resource "azurerm_cdn_frontdoor_route" "this" {
   https_redirect_enabled = true
   link_to_default_domain = true
 
-  # No cache block: API responses are per-user and must not be cached at the edge.
+  # No cache block here either, deliberately. Vite emits content-hashed
+  # filenames and nginx already sets immutable long-lived caching on them,
+  # while index.html must never be cached or a deploy leaves browsers holding
+  # a page that references bundles which no longer exist. Edge caching would
+  # need per-path rules to express that; the origin already expresses it
+  # correctly, so this defers to the origin.
 }
 
 resource "azurerm_cdn_frontdoor_firewall_policy" "this" {

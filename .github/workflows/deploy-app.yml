@@ -48,6 +48,8 @@ env:
   ACR_NAME: crdesiconfwdev
   IMAGE_REPOSITORY: finance-workflow-api
   APP_SERVICE_NAME: app-desicon-fw-api-dev
+  WEB_APP_NAME: app-desicon-fw-web-dev
+  WEB_IMAGE_REPOSITORY: finance-workflow-web
   FUNCTION_APP_NAME: func-desicon-fw-dev
   # Runtime storage for the Function App, which also holds the deployment
   # package container. Terraform output functions.storage_account_name.
@@ -209,6 +211,83 @@ jobs:
             --server "$SQL_SERVER_NAME" \
             --name "${{ steps.firewall.outputs.rule }}" \
             --output none || true
+
+  # ──────────────────────────────── Frontend ───────────────────────────────
+  # Built and deployed independently of the API: the SPA holds no schema
+  # dependency, so gating it behind the migration job would make a copy change
+  # wait on a database migration for no reason.
+  #
+  # The bundle is built inside ACR from docker/web.Dockerfile, which runs
+  # `npm ci && npm run build` and copies only dist/ into nginx. The build
+  # toolchain — vite, esbuild, postcss — never reaches the published image.
+  deploy-web:
+    name: Deploy frontend
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Entra ids are baked in at build time because Vite inlines
+      # import.meta.env at compile time -- there is no runtime configuration
+      # in a static bundle. None of these are secrets: a public client id and
+      # a tenant id are visible to anyone who opens the sign-in page. The
+      # security boundary is the Entra app registration's redirect URI
+      # allow-list and the API's token validation, not the secrecy of an id.
+      - name: Build image in ACR
+        run: |
+          az acr build \
+            --registry "$ACR_NAME" \
+            --image "${WEB_IMAGE_REPOSITORY}:${GITHUB_SHA}" \
+            --image "${WEB_IMAGE_REPOSITORY}:latest" \
+            --file docker/web.Dockerfile \
+            --build-arg "VITE_ENTRA_CLIENT_ID=${{ secrets.VITE_ENTRA_CLIENT_ID }}" \
+            --build-arg "VITE_ENTRA_TENANT_ID=${{ secrets.AZURE_TENANT_ID }}" \
+            --build-arg "VITE_API_SCOPE=${{ secrets.VITE_API_SCOPE }}" \
+            .
+
+      - name: Point the Web App at the new image
+        run: |
+          LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)
+          az webapp config container set \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$WEB_APP_NAME" \
+            --container-image-name "${LOGIN_SERVER}/${WEB_IMAGE_REPOSITORY}:${GITHUB_SHA}" \
+            --container-registry-url "https://${LOGIN_SERVER}" \
+            --output none
+
+          az webapp restart \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$WEB_APP_NAME" \
+            --output none
+
+      # Checks the SPA actually serves, through Front Door, on the route that
+      # matters. A 200 on /healthz proves nginx is up; fetching / and finding
+      # the bundle reference proves the build produced something and that the
+      # /* route reaches the SPA rather than the API.
+      - name: Smoke test
+        run: |
+          for attempt in $(seq 1 30); do
+            code=$(curl -s -o /tmp/index.html -w "%{http_code}" "https://${FRONT_DOOR_HOSTNAME}/" || true)
+
+            if [ "$code" = "200" ] && grep -q "/assets/index-" /tmp/index.html; then
+              echo "SPA served after ${attempt} attempt(s)."
+              exit 0
+            fi
+
+            echo "attempt ${attempt}: HTTP ${code}"
+            sleep 10
+          done
+
+          echo "::error::The SPA did not serve through Front Door."
+          echo "Last response:"
+          head -c 500 /tmp/index.html || true
+          exit 1
 
   # ───────────────────────────── Timer functions ───────────────────────────
   # Zip deploy, not a container. modules/functions provisions the Function App
