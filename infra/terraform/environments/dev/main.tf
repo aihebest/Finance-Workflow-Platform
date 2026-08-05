@@ -9,6 +9,9 @@ locals {
   # frontdoor's resource GUID to lock its ip_restriction down to Front Door only.
   app_default_hostname = "${local.app_name}.azurewebsites.net"
 
+  web_name             = "app-desicon-fw-web-${var.environment}"
+  web_default_hostname = "${local.web_name}.azurewebsites.net"
+
   tags = {
     environment         = var.environment
     owner               = var.owner
@@ -161,11 +164,38 @@ module "frontdoor" {
   origin_hostname   = local.app_default_hostname
   health_probe_path = "/health/ready"
 
+  # Both hostnames are computed rather than taken from the modules, for the
+  # same reason origin_hostname always was: Front Door needs them to build its
+  # origins, and the apps need Front Door's id for their ip_restriction. Using
+  # module outputs here would be a genuine cycle.
+  web_origin_hostname = local.web_default_hostname
+
   log_analytics_workspace_id = module.monitoring.log_analytics_workspace_id
   tags                       = local.tags
 }
 
 # ── Compute ──────────────────────────────────────────────────────────────
+module "web_app" {
+  source = "../../modules/web-app"
+
+  name                = local.web_name
+  resource_group_name = azurerm_resource_group.main.name
+  location            = var.location
+
+  sku_name  = "B1"
+  always_on = true
+
+  # Repository and tag only; the deploy job owns the tag thereafter.
+  container_image        = "finance-workflow-web:latest"
+  container_registry_url = module.acr.registry_url
+  container_registry_id  = module.acr.id
+
+  front_door_id = module.frontdoor.frontdoor_id
+
+  log_analytics_workspace_id = module.monitoring.log_analytics_workspace_id
+  tags                       = local.tags
+}
+
 module "app_service" {
   source = "../../modules/app-service"
 

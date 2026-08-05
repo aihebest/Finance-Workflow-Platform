@@ -42,3 +42,13 @@ output "key_vault_uri" {
   description = "Key Vault URI."
   value       = module.keyvault.uri
 }
+
+output "web_app_name" {
+  description = "SPA Web App name, for the deploy job."
+  value       = module.web_app.name
+}
+
+output "web_app_default_hostname" {
+  description = "SPA default hostname. Reachable only through Front Door -- direct requests are denied by ip_restriction."
+  value       = module.web_app.default_hostname
+}

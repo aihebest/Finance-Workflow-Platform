@@ -12,3 +12,8 @@ output "endpoint_hostname" {
   description = "Default *.azurefd.net hostname for the endpoint."
   value       = azurerm_cdn_frontdoor_endpoint.this.host_name
 }
+
+output "web_route_id" {
+  description = "SPA route id, or null when no web origin is configured."
+  value       = var.web_origin_hostname == null ? null : azurerm_cdn_frontdoor_route.web[0].id
+}

@@ -46,3 +46,15 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "web_origin_hostname" {
+  description = "Hostname of the SPA origin. When set, the API route narrows to /api/* and /health/*, and everything else routes to the SPA -- so both are served from one origin and the browser never makes a cross-origin call. Null keeps the API on /*, which is the shape before a frontend existed."
+  type        = string
+  default     = null
+}
+
+variable "web_health_probe_path" {
+  description = "Health probe path on the SPA origin. docker/nginx.conf serves /healthz; probing / instead would work but returns the full index.html on every probe, thirty seconds apart, forever."
+  type        = string
+  default     = "/healthz"
+}
