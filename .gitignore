@@ -46,3 +46,7 @@ reports/
 # Azure Functions local development settings. Holds connection strings and
 # AzureWebJobsStorage for the local host; never committed.
 local.settings.json
+
+# TypeScript incremental build cache. Machine-local; committing it makes every
+# checkout differ and tells tsc things about a build that did not happen here.
+*.tsbuildinfo
