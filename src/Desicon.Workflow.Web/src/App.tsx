@@ -2,6 +2,7 @@ import { AuthenticatedTemplate, UnauthenticatedTemplate, useMsal } from "@azure/
 import { NavLink, Route, Routes } from "react-router-dom";
 import { apiScopes } from "./auth/msal";
 import { Inbox } from "./pages/Inbox";
+import { NewExpense } from "./pages/NewExpense";
 import { RequestDetail } from "./pages/RequestDetail";
 
 function SignIn() {
@@ -30,12 +31,23 @@ export function App() {
       </UnauthenticatedTemplate>
 
       <AuthenticatedTemplate>
-        <div className="mx-auto max-w-3xl p-4">
+        <div className="mx-auto max-w-5xl p-4">
           <nav className="mb-4 flex gap-4 border-b border-gray-200 pb-2">
             {/* Only the approval path is built so far. My Requests, My
                 Advances and the capture forms follow; deliberately not stubbed
                 with dead links, because a nav item that goes nowhere teaches
                 people the app is broken. */}
+            <NavLink
+              to="/expenses/new"
+              className={({ isActive }) =>
+                isActive
+                  ? "border-b-2 border-blue-700 pb-2 font-medium text-blue-700"
+                  : "pb-2 text-gray-600 hover:text-gray-900"
+              }
+            >
+              New Expense
+            </NavLink>
+
             <NavLink
               to="/"
               className={({ isActive }) =>
@@ -51,6 +63,7 @@ export function App() {
           <Routes>
             <Route path="/" element={<Inbox />} />
             <Route path="/requests/:id" element={<RequestDetail />} />
+            <Route path="/expenses/new" element={<NewExpense />} />
           </Routes>
         </div>
       </AuthenticatedTemplate>

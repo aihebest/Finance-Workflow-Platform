@@ -1,5 +1,10 @@
 import { api } from "./client";
-import type { AuditEntry, RequestSummary } from "./types";
+import type {
+  AuditEntry,
+  BeneficiarySummary,
+  ExpenseDraftInput,
+  RequestSummary,
+} from "./types";
 
 export const getInbox = () => api.get<RequestSummary[]>("/api/v1/my/inbox");
 
@@ -27,3 +32,23 @@ export const executeAction = (
     comment: comment ?? null,
     payload: payload ?? null,
   });
+
+export const getBeneficiaries = (search?: string) =>
+  api.get<BeneficiarySummary[]>(
+    search ? `/api/v1/beneficiaries?search=${encodeURIComponent(search)}` : "/api/v1/beneficiaries",
+  );
+
+/**
+ * Creates an EXPENSE draft. The API parses `payload` against
+ * ExpenseDraftPayload by module key, so the shape here must match that
+ * record exactly -- there is no shared schema between the two, which is a
+ * seam worth generating from OpenAPI later.
+ */
+export const createExpenseDraft = (input: ExpenseDraftInput) =>
+  api.post<{ requestId: string; requestNumber: string }>("/api/v1/requests", {
+    moduleKey: "EXPENSE",
+    payload: input,
+  });
+
+export const submitRequest = (id: string) =>
+  api.post<{ toState: string }>(`/api/v1/requests/${id}/submit`, {});
