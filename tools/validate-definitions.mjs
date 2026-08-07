@@ -189,6 +189,46 @@ function validate(def, guardFieldSchema) {
       warnings.push(`NO_NEGATIVE_PATH: ${s.key} offers no REJECT or RETURN`);
   }
 
+  // ---------------------------------------------------------------
+  // Policy values must be in force NOW.
+  //
+  // GetPolicyValue throws when no row for a key has an EffectiveFrom on or
+  // before "as of", and ApplyPaymentMethodPolicy calls it on every draft --
+  // so a policy whose earliest EffectiveFrom is in the future does not delay
+  // a rule, it stops requests being created at all.
+  //
+  // That happened: PAYMENT_METHOD_THRESHOLD_NGN carried effectiveFrom
+  // 2026-09-01 and no earlier row, and the whole platform refused to create
+  // an expense claim or a cash advance. The integration suite missed it
+  // because its FakeTimeProvider starts at 2026-09-07 -- the tests ran after
+  // the date, production ran before it, and both were behaving correctly.
+  //
+  // A future-dated row is legitimate and is the documented way to schedule a
+  // rate change. It is only an error when nothing covers the present.
+  const now = new Date();
+  const byKey = new Map();
+
+  for (const p of def.policyValues ?? []) {
+    if (!byKey.has(p.key)) byKey.set(p.key, []);
+    byKey.get(p.key).push(p);
+  }
+
+  for (const [key, rows] of byKey) {
+    const effectiveNow = rows.some(
+      (r) => !r.effectiveFrom || new Date(r.effectiveFrom) <= now,
+    );
+
+    if (!effectiveNow) {
+      const earliest = rows
+        .map((r) => r.effectiveFrom)
+        .sort()[0];
+      errors.push(
+        `POLICY_NOT_YET_EFFECTIVE: ${key} has no row effective today — ` +
+          `earliest effectiveFrom is ${earliest}. Requests cannot be created until then.`,
+      );
+    }
+  }
+
   return { errors, warnings };
 }
 
