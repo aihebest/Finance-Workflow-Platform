@@ -122,7 +122,13 @@ export interface ExpenseLineInput {
 }
 
 export interface ExpenseDraftInput {
-  beneficiaryId: string;
+  /**
+   * Omitted means "pay me". The API resolves the requester's own beneficiary
+   * server-side through the audited path -- the browser never asserts which
+   * beneficiary it is paying, because creating one requires bank details and
+   * writes a SecurityEvent.
+   */
+  beneficiaryId?: string;
   receiptStatus: "Yes" | "No" | "Incomplete";
   lines: ExpenseLineInput[];
 }

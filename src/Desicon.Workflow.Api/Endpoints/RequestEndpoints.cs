@@ -60,6 +60,7 @@ public static class RequestEndpoints
         IRequestNumberGenerator numberGenerator,
         IWorkflowClock clock,
         ICurrentUserAccessor currentUser,
+        IBankDetailsAuditor bankDetailsAuditor,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(dto.ModuleKey))
@@ -104,6 +105,23 @@ public static class RequestEndpoints
         request.StateEnteredAt = now;
         request.RequesterId = employee.Id;
         request.DepartmentId = employee.DepartmentId;
+
+        // "Pay me": resolve the requester's own beneficiary now that the
+        // request has an id, so the SecurityEvent the auditor writes points
+        // at a real request rather than a placeholder. RequestId is assigned
+        // at construction, so it is available before SaveChanges.
+        //
+        // Throws MissingBankDetailsException when the employee has no bank
+        // details on file — a 409, and the correct answer: the claim is
+        // well-formed and the person exists, but there is nowhere to pay
+        // them.
+        if (request is ExpenseRequest expenseRequest && expenseRequest.BeneficiaryId == Guid.Empty)
+        {
+            var beneficiary = await AdvanceRetirementEndpoints.FindOrCreateEmployeeBeneficiaryAsync(
+                db, bankDetailsAuditor, employee.Id, request.RequestId, dto.ModuleKey, employee.Id, now, cancellationToken);
+
+            expenseRequest.BeneficiaryId = beneficiary.Id;
+        }
 
         db.Add(request);
         await db.SaveChangesAsync(cancellationToken);
@@ -519,7 +537,13 @@ public static class RequestEndpoints
             throw new ArgumentException($"'{data.ReceiptStatus}' is not a valid receipt status.");
         }
 
-        expense.BeneficiaryId = data.BeneficiaryId;
+        // Guid.Empty is the sentinel for "pay me", resolved by
+        // CreateDraftAsync once the request exists and can carry the audit
+        // context. Left here rather than resolved in this method because
+        // ApplyExpenseFields is synchronous and has no database access --
+        // making it async to reach the auditor would push that dependency
+        // through every caller including the update path.
+        expense.BeneficiaryId = data.BeneficiaryId ?? Guid.Empty;
         expense.ReceiptStatus = receiptStatus;
         expense.Lines.Clear();
 
@@ -789,8 +813,24 @@ public static class RequestEndpoints
         decimal FxRate,
         DateOnly FxRateDate);
 
+    /// <summary>
+    /// BeneficiaryId is optional, and omitting it means "pay me".
+    ///
+    /// DEL-AC-FRM-002 says "Please issue payment in favour of company/staff",
+    /// and the ordinary case is a member of staff claiming their own
+    /// expenses. Requiring an explicit id made that case impossible: a
+    /// Beneficiary row is only ever created by the advance-retirement path,
+    /// so a requester with no prior advance had nobody to select — including
+    /// themselves.
+    ///
+    /// Resolved server-side rather than by the client sending its own
+    /// employee's beneficiary id, because creating one requires bank details
+    /// and writes a SecurityEvent. That has to happen through
+    /// IBankDetailsAuditor on the server, not by a browser asserting who it
+    /// is paying.
+    /// </summary>
     private sealed record ExpenseDraftPayload(
-        Guid BeneficiaryId,
+        Guid? BeneficiaryId,
         string ReceiptStatus,
         IReadOnlyList<ExpenseLinePayload> Lines);
 
