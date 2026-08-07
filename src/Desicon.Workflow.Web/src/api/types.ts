@@ -93,3 +93,36 @@ export const MODULE_LABELS: Record<string, string> = {
   EXPENSE: "Expense",
   LEAVE_REQUEST: "Leave Request",
 };
+
+/** An entry in GET /api/v1/beneficiaries. Bank details are deliberately absent. */
+export interface BeneficiarySummary {
+  id: string;
+  type: "Employee" | "Vendor" | "Other";
+  name: string;
+  hasBankDetails: boolean;
+}
+
+/**
+ * One row of DEL-AC-FRM-002's "Details of Expense" table.
+ *
+ * `expenseCategoryId` and the FX fields are on the API contract but have no
+ * source: there is no category table and no rates feed. Left optional here
+ * and unfilled by the form until those exist, rather than inventing values
+ * that would look authoritative in a ledger.
+ */
+export interface ExpenseLineInput {
+  description: string;
+  expenseDate: string;
+  projectCode: string;
+  costCentreCode: string;
+  currencyCode: string;
+  amount: number;
+  fxRate: number;
+  fxRateDate: string;
+}
+
+export interface ExpenseDraftInput {
+  beneficiaryId: string;
+  receiptStatus: "Yes" | "No" | "Incomplete";
+  lines: ExpenseLineInput[];
+}
