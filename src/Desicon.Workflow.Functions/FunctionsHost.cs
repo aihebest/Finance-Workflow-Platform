@@ -35,6 +35,19 @@ internal static class FunctionsHost
             .ConfigureFunctionsWorkerDefaults()
             .ConfigureServices((context, services) =>
             {
+                // Same omission as the API had: the packages were referenced
+                // and Terraform set ApplicationInsights__ConnectionString, but
+                // nothing registered the services, so the timer functions
+                // emitted no telemetry. A sweep that silently stops running is
+                // exactly the failure that needs telemetry to notice —
+                // nothing else would report it.
+                //
+                // ConfigureFunctionsApplicationInsights is required as well:
+                // without it the worker's own ILogger output is dropped rather
+                // than forwarded, which is the half people usually miss.
+                services.AddApplicationInsightsTelemetryWorkerService();
+                services.ConfigureFunctionsApplicationInsights();
+
                 // Same key the API uses, and the same one Terraform sets
                 // (ConnectionStrings__WorkflowDb in modules/functions).
                 // "Default" was the original name in both places and produced
