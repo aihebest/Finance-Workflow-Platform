@@ -28,7 +28,9 @@ const ROW_COUNT = 11;
 function emptyLine(): ExpenseLineInput {
   return {
     description: "",
-    expenseDate: new Date().toISOString().slice(0, 10),
+    // Deliberately blank. A pre-filled "today" is the silent
+    // wrong answer this column exists to stop.
+    expenseDate: "",
     projectCode: "",
     costCentreCode: "",
     currencyCode: "NGN",
@@ -36,6 +38,8 @@ function emptyLine(): ExpenseLineInput {
     // No FX feed exists. NGN lines are 1:1, which is honest for the only
     // currency this can currently express -- see the note under the table.
     fxRate: 1,
+    // Not the expense date. NGN lines convert 1:1, and this stamps when that
+    // rate applied -- today, because there is no rates feed to ask.
     fxRateDate: new Date().toISOString().slice(0, 10),
   };
 }
@@ -74,6 +78,10 @@ export function NewExpense() {
     // punish using the form as printed.
     const filled = lines.filter((line) => line.description.trim() !== "" && Number(line.amount) > 0);
 
+    // Ordered from the most fundamental problem outward. Checking dates
+    // first meant an entirely blank form complained that "row 1 needs a
+    // date" — naming a row the person had not filled in, which reads as the
+    // form being broken rather than incomplete.
     if (!beneficiaryId) {
       setError("Choose who this claim should be paid to.");
       return;
@@ -81,6 +89,15 @@ export function NewExpense() {
 
     if (filled.length === 0) {
       setError("Enter at least one expense line with a description and an amount.");
+      return;
+    }
+
+    const undated = filled.findIndex((line) => !line.expenseDate);
+
+    if (undated >= 0) {
+      setError(
+        `Row ${undated + 1} needs the date the expense was incurred — it decides which period the claim posts to.`,
+      );
       return;
     }
 
@@ -188,6 +205,13 @@ export function NewExpense() {
             <thead>
               <tr className="bg-gray-50 text-gray-800">
                 <th className="w-12 border border-gray-300 p-2 font-medium">S/n</th>
+                {/* Not on the printed form. docs/01 records ExpenseDate as a
+                    deliberate addition -- "needed to stop a June expense
+                    landing in the July ledger" -- and says it should go into
+                    the next paper revision so the two stay in step. Defaulting
+                    it silently to today did precisely what the field exists to
+                    prevent, so it is asked for rather than assumed. */}
+                <th className="w-36 border border-gray-300 p-2 font-medium">Date</th>
                 <th className="border border-gray-300 p-2 text-left font-medium">Description</th>
                 <th className="border border-gray-300 p-2 font-medium" colSpan={2}>
                   Specific Expense Category
@@ -207,6 +231,7 @@ export function NewExpense() {
               <tr className="bg-gray-50 text-xs text-gray-700">
                 <th className="border border-gray-300 p-1"></th>
                 <th className="border border-gray-300 p-1"></th>
+                <th className="border border-gray-300 p-1"></th>
                 <th className="border border-gray-300 p-1 font-medium">Project Code</th>
                 <th className="border border-gray-300 p-1 font-medium">Cost Center Code</th>
                 <th className="border border-gray-300 p-1"></th>
@@ -219,6 +244,15 @@ export function NewExpense() {
                 <tr key={index}>
                   <td className="border border-gray-300 p-1 text-center text-gray-600">
                     {index + 1}.0
+                  </td>
+                  <td className="border border-gray-300 p-0">
+                    <input
+                      aria-label={`Date, row ${index + 1}`}
+                      type="date"
+                      value={line.expenseDate}
+                      onChange={(e) => updateLine(index, { expenseDate: e.target.value })}
+                      className="w-full p-2 focus:bg-blue-50 focus:outline-none"
+                    />
                   </td>
                   <td className="border border-gray-300 p-0">
                     <input
@@ -248,7 +282,7 @@ export function NewExpense() {
                       className="w-full p-2 focus:bg-blue-50 focus:outline-none"
                     />
                   </td>
-                  <td className="border border-gray-300 p-2 text-center text-gray-400">—</td>
+                  <td className="border border-gray-300 bg-gray-50 p-2"></td>
                   <td className="border border-gray-300 p-0">
                     <input
                       aria-label={`Amount in naira, row ${index + 1}`}
@@ -270,7 +304,7 @@ export function NewExpense() {
                 advance, so they are shown rather than entered. */}
             <tfoot className="text-gray-900">
               <tr>
-                <td colSpan={4} className="border border-gray-300 p-2 text-right font-medium">
+                <td colSpan={5} className="border border-gray-300 p-2 text-right font-medium">
                   Total
                 </td>
                 <td className="border border-gray-300"></td>
@@ -279,7 +313,7 @@ export function NewExpense() {
                 </td>
               </tr>
               <tr>
-                <td colSpan={4} className="border border-gray-300 p-2 text-right font-medium">
+                <td colSpan={5} className="border border-gray-300 p-2 text-right font-medium">
                   Less Advance Taken
                 </td>
                 <td className="border border-gray-300"></td>
@@ -288,7 +322,7 @@ export function NewExpense() {
                 </td>
               </tr>
               <tr>
-                <td colSpan={4} className="border border-gray-300 p-2 text-right font-medium">
+                <td colSpan={5} className="border border-gray-300 p-2 text-right font-medium">
                   Net Payable
                 </td>
                 <td className="border border-gray-300"></td>
