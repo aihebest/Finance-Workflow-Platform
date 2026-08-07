@@ -69,7 +69,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+      - uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -109,7 +109,7 @@ jobs:
         with:
           global-json-file: global.json
 
-      - uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+      - uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -227,7 +227,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+      - uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -310,7 +310,7 @@ jobs:
         with:
           global-json-file: global.json
 
-      - uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+      - uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -480,7 +480,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build, migrate]
     steps:
-      - uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+      - uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
