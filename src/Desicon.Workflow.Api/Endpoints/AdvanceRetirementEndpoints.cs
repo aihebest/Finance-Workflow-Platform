@@ -1,4 +1,4 @@
-using Desicon.Workflow.Api.Security;
+﻿using Desicon.Workflow.Api.Security;
 using Desicon.Workflow.Core.Definitions;
 using Desicon.Workflow.Core.Engine;
 using Desicon.Workflow.Domain.Common;
@@ -137,7 +137,14 @@ public static class AdvanceRetirementEndpoints
     /// Treasury, so this fails loudly instead, before the row is ever
     /// created.
     /// </summary>
-    private static async Task<Beneficiary> FindOrCreateEmployeeBeneficiaryAsync(
+    /// <summary>
+    /// Internal rather than private: RequestEndpoints resolves "pay me" on
+    /// expense drafts through this same method. Two copies of "find or create
+    /// the beneficiary for an employee" would be two places that could drift
+    /// on whether bank details are required and whether the change is
+    /// audited -- and only one of them would be the one anybody reads.
+    /// </summary>
+    internal static async Task<Beneficiary> FindOrCreateEmployeeBeneficiaryAsync(
         WorkflowDbContext db,
         IBankDetailsAuditor bankDetailsAuditor,
         Guid employeeId,

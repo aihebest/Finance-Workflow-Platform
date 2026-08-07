@@ -1,17 +1,30 @@
-using Desicon.Workflow.Domain.Requests;
-using Desicon.Workflow.Domain.Security;
+﻿using Desicon.Workflow.Domain.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Desicon.Workflow.Infrastructure.Persistence.Configurations;
 
 /// <summary>
-/// No FK to Requests carrying cascade/restrict semantics that could ever
-/// block a security write -- see ISecurityEventWriter. RequestId is still
-/// declared as a relationship so EF can validate it at the type level and
-/// dashboards can join it, but delete behaviour is Restrict rather than
-/// Cascade: a request row must not be deletable out from under a record of
-/// someone having been denied access to it.
+/// No foreign key to Requests, deliberately.
+///
+/// This file used to say exactly that while declaring one. The constraint
+/// defeated the very design it claimed to protect: ISecurityEventWriter opens
+/// its own connection precisely so a denial survives the business transaction
+/// rolling back — and a foreign key makes that write impossible, because the
+/// request row it references never commits and a separate connection cannot
+/// see an uncommitted one. The mechanism guaranteeing the record survives was
+/// guaranteed to fail in the one case it existed for.
+///
+/// It also blocked a legitimate write in the other direction: creating a
+/// beneficiary while raising a claim, where the request exists in memory but
+/// has not been saved.
+///
+/// So RequestId is now a plain, indexed column. Dashboards still join on it;
+/// nothing can refuse a security write because of it. That is a deliberate
+/// trade of referential validation for the guarantee that a record of a
+/// refusal is always written — and for this column, the second matters more.
+/// A SecurityEvent naming a request that no longer exists is still evidence;
+/// a SecurityEvent that was never written is not.
 /// </summary>
 public sealed class SecurityEventConfiguration : IEntityTypeConfiguration<SecurityEvent>
 {
@@ -22,10 +35,10 @@ public sealed class SecurityEventConfiguration : IEntityTypeConfiguration<Securi
         builder.HasKey(s => s.SecurityEventId);
         builder.Property(s => s.SecurityEventId).ValueGeneratedOnAdd();
 
-        builder.HasOne<Request>()
-            .WithMany()
-            .HasForeignKey(s => s.RequestId)
-            .OnDelete(DeleteBehavior.Restrict);
+        // RequestId is stored and indexed but is not a relationship. See the
+        // class remarks: a constraint here can refuse a security write, and
+        // nothing may do that.
+        builder.Property(s => s.RequestId).IsRequired();
 
         builder.Property(s => s.ModuleKey).HasMaxLength(50).IsRequired();
         builder.Property(s => s.Action).HasMaxLength(50).IsRequired();

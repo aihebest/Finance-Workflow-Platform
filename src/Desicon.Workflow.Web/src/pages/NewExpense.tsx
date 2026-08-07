@@ -64,7 +64,8 @@ export function NewExpense() {
 
   const total = lines.reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
 
-  const selected = beneficiaries.find((b) => b.id === beneficiaryId);
+  const selected =
+    beneficiaryId === "__me__" ? undefined : beneficiaries.find((b) => b.id === beneficiaryId);
 
   function updateLine(index: number, patch: Partial<ExpenseLineInput>) {
     setLines((current) => current.map((line, i) => (i === index ? { ...line, ...patch } : line)));
@@ -104,7 +105,7 @@ export function NewExpense() {
     setBusy(true);
     try {
       const created = await createExpenseDraft({
-        beneficiaryId,
+        ...(beneficiaryId === "__me__" ? {} : { beneficiaryId }),
         receiptStatus,
         lines: filled,
       });
@@ -152,6 +153,11 @@ export function NewExpense() {
               className="flex-1 border-b border-gray-400 bg-transparent py-1 focus:border-blue-600 focus:outline-none"
             >
               <option value="">— select —</option>
+              {/* Not a real id. The API resolves the requester's own
+                  beneficiary itself, so this only signals intent -- the paper
+                  form's ordinary case ("in favour of company/staff") is a
+                  member of staff claiming their own expenses. */}
+              <option value="__me__">Myself</option>
               {beneficiaries.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name} ({b.type})

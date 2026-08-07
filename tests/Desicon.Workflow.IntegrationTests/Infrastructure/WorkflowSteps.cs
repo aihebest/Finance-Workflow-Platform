@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 using Desicon.Workflow.Domain.People;
 using Desicon.Workflow.Infrastructure.Persistence;
@@ -49,7 +49,12 @@ public static class WorkflowSteps
     // Raw HTTP wrappers -- one per route, no assertions.
     // ---------------------------------------------------------------
 
-    private static async Task<HttpResponseMessage> PostAsync(HttpClient client, string url, object? body)
+    /// <summary>
+    /// Public so a test can post a body this file has no helper for -- the
+    /// alternative is each test rebuilding the same JSON serialisation, and
+    /// then only some of them staying in step with the API's conventions.
+    /// </summary>
+    public static async Task<HttpResponseMessage> PostAsync(HttpClient client, string url, object? body)
     {
         var json = JsonSerializer.Serialize(body ?? new { });
         return await client.PostAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));
