@@ -527,3 +527,59 @@ jobs:
           az webapp log tail --resource-group "$AZURE_RESOURCE_GROUP" --name "$APP_SERVICE_NAME" --provider docker &
           sleep 20
           exit 1
+
+      # Authenticated smoke test.
+      #
+      # /health/ready is necessarily excluded from Easy Auth so the platform
+      # probe and the step above can reach it. That exclusion meant the
+      # readiness check stayed green for an hour while every authenticated
+      # call returned 401 -- three faults at once: a v1/v2 token mismatch, an
+      # API validating against REPLACE_WITH_TENANT_ID, and `?? throw` guards
+      # that accept a placeholder. A probe proving the app can reach its
+      # database says nothing about whether a user can reach the app.
+      #
+      # WHAT THIS ASSERTS, AND WHY NOT 200
+      # ----------------------------------
+      # CI authenticates as a service principal, so it cannot obtain the token
+      # a person gets, and no Employee row is linked to a service principal --
+      # the endpoint will refuse it on those grounds. That refusal is a
+      # success here: it proves the token was accepted by Easy Auth AND by the
+      # API's own JWT validation, and that the request reached application
+      # code. Only 401 means the auth chain is broken.
+      #
+      # So: unauthenticated must be 401 (Easy Auth is enforcing), and
+      # authenticated must be anything but 401 (both validators accept it).
+      - name: Authenticated smoke test
+        run: |
+          set +e
+
+          anon=$(curl -s -o /dev/null -w "%{http_code}" "https://${FRONT_DOOR_HOSTNAME}/api/v1/my/inbox")
+          echo "unauthenticated: HTTP ${anon}"
+
+          if [ "$anon" != "401" ]; then
+            echo "::error::Unauthenticated request returned ${anon}, expected 401. Easy Auth is not enforcing."
+            exit 1
+          fi
+
+          token=$(az account get-access-token --resource "api://${{ secrets.VITE_ENTRA_CLIENT_ID }}" --query accessToken -o tsv 2>/tmp/token_err)
+
+          if [ -z "$token" ]; then
+            echo "::error::Could not obtain an access token for the API as the CI identity."
+            echo "This usually means the service principal has no app role on the API registration."
+            cat /tmp/token_err
+            exit 1
+          fi
+
+          code=$(curl -s -o /tmp/auth_body -w "%{http_code}" \
+            -H "Authorization: Bearer ${token}" \
+            "https://${FRONT_DOOR_HOSTNAME}/api/v1/my/inbox")
+
+          echo "authenticated: HTTP ${code}"
+          head -c 300 /tmp/auth_body; echo
+
+          if [ "$code" = "401" ]; then
+            echo "::error::The API rejected a valid Entra token. Check AzureAd__TenantId/Audience on the app, the registration's requestedAccessTokenVersion, and auth_settings_v2.allowed_audiences -- these must agree on one token version."
+            exit 1
+          fi
+
+          echo "Auth chain verified: token accepted by Easy Auth and by the API."
