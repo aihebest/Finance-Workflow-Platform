@@ -419,19 +419,31 @@ public static class RequestEndpoints
             .Select(s => s.ModuleKey + "|" + s.State)
             .ToHashSet(StringComparer.Ordinal);
 
-        var open = db.Requests
-            .Include(r => ((ExpenseRequest)r).Lines)
-            .Include(r => ((CashAdvanceRequest)r).Lines)
-            .Where(r => r.ClosedAt == null);
-
-        var mine = open.Where(r => r.CurrentActorId == employee.Id);
-
-        var byRole = roleStateKeys.Count == 0
-            ? open.Where(_ => false)
-            : open.Where(r => roleStateKeys.Contains(r.ModuleKey + "|" + r.CurrentState));
-
-        var requests = await mine.Concat(byRole)
-            .Distinct()
+        // One predicate rather than Concat(...).Distinct(), and no Includes.
+        //
+        // The previous shape included ExpenseRequest.Lines and
+        // CashAdvanceRequest.Lines and then concatenated two queries and
+        // deduplicated them. Two problems, and the first hid the second:
+        //
+        //   * EF cannot translate a collection include through Concat +
+        //     Distinct, and threw "Unable to translate a collection subquery
+        //     in a projection" at runtime. This endpoint had never executed
+        //     against a real user -- every call failed earlier, at
+        //     authentication or at employee resolution -- so nothing had ever
+        //     reached the query.
+        //   * The includes were never used. ToSummaryDto projects twelve
+        //     scalar columns and touches no line. The query was loading every
+        //     line of every open request in order to discard them.
+        //
+        // "Mine, or in a state my roles can act on" is a single OR. It reads
+        // as the sentence it is, needs no Distinct because a row is returned
+        // once regardless of why it matched, and lets the covering index on
+        // (ClosedAt, SlaDueAt) do its job.
+        var requests = await db.Requests
+            .AsNoTracking()
+            .Where(r => r.ClosedAt == null
+                        && (r.CurrentActorId == employee.Id
+                            || roleStateKeys.Contains(r.ModuleKey + "|" + r.CurrentState)))
             .OrderBy(r => r.SlaDueAt ?? DateTimeOffset.MaxValue)
             .ToListAsync(cancellationToken);
 
@@ -443,9 +455,11 @@ public static class RequestEndpoints
     {
         var employee = await currentUser.GetEmployeeAsync(cancellationToken);
 
+        // Same reasoning as the inbox: ToSummaryDto projects scalars only, so
+        // including the line collections loaded every line of every request
+        // this person has ever raised in order to discard them.
         var mine = await db.Requests
-            .Include(r => ((ExpenseRequest)r).Lines)
-            .Include(r => ((CashAdvanceRequest)r).Lines)
+            .AsNoTracking()
             .Where(r => r.RequesterId == employee.Id)
             .OrderByDescending(r => r.StateEnteredAt)
             .ToListAsync(cancellationToken);
