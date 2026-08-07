@@ -389,19 +389,36 @@ export function NewExpense() {
         </fieldset>
       </section>
 
-      {/* The three signature blocks, shown as they appear on paper but never
-          typed: each is filled by the workflow when that person acts, and
-          the audit chain is the signature. Rendering them keeps the form
-          recognisable and makes it obvious what happens next. */}
-      <section className="grid grid-cols-1 gap-4 border border-gray-400 bg-white p-4 text-sm md:grid-cols-3">
-        {["Requested by", "Verified by", "Approved by"].map((label) => (
-          <div key={label}>
-            <p className="font-medium text-gray-800">{label}:</p>
-            <p className="mt-2 text-gray-500">Name: ____________________</p>
-            <p className="mt-2 text-gray-500">Dept: ____________________</p>
-            <p className="mt-2 text-gray-500">Sign/Date: ________________</p>
-          </div>
-        ))}
+      {/* The three signature blocks.
+
+          Shown, because the form is unrecognisable without them, but not as
+          blank ruled lines: underscores are a paper convention that on screen
+          reads as "type here", and the first person to see this tried to.
+          Nobody types these — each is recorded when that person acts, and the
+          audit chain is the signature.
+
+          Greyed and captioned so the panel says what will happen rather than
+          inviting input that would go nowhere. */}
+      <section
+        aria-label="Signatures"
+        className="border border-gray-400 bg-gray-50 p-4 text-sm"
+      >
+        <p className="mb-3 text-xs text-gray-600">
+          Signatures are recorded automatically as each approver acts. Nothing here is typed.
+        </p>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          {[
+            { label: "Requested by", state: "you, on submit" },
+            { label: "Verified by", state: "awaiting line manager" },
+            { label: "Approved by", state: "awaiting approval" },
+          ].map(({ label, state }) => (
+            <div key={label} className="rounded border border-gray-200 bg-white p-3">
+              <p className="font-medium text-gray-700">{label}</p>
+              <p className="mt-1 text-gray-500">{state}</p>
+            </div>
+          ))}
+        </div>
       </section>
 
       <div className="flex flex-wrap gap-3">

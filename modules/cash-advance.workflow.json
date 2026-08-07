@@ -28,7 +28,6 @@
     {
       "key": "PAYMENT_METHOD_THRESHOLD_NGN",
       "value": 30000,
-      "effectiveFrom": "2026-09-01T00:00:00Z",
       "note": "Same rule and figure as EXPENSE's own PAYMENT_METHOD_THRESHOLD_NGN (DEL-AC-FRM-002 Rev 05 footer), applied to TotalAmountNgn via CashAdvanceRequest.ApplyPaymentMethodPolicy since an advance has no net-payable concept of its own. A future rate change is a new row here with a later effectiveFrom, not an edit to this one -- see WorkflowDefinitionExtensions.GetPolicyValue."
     }
   ],
