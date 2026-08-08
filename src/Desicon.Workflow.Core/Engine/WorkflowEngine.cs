@@ -71,15 +71,11 @@ public sealed record TransitionResult(
 }
 
 /// <summary>
-/// Executes workflow transitions. Every state change in the platform goes
-/// through <see cref="ExecuteAsync"/> -- there is no second path. That single
-/// choice is what guarantees an audit event is written for every transition,
-/// because there is nowhere else a transition can happen.
-/// </summary>
-/// <summary>
 /// A transition the acting user is authorised for, and whether its guard
 /// currently lets them take it.
 /// </summary>
+/// <param name="Transition">The transition itself, as defined in the module's
+/// JSON.</param>
 /// <param name="GuardSatisfied">False means the action is theirs to take but
 /// something about the request is not yet in order -- not that they lack the
 /// authority.</param>
@@ -90,6 +86,12 @@ public sealed record TransitionAvailability(
     bool GuardSatisfied,
     string? BlockedReason);
 
+/// <summary>
+/// Executes workflow transitions. Every state change in the platform goes
+/// through <see cref="ExecuteAsync"/> -- there is no second path. That single
+/// choice is what guarantees an audit event is written for every transition,
+/// because there is nowhere else a transition can happen.
+/// </summary>
 public sealed class WorkflowEngine
 {
     private readonly IActorResolver _actorResolver;
