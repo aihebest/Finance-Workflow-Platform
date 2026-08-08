@@ -48,7 +48,18 @@ param(
     [Parameter(Mandatory = $true)][string]$FinanceManager,
 
     [string]$SqlServer = "sql-desicon-fw-dev.database.windows.net",
-    [string]$Database  = "sqldb-desicon-fw-dev"
+
+    # NOT sqldb-desicon-fw-dev. The server follows the Azure resource naming
+    # convention and the database does not -- see database_name in
+    # infra/terraform/environments/dev/main.tf, and the default in
+    # dev-bootstrap-db.ps1 which has been right all along.
+    #
+    # Worth knowing because the failure is actively misleading: connecting as
+    # an Entra principal to a database that does not exist reports
+    #   Login failed for user '<token-identified principal>'
+    # not "database not found". That sends you to check the SQL Entra admin,
+    # the token tenant and the firewall rule, none of which are wrong.
+    [string]$Database  = "DesiconFinanceWorkflow"
 )
 
 $ErrorActionPreference = "Stop"
