@@ -47,3 +47,23 @@ IF NOT EXISTS (
 BEGIN
     ALTER ROLE db_datawriter ADD MEMBER [$(AppName)];
 END
+
+-- Always Encrypted metadata, required to WRITE Beneficiary.BankAccountNumber.
+--
+-- db_datawriter is not sufficient. Encrypting a parameter makes the client
+-- call sp_describe_parameter_encryption to learn which key protects the
+-- column, and that procedure requires both permissions below. Without them
+-- the insert fails and the application answers 500.
+--
+-- Reads are unaffected, which is what makes this expensive to find: the
+-- readiness probe selects the encrypted column successfully every thirty
+-- seconds while every write fails. The integration suite never sees it
+-- either, because Testcontainers connects as sa and holds every permission
+-- implicitly -- so the tests, the probe and the deployment all look healthy.
+--
+-- These are metadata permissions, not data ones: they permit reading the key
+-- *definitions*, not decrypting anything. The plaintext key never leaves Key
+-- Vault, and access to it is the separate Crypto User role assignment on the
+-- app's managed identity.
+GRANT VIEW ANY COLUMN ENCRYPTION KEY DEFINITION TO [$(AppName)];
+GRANT VIEW ANY COLUMN MASTER KEY DEFINITION TO [$(AppName)];

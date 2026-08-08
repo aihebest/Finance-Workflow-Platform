@@ -523,6 +523,14 @@ public static class RequestEndpoints
         }
     }
 
+    /// <summary>
+    /// Empty and whitespace-only strings become null, so the C# checks
+    /// (IsNullOrWhiteSpace) and the database CHECK constraints (IS NULL)
+    /// agree on which fields are set.
+    /// </summary>
+    private static string? NullIfBlank(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
     private static ExpenseRequest BuildExpenseDraft(JsonElement payload, decimal paymentMethodThresholdNgn) =>
         ApplyExpenseFields(new ExpenseRequest(), payload, paymentMethodThresholdNgn);
 
@@ -557,8 +565,23 @@ public static class RequestEndpoints
                 Description = line.Description,
                 ExpenseDate = line.ExpenseDate,
                 ExpenseCategoryId = line.ExpenseCategoryId,
-                ProjectCode = line.ProjectCode,
-                CostCentreCode = line.CostCentreCode,
+
+                // Blank becomes null, and this is load-bearing rather than
+                // tidiness. Two rules express the same invariant and disagree
+                // about what "not set" means:
+                //
+                //   ExpenseLine.HasValidAllocation uses IsNullOrWhiteSpace, so
+                //     ("", "CC-01") is valid.
+                //   CK_ExpenseLine_Allocation uses IS NULL, so ("", "CC-01")
+                //     has both columns set and is rejected.
+                //
+                // A JSON client that sends "" for the column it did not fill --
+                // which is what an HTML text input does -- passes the domain
+                // check and then fails the INSERT with a constraint violation
+                // the caller cannot act on. Normalising here makes the two
+                // agree at the only point where the distinction is introduced.
+                ProjectCode = NullIfBlank(line.ProjectCode),
+                CostCentreCode = NullIfBlank(line.CostCentreCode),
                 CurrencyCode = line.CurrencyCode,
                 Amount = line.Amount,
                 FxRate = line.FxRate,
@@ -601,8 +624,14 @@ public static class RequestEndpoints
 
         advance.Purpose = data.Purpose;
         advance.AllocationType = allocationType;
-        advance.ProjectCode = data.ProjectCode;
-        advance.CostCentreCode = data.CostCentreCode;
+        // Same normalisation as the expense lines. There is no CHECK
+        // constraint on CashAdvanceRequests today, so a blank string here
+        // fails nothing at the database — it simply stores "" where the code
+        // means "not set", and CashAdvanceRequest.HasValidAllocation would
+        // then disagree with what was persisted. Fixing it in both places
+        // keeps "not set" meaning one thing across the platform.
+        advance.ProjectCode = NullIfBlank(data.ProjectCode);
+        advance.CostCentreCode = NullIfBlank(data.CostCentreCode);
         advance.StationScope = stationScope;
         advance.HasSupportingDocuments = data.HasSupportingDocuments;
 
