@@ -44,11 +44,14 @@ public sealed class NotificationRecipientResolver
 {
     private readonly WorkflowDbContext _db;
     private readonly IActorResolver _actorResolver;
+    private readonly NotificationOptions _options;
 
-    public NotificationRecipientResolver(WorkflowDbContext db, IActorResolver actorResolver)
+    public NotificationRecipientResolver(
+        WorkflowDbContext db, IActorResolver actorResolver, NotificationOptions options)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _actorResolver = actorResolver ?? throw new ArgumentNullException(nameof(actorResolver));
+        _options = options ?? throw new ArgumentNullException(nameof(options));
     }
 
     public async Task<RecipientResolution> ResolveAsync(
@@ -60,6 +63,7 @@ public sealed class NotificationRecipientResolver
         ArgumentNullException.ThrowIfNull(request);
 
         var employeeIds = new HashSet<Guid>();
+        var mailboxes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var unresolved = new List<string>();
 
         foreach (var specifier in specifiers)
@@ -68,6 +72,17 @@ public sealed class NotificationRecipientResolver
 
             if (spec is null)
             {
+                // A role rather than a person. Checked only after the
+                // person-resolvers, so a configured mailbox can never shadow
+                // "Requester" or "CurrentActor" -- it fills the gap those
+                // leave, and does not compete with them.
+                if (_options.RoleMailboxes.TryGetValue(specifier, out var mailbox) &&
+                    !string.IsNullOrWhiteSpace(mailbox))
+                {
+                    mailboxes.Add(mailbox.Trim());
+                    continue;
+                }
+
                 unresolved.Add(specifier);
                 continue;
             }
@@ -83,16 +98,22 @@ public sealed class NotificationRecipientResolver
             employeeIds.UnionWith(resolved);
         }
 
-        var addresses = employeeIds.Count == 0
-            ? []
-            : await _db.Employees
+        if (employeeIds.Count > 0)
+        {
+            var employeeAddresses = await _db.Employees
                 .AsNoTracking()
                 .Where(e => employeeIds.Contains(e.Id) && e.IsActive && e.Email != "")
                 .Select(e => e.Email)
                 .Distinct()
                 .ToListAsync(cancellationToken);
 
-        return new RecipientResolution(addresses, unresolved);
+            mailboxes.UnionWith(employeeAddresses);
+        }
+
+        // One case-insensitive set for both, so a role mailbox that happens to
+        // be an individual's address does not produce two copies of the same
+        // email differing only in capitalisation.
+        return new RecipientResolution(mailboxes.ToList(), unresolved);
     }
 
     /// <summary>
