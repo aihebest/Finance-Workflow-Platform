@@ -739,11 +739,11 @@ public static class RequestEndpoints
     /// guess which one it was looking at.
     /// </summary>
     internal static object ToDetailDto(
-        Request request, IReadOnlyList<string>? availableActions = null) => request switch
+        Request request, IReadOnlyList<AvailableAction>? availableActions = null) => request switch
     {
         ExpenseRequest expense => new
         {
-            AvailableActions = availableActions ?? Array.Empty<string>(),
+            AvailableActions = availableActions ?? Array.Empty<AvailableAction>(),
             expense.RequestId,
             expense.RequestNumber,
             expense.ModuleKey,
@@ -796,7 +796,7 @@ public static class RequestEndpoints
 
         CashAdvanceRequest advance => new
         {
-            AvailableActions = availableActions ?? Array.Empty<string>(),
+            AvailableActions = availableActions ?? Array.Empty<AvailableAction>(),
             advance.RequestId,
             advance.RequestNumber,
             advance.ModuleKey,

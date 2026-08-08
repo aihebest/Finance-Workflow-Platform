@@ -532,3 +532,54 @@ mailbox and the Exchange application access policy, per-environment Entra
 registrations, branch protection, and the production environment with
 required reviewers. None of it is code, and none of it can be verified from
 inside this repository.
+
+## The frozen actor and the live resolver disagree after a reorganisation
+
+Found while seeding a real dev org chart, not by a test.
+
+`RequestActionService` stamps `Request.CurrentActorId` at each transition
+(`ResolveNextActorAsync`). The inbox reads that column. But `availableActions`
+— added with the completion-path work — resolves the actor *live* from the
+definition, because that is the only way to answer "may I act on this" for a
+request that is not in anybody's stored queue.
+
+The two agree until somebody's reporting line changes. Re-parenting one
+employee produced this immediately, against a real request:
+
+- the previous line manager still saw the claim in their inbox, because
+  `CurrentActorId` still named them, and had no action buttons, because the
+  resolver no longer did
+- the new line manager had the buttons but the claim was absent from their
+  inbox, because no role covers `LINE_MANAGER` and the stored actor pointed
+  elsewhere
+
+Neither view is wrong on its own terms. The claim is simply invisible to the
+one person who can act on it and inert for the one who can see it, and nothing
+reports a fault — the API answers 200 to both.
+
+This is not a dev-data artefact. It is what happens to every in-flight request
+during a reorganisation, and Desicon reorganises. The paper process had the
+same hazard and solved it socially: the form was physically on someone's desk,
+and when they moved, somebody carried it.
+
+Not fixed here, because the options are a real product decision rather than a
+bug fix:
+
+1. **Re-resolve on read.** Cheap and self-healing; makes the inbox a computed
+   view and gives up the covering index on `(CurrentActorId, CurrentState)`.
+2. **Re-stamp on org change.** Keeps reads fast, but needs something to notice
+   a reporting line changed — there is no HR feed yet, which is the same
+   step 10 gap that put one hand-inserted person in dev to begin with.
+3. **Accept the divergence and surface it.** An admin screen listing requests
+   whose stored actor and resolved actor disagree. Least code, and it makes
+   the condition visible rather than silent, which is the actual failure here.
+
+Worth noting the shape, because it is the same one as the rest of this log
+with the polarity reversed: usually the finding is a control that was never
+executed. This is two mechanisms that were both executed, both correct, and
+never executed *against each other*.
+
+`EXP-2026-000004` is the live instance. Deliberately not patched by hand —
+editing workflow state outside the engine is precisely what the hash-chained
+audit trail exists to make detectable, and doing it once to tidy up would be
+the first entry the chain could not explain.
