@@ -4,8 +4,8 @@
   "displayName": "Cash Advance - To Be Justified",
   "formCode": "DEL-AC-FRM-003",
   "formRevision": "05",
-  "version": 1,
-  "effectiveFrom": "2026-09-01T00:00:00Z",
+  "version": 2,
+  "effectiveFrom": "2026-08-08T00:00:00Z",
   "numberFormat": "ADV-{yyyy}-{seq:000000}",
   "workingCalendar": "NG_STANDARD",
   "slaPausesOutsideWorkingHours": true,
@@ -48,16 +48,16 @@
     },
     {
       "key": "DEPT_HEAD",
-      "label": "Awaiting Verification (Department Head)",
+      "label": "Awaiting Approval (Department Head)",
       "sla": {
         "hours": 24,
         "reminderEveryHours": 8,
-        "escalateTo": "FINANCE_VERIFY"
+        "escalateTo": "COST_CONTROL_VERIFY"
       }
     },
     {
-      "key": "FINANCE_VERIFY",
-      "label": "Finance Verification",
+      "key": "COST_CONTROL_VERIFY",
+      "label": "Cost Control Verification",
       "sla": {
         "hours": 24,
         "reminderEveryHours": 8
@@ -65,26 +65,26 @@
     },
     {
       "key": "FINANCE_APPROVE",
-      "label": "Awaiting Approval (Finance Manager)",
+      "label": "Awaiting Approval (Accounts Manager)",
       "sla": {
         "hours": 24,
         "reminderEveryHours": 8
       }
     },
     {
-      "key": "POSTING",
-      "label": "GL Posting (Inputer)",
+      "key": "DMD_APPROVAL",
+      "label": "Awaiting Payment Approval (Director of Finance)",
       "sla": {
-        "hours": 12,
-        "reminderEveryHours": 4
+        "hours": 24,
+        "reminderEveryHours": 8
       }
     },
     {
-      "key": "AUTHORISATION",
-      "label": "Posting Authorisation (Checker)",
+      "key": "AWAITING_POSTING",
+      "label": "Awaiting Posting in Business Central",
       "sla": {
-        "hours": 12,
-        "reminderEveryHours": 4
+        "hours": 24,
+        "reminderEveryHours": 8
       }
     },
     {
@@ -179,7 +179,7 @@
     },
     {
       "from": "DEPT_HEAD",
-      "to": "FINANCE_VERIFY",
+      "to": "COST_CONTROL_VERIFY",
       "action": "VERIFY",
       "actor": {
         "resolver": "DepartmentHeadOf",
@@ -209,7 +209,7 @@
       "requiresComment": true
     },
     {
-      "from": "FINANCE_VERIFY",
+      "from": "COST_CONTROL_VERIFY",
       "to": "FINANCE_APPROVE",
       "action": "VERIFY",
       "actor": {
@@ -219,10 +219,11 @@
       "guardMessage": "Capture the Treasury number before passing this to the Finance Manager.",
       "captures": [
         "TreasuryNumber"
-      ]
+      ],
+      "note": "Cost Control's check: the request is costed to the right centre and taken into BC. Same Accounts people who post later at AWAITING_POSTING, so the same role -- the state is named for the work, not a separate team."
     },
     {
-      "from": "FINANCE_VERIFY",
+      "from": "COST_CONTROL_VERIFY",
       "to": "RETURNED",
       "action": "RETURN",
       "actor": {
@@ -231,7 +232,7 @@
       "requiresComment": true
     },
     {
-      "from": "FINANCE_VERIFY",
+      "from": "COST_CONTROL_VERIFY",
       "to": "REJECTED",
       "action": "REJECT",
       "actor": {
@@ -241,13 +242,68 @@
     },
     {
       "from": "FINANCE_APPROVE",
-      "to": "POSTING",
+      "to": "DMD_APPROVAL",
       "action": "APPROVE",
       "actor": {
         "role": "FinanceManager"
       },
       "guard": "ActorId != RequesterId",
-      "guardMessage": "You cannot approve your own advance request."
+      "guardMessage": "You cannot approve your own advance request.",
+      "note": "The Accounts Manager releases the advance for treatment. She does not release the money -- that is the Director of Finance's alone."
+    },
+    {
+      "from": "DMD_APPROVAL",
+      "to": "AWAITING_POSTING",
+      "action": "APPROVE",
+      "actor": {
+        "role": "DirectorOfFinance"
+      },
+      "guard": "ActorId != RequesterId",
+      "guardMessage": "You cannot approve payment of your own advance.",
+      "records": "AuthorisedByUserId",
+      "note": "The gate. No cash leaves Desicon without the Director of Finance, and version 1 of this definition had no such step -- the Accounts Officer could release cash on the Accounts Manager's approval alone. Unconditional here, unlike expense: an advance always pays somebody."
+    },
+    {
+      "from": "DMD_APPROVAL",
+      "to": "RETURNED",
+      "action": "RETURN",
+      "actor": {
+        "role": "DirectorOfFinance"
+      },
+      "requiresComment": true
+    },
+    {
+      "from": "DMD_APPROVAL",
+      "to": "REJECTED",
+      "action": "REJECT",
+      "actor": {
+        "role": "DirectorOfFinance"
+      },
+      "requiresComment": true
+    },
+    {
+      "from": "AWAITING_POSTING",
+      "to": "CASH_RELEASE",
+      "action": "MARK_POSTED",
+      "actor": {
+        "role": "FinanceOfficer"
+      },
+      "guard": "BcDocumentNumber != null",
+      "guardMessage": "Enter the Business Central document number for this posting.",
+      "captures": [
+        "BcDocumentNumber"
+      ],
+      "records": "PostedByUserId",
+      "note": "The Accounts Officer posts in Business Central, then records here that she has and under which document number. No journal lines are captured: BC owns the ledger, and a second copy in another system is two versions of the truth waiting to disagree. The document number is the only key joining this approval trail to the ledger entry, which is why it is required."
+    },
+    {
+      "from": "AWAITING_POSTING",
+      "to": "RETURNED",
+      "action": "RETURN",
+      "actor": {
+        "role": "FinanceOfficer"
+      },
+      "requiresComment": true
     },
     {
       "from": "FINANCE_APPROVE",
@@ -262,52 +318,6 @@
       "from": "FINANCE_APPROVE",
       "to": "REJECTED",
       "action": "REJECT",
-      "actor": {
-        "role": "FinanceManager"
-      },
-      "requiresComment": true
-    },
-    {
-      "from": "POSTING",
-      "to": "AUTHORISATION",
-      "action": "POST",
-      "actor": {
-        "role": "FinanceOfficer"
-      },
-      "guard": "GlDebitTotal == GlCreditTotal && GlLineCount >= 2 && JournalVoucherNumber != null",
-      "guardMessage": "Debits must equal credits and a JV number is required.",
-      "captures": [
-        "JournalVoucherNumber",
-        "GlPostingLines"
-      ],
-      "records": "PostedByUserId",
-      "note": "Mirrors the DEBIT / CREDIT BENEFICIARY block in FOR ACF DEPT USE ONLY."
-    },
-    {
-      "from": "POSTING",
-      "to": "RETURNED",
-      "action": "RETURN",
-      "actor": {
-        "role": "FinanceOfficer"
-      },
-      "requiresComment": true
-    },
-    {
-      "from": "AUTHORISATION",
-      "to": "CASH_RELEASE",
-      "action": "AUTHORISE",
-      "actor": {
-        "role": "FinanceManager"
-      },
-      "guard": "ActorId != PostedByUserId",
-      "guardMessage": "The authoriser must be a different person from the inputer.",
-      "records": "AuthorisedByUserId",
-      "note": "Maker-checker, mirroring the separate Inputers sign and Authorisers sign."
-    },
-    {
-      "from": "AUTHORISATION",
-      "to": "RETURNED",
-      "action": "RETURN",
       "actor": {
         "role": "FinanceManager"
       },
@@ -431,6 +441,31 @@
       "template": "action-required"
     },
     {
+      "on": "COST_CONTROL_VERIFY",
+      "to": "FinanceOfficer",
+      "template": "action-required"
+    },
+    {
+      "on": "FINANCE_APPROVE",
+      "to": "FinanceManager",
+      "template": "action-required"
+    },
+    {
+      "on": "DMD_APPROVAL",
+      "to": "DirectorOfFinance",
+      "template": "payment-approval-required"
+    },
+    {
+      "on": "AWAITING_POSTING",
+      "to": "FinanceOfficer",
+      "template": "posting-required"
+    },
+    {
+      "on": "CASH_RELEASE",
+      "to": "FinanceOfficer",
+      "template": "action-required"
+    },
+    {
       "on": "SLA_REMINDER",
       "to": "CurrentActor",
       "template": "reminder"
@@ -488,5 +523,6 @@
     "startsAt": "CASH_RELEASE",
     "calendar": "NG_STANDARD",
     "note": "Per Finance direction 31 Jul 2026. On a 9-hour working day this makes 24h = 2.67 working days and 72h = 8 working days. Change 'unit' to CalendarHours if that proves not to be the intent."
-  }
+  },
+  "note": "Version 2 mirrors the expense module: GL posting moves to Microsoft Dynamics Business Central, so POSTING/AUTHORISATION collapse into a single AWAITING_POSTING step, and DMD_APPROVAL is added because no cash leaves Desicon without the Director of Finance. Unlike expense, the gate here is unconditional -- an advance always pays somebody. Retirement, which follows via a linked expense claim, never reaches him. See docs/14-Process-As-Described.md."
 }

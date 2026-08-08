@@ -31,6 +31,59 @@ public static class ExpenseEndpoints
         group.MapPost("/{id:guid}/authorise-posting", AuthorisePostingAsync);
         group.MapPost("/{id:guid}/refund-received", ConfirmRefundAsync);
         group.MapPost("/{id:guid}/execute-payment", ExecutePaymentAsync);
+        group.MapPost("/{id:guid}/mark-posted", MarkPostedAsync);
+    }
+
+    /// <summary>
+    /// The Accounts Officer records that she has posted this in Business
+    /// Central, and under which document number.
+    /// </summary>
+    /// <remarks>
+    /// Replaces the gl-lines endpoint's role in definition version 2. No
+    /// journal lines are captured any more: BC owns the ledger, and a second
+    /// copy of the same journal in another system is two versions of the truth
+    /// waiting to disagree. What this platform owns is the approval trail and
+    /// the reference that joins it to the ledger entry.
+    ///
+    /// Needs its own endpoint for the same reason gl-lines did:
+    /// BcDocumentNumber is a guard field on MARK_POSTED, and the guard reads it
+    /// off the tracked entity, so it must be committed before ExecuteAsync
+    /// runs rather than merely travelling inside TransitionRequest.
+    /// </remarks>
+    private static async Task<IResult> MarkPostedAsync(
+        Guid id,
+        MarkPostedDto dto,
+        HttpRequest httpRequest,
+        WorkflowDbContext db,
+        RequestActionService actionService,
+        ICurrentUserAccessor currentUser,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(dto.BcDocumentNumber))
+        {
+            return ProblemResults.BadRequest("'bcDocumentNumber' is required.", httpRequest.Path);
+        }
+
+        var expense = await db.ExpenseRequests.FirstOrDefaultAsync(e => e.RequestId == id, cancellationToken);
+        if (expense is null)
+        {
+            return ProblemResults.NotFound("Expense request", id, httpRequest.Path);
+        }
+
+        expense.BcDocumentNumber = dto.BcDocumentNumber.Trim();
+        await db.SaveChangesAsync(cancellationToken);
+
+        var actingUser = await currentUser.GetActingUserAsync(cancellationToken);
+
+        var result = await actionService.ExecuteAsync(
+            id, actingUser,
+            new TransitionRequest(
+                "MARK_POSTED", dto.Comment,
+                new Dictionary<string, object?> { ["BcDocumentNumber"] = expense.BcDocumentNumber },
+                dto.IdempotencyKey),
+            cancellationToken);
+
+        return result.ToApiResult(httpRequest.Path);
     }
 
     private static async Task<IResult> GetAdvanceNettingAsync(
@@ -298,6 +351,11 @@ public static class ExpenseEndpoints
     }
 
     private sealed record GlLineDto(string Side, string AccountNumber, string? Narration, decimal AmountNgn);
+
+    private sealed record MarkPostedDto(
+        string BcDocumentNumber,
+        string? Comment = null,
+        string? IdempotencyKey = null);
 
     private sealed record ExecutePaymentDto(
         string PaymentReference,

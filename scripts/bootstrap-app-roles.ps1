@@ -89,8 +89,16 @@ $RoleDefinitions = @(
     @{
         id                 = "b7e94d05-1a83-4c62-8f0d-5a3e71c9b284"
         value              = "FinanceManager"
-        displayName        = "Finance Manager"
-        description        = "Gives final approval and authorises postings as checker. Cannot authorise a posting they input."
+        displayName        = "Accounts Manager"
+        description        = "Approves claims and advances on behalf of Accounts, and confirms refunds. Releases the request for treatment, but does not release money."
+        allowedMemberTypes = @("User")
+        isEnabled          = $true
+    },
+    @{
+        id                 = "c41a6e78-9b25-4d13-a7f6-8e02c5b9d746"
+        value              = "DirectorOfFinance"
+        displayName        = "Director of Finance (DMD)"
+        description        = "Final approval before any payment. No money leaves Desicon without this role, and no other role can substitute for it."
         allowedMemberTypes = @("User")
         isEnabled          = $true
     }

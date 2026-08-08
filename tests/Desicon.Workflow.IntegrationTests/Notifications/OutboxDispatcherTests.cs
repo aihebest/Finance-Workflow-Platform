@@ -178,7 +178,10 @@ public sealed class OutboxDispatcherTests : IntegrationTestBase
         var dispatcher = new OutboxDispatcher(
             db,
             sender,
-            new NotificationRecipientResolver(db, sp.GetRequiredService<IActorResolver>()),
+            new NotificationRecipientResolver(
+                db,
+                sp.GetRequiredService<IActorResolver>(),
+                sp.GetRequiredService<NotificationOptions>()),
             new NotificationRenderer(new NotificationOptions
             {
                 ApplicationBaseUrl = "https://finance.desicon.test",
