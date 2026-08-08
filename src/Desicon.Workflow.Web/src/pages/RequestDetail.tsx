@@ -170,6 +170,34 @@ export function RequestDetail() {
     setGlLines((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   }
 
+  /**
+   * Whether something typed on this screen resolves a block the server
+   * reported.
+   *
+   * `isEnabled` answers "could you take this action against what is stored".
+   * For an action that carries its own captured data, the answer is no right
+   * up until the moment it is taken — the Treasury number travels *with*
+   * VERIFY, so it cannot be stored before the click that stores it. Gating the
+   * button on the server's answer alone means typing the number changes
+   * nothing and the button never comes alive.
+   *
+   * This is the same deadlock as the one that hid the field, one layer up:
+   * fixing where the input renders was not enough while the button still
+   * asked the impossible question.
+   *
+   * Optimistic, and safe to be. The guard runs again inside the transaction;
+   * if this screen is wrong the transition is refused and the guardMessage
+   * comes back verbatim. The cost of being wrong is a round trip. The cost of
+   * being conservative is a state nobody can leave.
+   */
+  function locallyUnblocked(action: string) {
+    return (
+      action === "VERIFY" &&
+      currentState === "FINANCE_VERIFY" &&
+      treasuryNumber.trim().length > 0
+    );
+  }
+
   return (
     <div className="space-y-6">
       <header className="rounded border border-gray-200 bg-white p-4">
@@ -545,7 +573,7 @@ export function RequestDetail() {
               <button
                 key={action}
                 type="button"
-                disabled={busy || !isEnabled}
+                disabled={busy || !(isEnabled || locallyUnblocked(action))}
                 onClick={() => void act(action)}
                 className={
                   action === "REJECT"
@@ -564,10 +592,12 @@ export function RequestDetail() {
               Without this the screen shows a greyed-out Verify and no
               explanation, which is barely better than showing nothing --
               the guardMessage names the field to fill in. */}
-          {genericActions.some((a) => !a.isEnabled) && (
+          {/* Reasons disappear as they are resolved — a message still sitting
+              under a button that has just come alive reads as a contradiction. */}
+          {genericActions.some((a) => !a.isEnabled && !locallyUnblocked(a.action)) && (
             <ul className="mt-3 space-y-1">
               {genericActions
-                .filter((a) => !a.isEnabled && a.blockedReason)
+                .filter((a) => !a.isEnabled && !locallyUnblocked(a.action) && a.blockedReason)
                 .map((a) => (
                   <li key={a.action} className="text-sm text-amber-800">
                     <span className="font-medium">{ACTION_LABELS[a.action] ?? a.action}:</span>{" "}
