@@ -17,7 +17,15 @@ Conditional Access policies to apply (these are tenant-side, not application-sid
 
 ### RBAC
 
-Roles are Entra security groups, surfaced as `roles` claims; the API authorises on claims, never on a database role lookup that could drift.
+Roles are Entra app roles, surfaced as `roles` claims; the API authorises on claims, never on a database role lookup that could drift.
+
+> **Implementation status, as of the completion-path work.** Two of the seven rows below exist in the directory: `FinanceOfficer` and `FinanceManager`, created by `scripts/bootstrap-app-roles.ps1`. They are the only values any code reads — the `"actor": { "role": ... }` specs in `modules/*.workflow.json`.
+>
+> `LineManager` and `DepartmentHead` are **not** claims and should not be. That authority comes from the org chart (`Employees.LineManagerId`, `Departments.DepartmentHeadId`) resolved by `EmployeeActorResolver`, so holding a claim would grant nothing and having one would imply otherwise. The table below reads as though they are claims; they are not.
+>
+> `Employee`, `ProcurementOfficer` and `Administrator` have no code behind them at all. The rows describe intent.
+>
+> This note exists because the table sat here describing a seven-role model while the directory contained none of it, and nothing anywhere would have reported the discrepancy. The permissions column below is a specification, not a description of what is enforced today.
 
 | Role | Can do | Cannot do |
 |---|---|---|
