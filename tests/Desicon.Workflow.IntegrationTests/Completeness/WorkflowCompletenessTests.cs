@@ -117,13 +117,8 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         {
             var id = await DriveToAwaitingPaymentAsync(amount, treasuryNumber, journalVoucherNumber);
             await StepAsync(
-                () => WorkflowSteps.ActionAsync(
-                    financeOfficerClient, id, "EXECUTE_PAYMENT",
-                    payload: new Dictionary<string, object?>
-                    {
-                        ["PaymentReference"] = paymentReference,
-                        ["PaymentDate"] = Fixture.TimeProvider.GetUtcNow()
-                    }),
+                () => WorkflowSteps.ExecutePaymentAsync(
+                    financeOfficerClient, id, paymentReference, Fixture.TimeProvider.GetUtcNow()),
                 "AWAITING_PAYMENT", "EXECUTE_PAYMENT", "AWAITING_ACK");
             return id;
         }

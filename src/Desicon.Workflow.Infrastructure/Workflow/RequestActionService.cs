@@ -131,21 +131,80 @@ public sealed class RequestActionService
             requestId, actingUser, transitionRequest, idempotencyKey: null, transaction: null, cancellationToken);
     }
 
-    private async Task<RequestActionResult> RunTransitionAsync(
+    /// <summary>
+    /// The actions this user could take on this request right now.
+    ///
+    /// This exists because WorkflowEngine.GetAvailableTransitionsAsync -- whose
+    /// own docstring says it is "used to drive the UI's action buttons" -- had
+    /// no callers, while the browser read an <c>availableActions</c> field the
+    /// API never sent. A missing JSON property deserialises to undefined, the
+    /// screen fell back to an empty list, and the result was an approval screen
+    /// that rendered no buttons in any state for any user, with nothing
+    /// anywhere reporting an error.
+    ///
+    /// Deliberately routed through the same staging as RunTransitionAsync
+    /// rather than reimplemented: the AUTHORISE guard reads
+    /// BeneficiaryHasBankDetails and the POST guard reads GL totals, and both
+    /// are unmapped properties that are empty or false unless something loads
+    /// them. Evaluating availability against an unstaged entity would offer
+    /// buttons the subsequent execute then refuses -- worse than no buttons,
+    /// because the refusal arrives after the click.
+    ///
+    /// The answer is advisory. Every check here runs again inside ExecuteAsync
+    /// against the same data in a transaction; nothing is authorised by having
+    /// appeared in this list.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> GetAvailableActionsAsync(
         Guid requestId,
         ActingUser actingUser,
-        TransitionRequest transitionRequest,
-        string? idempotencyKey,
-        IDbContextTransaction? transaction,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(actingUser);
+
+        var (request, _) = await LoadWithGuardFieldsAsync(requestId, cancellationToken);
+
+        if (request is null)
+        {
+            return Array.Empty<string>();
+        }
+
+        var definition = await _definitions.GetAsync(request.ModuleKey, cancellationToken);
+
+        request.ActorId = actingUser.OnBehalfOf ?? actingUser.UserId;
+
+        var transitions = await _engine.GetAvailableTransitionsAsync(
+            definition, request, actingUser, cancellationToken);
+
+        // Distinct because a state can carry two transitions with the same
+        // action name and different guards -- FINANCE_APPROVE's APPROVE splits
+        // on NetPayableNgn to POSTING or REFUND_DUE. The user takes one action;
+        // which branch it lands in is the engine's decision, not a second
+        // button.
+        return transitions
+            .Select(t => t.Action)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Loads a request with the guard fields that are not mapped columns and
+    /// so are empty until something explicitly stages them. Shared by the
+    /// transition path and the availability query so the two cannot drift into
+    /// evaluating the same guards against different data.
+    /// </summary>
+    private async Task<(Request? Request, Beneficiary? Beneficiary)> LoadWithGuardFieldsAsync(
+        Guid requestId,
         CancellationToken cancellationToken)
     {
-        var isCascaded = transaction is null;
-
         var request = await _db.Requests
             .Include(r => ((ExpenseRequest)r).Lines)
             .Include(r => ((CashAdvanceRequest)r).Lines)
-            .FirstOrDefaultAsync(r => r.RequestId == requestId, cancellationToken)
-            ?? throw new InvalidOperationException($"Request '{requestId}' does not exist.");
+            .FirstOrDefaultAsync(r => r.RequestId == requestId, cancellationToken);
+
+        if (request is null)
+        {
+            return (null, null);
+        }
 
         // GlPostingLine keys to the shared base Request row, not to either
         // sibling table (see ExpenseRequestConfiguration) -- under TPT a
@@ -186,8 +245,8 @@ public sealed class RequestActionService
         // Staged for the same reason as above: the AUTHORISE guard
         // (PaymentMethod == 'Cash' || BeneficiaryHasBankDetails == true, and
         // ActorId != BeneficiaryBankDetailsSetByUserId) and the bank-details
-        // maker-checker check below both need the Beneficiary this claim
-        // pays, which ExpenseRequest cannot resolve on its own (see
+        // maker-checker check in RunTransitionAsync both need the Beneficiary
+        // this claim pays, which ExpenseRequest cannot resolve on its own (see
         // Beneficiary.HasBankDetails / Beneficiary.BankDetailsSetByUserId).
         Beneficiary? beneficiary = null;
         if (request is ExpenseRequest expenseRequest)
@@ -197,6 +256,26 @@ public sealed class RequestActionService
                 .FirstOrDefaultAsync(b => b.Id == expenseRequest.BeneficiaryId, cancellationToken);
             expenseRequest.BeneficiaryHasBankDetails = beneficiary?.HasBankDetails ?? false;
             expenseRequest.BeneficiaryBankDetailsSetByUserId = beneficiary?.BankDetailsSetByUserId;
+        }
+
+        return (request, beneficiary);
+    }
+
+    private async Task<RequestActionResult> RunTransitionAsync(
+        Guid requestId,
+        ActingUser actingUser,
+        TransitionRequest transitionRequest,
+        string? idempotencyKey,
+        IDbContextTransaction? transaction,
+        CancellationToken cancellationToken)
+    {
+        var isCascaded = transaction is null;
+
+        var (request, beneficiary) = await LoadWithGuardFieldsAsync(requestId, cancellationToken);
+
+        if (request is null)
+        {
+            throw new InvalidOperationException($"Request '{requestId}' does not exist.");
         }
 
         var definition = await _definitions.GetAsync(request.ModuleKey, cancellationToken);

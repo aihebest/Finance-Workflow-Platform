@@ -3,6 +3,7 @@ import type {
   AuditEntry,
   BeneficiarySummary,
   ExpenseDraftInput,
+  GlLineInput,
   RequestSummary,
 } from "./types";
 
@@ -52,3 +53,49 @@ export const createExpenseDraft = (input: ExpenseDraftInput) =>
 
 export const submitRequest = (id: string) =>
   api.post<{ toState: string }>(`/api/v1/requests/${id}/submit`, {});
+
+/**
+ * Transitions that capture data have their own endpoints rather than going
+ * through /actions.
+ *
+ * The generic endpoint only stages TreasuryNumber onto the entity; everything
+ * else in a `captures` list reaches the audit event's PayloadJson and stops
+ * there. For a guard field (JV number, GL totals, refund amount) that means the
+ * guard evaluates against stale data and refuses; for a plain column
+ * (PaymentReference) it means the transition succeeds and the column stays
+ * null. Both failures are quiet, so the capture endpoints below are the only
+ * correct way to take these actions.
+ */
+
+/** POSTING → AUTHORISATION. Debits must equal credits; the API re-checks. */
+export const captureGlLines = (
+  id: string,
+  journalVoucherNumber: string,
+  lines: GlLineInput[],
+  comment?: string,
+) =>
+  api.post<{ toState: string; outcome: string }>(`/api/v1/expenses/${id}/gl-lines`, {
+    journalVoucherNumber,
+    lines,
+    comment: comment ?? null,
+  });
+
+/** AWAITING_PAYMENT → AWAITING_ACK. */
+export const executePayment = (
+  id: string,
+  paymentReference: string,
+  paymentDate?: string,
+  comment?: string,
+) =>
+  api.post<{ toState: string; outcome: string }>(`/api/v1/expenses/${id}/execute-payment`, {
+    paymentReference,
+    paymentDate: paymentDate ?? null,
+    comment: comment ?? null,
+  });
+
+/** REFUND_DUE → POSTING. Must equal the amount over-drawn, to the naira. */
+export const confirmRefund = (id: string, refundReceivedAmountNgn: number, comment?: string) =>
+  api.post<{ toState: string; outcome: string }>(`/api/v1/expenses/${id}/refund-received`, {
+    refundReceivedAmountNgn,
+    comment: comment ?? null,
+  });

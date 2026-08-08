@@ -30,6 +30,7 @@ public static class ExpenseEndpoints
         group.MapPost("/{id:guid}/gl-lines", CaptureGlLinesAsync);
         group.MapPost("/{id:guid}/authorise-posting", AuthorisePostingAsync);
         group.MapPost("/{id:guid}/refund-received", ConfirmRefundAsync);
+        group.MapPost("/{id:guid}/execute-payment", ExecutePaymentAsync);
     }
 
     private static async Task<IResult> GetAdvanceNettingAsync(
@@ -226,7 +227,83 @@ public static class ExpenseEndpoints
         return result.ToApiResult(httpRequest.Path);
     }
 
+    /// <summary>
+    /// Records that the money left, and moves the claim to the beneficiary for
+    /// confirmation.
+    ///
+    /// This needs its own endpoint for a reason worth stating plainly, because
+    /// it is not obvious from the definition. EXECUTE_PAYMENT declares
+    /// <c>"captures": ["PaymentReference", "PaymentDate"]</c>, and
+    /// ExpenseRequest has a column for each -- but RequestActionService only
+    /// ever serialises captured fields into the audit event's PayloadJson (see
+    /// SerialisePayload). Nothing copies them onto the entity. Sent through the
+    /// generic /actions endpoint the transition therefore succeeds, the request
+    /// moves to AWAITING_ACK, and both columns stay NULL: the payment appears
+    /// to have been recorded, and the reference is retrievable only by reading
+    /// audit JSON. A claim with no bank reference against it is precisely the
+    /// state the 18-month-old unpaid claims were in.
+    ///
+    /// PaymentMethod is not a parameter. It is derived at submission by
+    /// ExpenseRequest.ApplyPaymentMethodPolicy from the net payable against
+    /// PAYMENT_METHOD_THRESHOLD_NGN, and letting Finance override it here would
+    /// make the threshold advisory.
+    /// </summary>
+    private static async Task<IResult> ExecutePaymentAsync(
+        Guid id,
+        ExecutePaymentDto dto,
+        HttpRequest httpRequest,
+        WorkflowDbContext db,
+        RequestActionService actionService,
+        ICurrentUserAccessor currentUser,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(dto.PaymentReference))
+        {
+            return ProblemResults.BadRequest("'paymentReference' is required.", httpRequest.Path);
+        }
+
+        var expense = await db.ExpenseRequests.FirstOrDefaultAsync(e => e.RequestId == id, cancellationToken);
+        if (expense is null)
+        {
+            return ProblemResults.NotFound("Expense request", id, httpRequest.Path);
+        }
+
+        var paymentDate = dto.PaymentDate ?? DateTimeOffset.UtcNow;
+
+        // Written before ExecuteAsync rather than after, so a transition that
+        // the engine refuses cannot leave a payment reference recorded against
+        // a claim that was never paid. If ExecuteAsync fails these are still
+        // committed -- a deliberate trade: an unpaid claim carrying a
+        // reference someone typed is recoverable and visible, whereas a paid
+        // claim carrying none is the failure this endpoint exists to prevent.
+        expense.PaymentReference = dto.PaymentReference.Trim();
+        expense.PaymentDate = paymentDate;
+        await db.SaveChangesAsync(cancellationToken);
+
+        var actingUser = await currentUser.GetActingUserAsync(cancellationToken);
+
+        var result = await actionService.ExecuteAsync(
+            id, actingUser,
+            new TransitionRequest(
+                "EXECUTE_PAYMENT", dto.Comment,
+                new Dictionary<string, object?>
+                {
+                    ["PaymentReference"] = expense.PaymentReference,
+                    ["PaymentDate"] = paymentDate
+                },
+                dto.IdempotencyKey),
+            cancellationToken);
+
+        return result.ToApiResult(httpRequest.Path);
+    }
+
     private sealed record GlLineDto(string Side, string AccountNumber, string? Narration, decimal AmountNgn);
+
+    private sealed record ExecutePaymentDto(
+        string PaymentReference,
+        DateTimeOffset? PaymentDate = null,
+        string? Comment = null,
+        string? IdempotencyKey = null);
 
     private sealed record CaptureGlLinesDto(
         string JournalVoucherNumber,
