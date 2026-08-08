@@ -200,7 +200,7 @@ public sealed class AvailableActionsTests : IntegrationTestBase
     /// was found in dev.
     ///
     /// FINANCE_VERIFY's VERIFY guard is
-    ///   ReceiptStatus == 'Yes' && TreasuryNumber != null
+    ///   <c>ReceiptStatus == 'Yes' &amp;&amp; TreasuryNumber != null</c>
     /// and the Treasury number is captured BY that action. An availability
     /// query that returns only guard-satisfied transitions therefore reports
     /// nothing at all here, and a screen keyed on that renders no field to
