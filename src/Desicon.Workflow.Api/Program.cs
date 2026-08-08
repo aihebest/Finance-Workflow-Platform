@@ -174,6 +174,23 @@ builder.Services.AddRateLimiter(options =>
     };
 });
 
+// Telemetry. Terraform has set ApplicationInsights__ConnectionString on this
+// app since the environment was first provisioned, and nothing read it: there
+// was no package reference and no registration, so the API emitted nothing at
+// all. docs/05 describes dashboards and alerting and docs/06 counts monitoring
+// as a maturity signal, while every request, dependency call and unhandled
+// exception went unrecorded.
+//
+// The cost was not abstract. Several defects this week were diagnosed by
+// inference from a bare 500, because the one instrument that would have named
+// them was configured and unwired.
+//
+// AddApplicationInsightsTelemetry reads ApplicationInsights:ConnectionString
+// from configuration, which is exactly the key Terraform writes. Left absent,
+// it no-ops rather than throwing — so local development needs no connection
+// string and produces no telemetry.
+builder.Services.AddApplicationInsightsTelemetry();
+
 builder.Services.AddEndpointsApiExplorer();
 
 // Two probes, different questions. /health/live asks "is the process up" and
