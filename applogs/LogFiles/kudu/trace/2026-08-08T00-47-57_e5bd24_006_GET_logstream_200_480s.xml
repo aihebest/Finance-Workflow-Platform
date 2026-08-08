@@ -1,0 +1,5 @@
+<step title="Incoming Request" date="2026-08-08T00:47:57.312" instance="e5bd24" url="/logstream" method="GET" type="request" pid="831,1,3" Host="app-desicon-fw-api-dev.scm.azurewebsites.net" User-Agent="AZURECLI/2.87.0 (MSI)" Accept-Encoding="identity" Authorization="Bea..." x-ms-client-request-id="c46e2fe9-92c2-11f1-a3bd-f47b09f6bb88" X-ARR-LOG-ID="c46e2fe9-92c2-11f1-a3bd-f47b09f6bb88" CLIENT-IP="102.90.126.52:3791" X-SITE-DEPLOYMENT-ID="app-desicon-fw-api-dev" WAS-DEFAULT-HOSTNAME="app-desicon-fw-api-dev.scm.azurewebsites.net" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-Original-Proto="http" X-WAWS-Unencoded-URL="/logstream" X-Client-IP="102.90.126.52" X-Client-Port="3791" X-Original-For="169.254.129.1:55883" >
+  <step title="LogStreamHandlerMiddleware.Invoke" date="2026-08-08T00:47:57.320" /><!-- duration: 254ms -->
+  <step title="Error occurred" date="2026-08-08T00:55:57.587" type="error" text="LogStreamManager: ProcessRequest end" /><!-- duration: 5ms -->
+  <step title="Outgoing response" date="2026-08-08T00:55:57.599" type="response" statusCode="200" statusText="OK" /><!-- duration: 3ms -->
+</step><!-- duration: 480295ms -->
