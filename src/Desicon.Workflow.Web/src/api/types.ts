@@ -133,14 +133,28 @@ export interface GlLineInput {
 }
 
 /**
- * Actions the caller may take right now, as computed by the API from the
- * workflow definition's actor resolvers and guards.
+ * An action the caller is authorised to take, and whether they can take it yet.
+ *
+ * The distinction is load-bearing, not decorative. Several guards exist to
+ * require data the action itself captures — FINANCE_VERIFY's VERIFY needs a
+ * Treasury number, POST needs balanced GL lines. If the screen only renders
+ * actions whose guard already passes, the field that supplies the missing
+ * value appears only once the value is present, and the step is unreachable.
+ * Three of them were.
+ *
+ * So `isEnabled: false` means "yours to do, but something is missing", and
+ * `blockedReason` is the definition's own guardMessage naming what. Render the
+ * capture panel; disable the button.
  *
  * Advisory only. Every entry is re-checked inside the transaction when the
- * action is actually executed, so a stale list can produce a refusal but never
- * an unauthorised transition.
+ * action is executed, so a stale list can produce a refusal but never an
+ * unauthorised transition.
  */
-export type AvailableAction = string;
+export interface AvailableAction {
+  action: string;
+  isEnabled: boolean;
+  blockedReason: string | null;
+}
 
 export interface ExpenseDraftInput {
   /**

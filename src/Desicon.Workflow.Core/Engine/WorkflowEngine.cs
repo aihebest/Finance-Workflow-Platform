@@ -76,6 +76,20 @@ public sealed record TransitionResult(
 /// choice is what guarantees an audit event is written for every transition,
 /// because there is nowhere else a transition can happen.
 /// </summary>
+/// <summary>
+/// A transition the acting user is authorised for, and whether its guard
+/// currently lets them take it.
+/// </summary>
+/// <param name="GuardSatisfied">False means the action is theirs to take but
+/// something about the request is not yet in order -- not that they lack the
+/// authority.</param>
+/// <param name="BlockedReason">The definition's guardMessage. Written for a
+/// person, and names what to fix.</param>
+public sealed record TransitionAvailability(
+    WorkflowTransition Transition,
+    bool GuardSatisfied,
+    string? BlockedReason);
+
 public sealed class WorkflowEngine
 {
     private readonly IActorResolver _actorResolver;
@@ -103,7 +117,46 @@ public sealed class WorkflowEngine
         ActingUser user,
         CancellationToken cancellationToken = default)
     {
-        var available = new List<WorkflowTransition>();
+        var availability = await GetTransitionAvailabilityAsync(definition, subject, user, cancellationToken);
+
+        return availability
+            .Where(a => a.GuardSatisfied)
+            .Select(a => a.Transition)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Every transition this user is *authorised* for, each carrying whether
+    /// its guard currently passes and, if not, why.
+    /// </summary>
+    /// <remarks>
+    /// Authorisation and guard satisfaction are separated because a screen
+    /// needs them separately, and collapsing them produced a deadlock that
+    /// reached dev.
+    ///
+    /// GetAvailableTransitionsAsync drops any transition whose guard fails.
+    /// Several guards exist precisely to require data the user has not
+    /// supplied yet -- FINANCE_VERIFY's VERIFY needs a Treasury number, POST
+    /// needs balanced GL lines, CONFIRM_REFUND needs the refund amount. Gate
+    /// the capture UI on the action being available and the value can never be
+    /// entered, because the field that supplies it renders only once the value
+    /// is already there. Three of this platform's capture steps were
+    /// unreachable in the browser for exactly that reason.
+    ///
+    /// So: authorised transitions are always returned. GuardSatisfied says
+    /// whether the button is live, and BlockedReason carries the definition's
+    /// own guardMessage, which is written for a person and names the condition
+    /// to fix. Showing a disabled action with that sentence beside it is more
+    /// use than showing nothing, which is indistinguishable from having no
+    /// authority at all.
+    /// </remarks>
+    public async Task<IReadOnlyList<TransitionAvailability>> GetTransitionAvailabilityAsync(
+        WorkflowDefinition definition,
+        IWorkflowSubject subject,
+        ActingUser user,
+        CancellationToken cancellationToken = default)
+    {
+        var availability = new List<TransitionAvailability>();
 
         foreach (var transition in definition.TransitionsFrom(subject.CurrentState))
         {
@@ -112,15 +165,13 @@ public sealed class WorkflowEngine
                 continue;
             }
 
-            if (!TryEvaluateGuard(transition, subject, out _))
-            {
-                continue;
-            }
+            var satisfied = TryEvaluateGuard(transition, subject, out var message);
 
-            available.Add(transition);
+            availability.Add(new TransitionAvailability(
+                transition, satisfied, satisfied ? null : message));
         }
 
-        return available;
+        return availability;
     }
 
     public async Task<TransitionResult> ExecuteAsync(

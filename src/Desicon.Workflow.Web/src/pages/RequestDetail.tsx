@@ -8,7 +8,13 @@ import {
   getHistory,
   getRequest,
 } from "../api/requests";
-import { ACTION_LABELS, ApiError, type AuditEntry, type GlLineInput } from "../api/types";
+import {
+  ACTION_LABELS,
+  ApiError,
+  type AuditEntry,
+  type AvailableAction,
+  type GlLineInput,
+} from "../api/types";
 import { Money } from "../components/Money";
 
 type Detail = Record<string, unknown>;
@@ -133,7 +139,7 @@ export function RequestDetail() {
     );
   }
 
-  const availableActions = (detail.availableActions as string[] | undefined) ?? [];
+  const availableActions = (detail.availableActions as AvailableAction[] | undefined) ?? [];
   const requestNumber = String(detail.requestNumber ?? "");
   const currentState = String(detail.currentState ?? "");
   const total = Number(detail.totalAmountNgn ?? 0);
@@ -141,8 +147,20 @@ export function RequestDetail() {
   const lines = (detail.lines as ExpenseLine[] | undefined) ?? [];
   const postedGlLines = (detail.glPostingLines as GlLineInput[] | undefined) ?? [];
 
-  const genericActions = availableActions.filter((a) => !CAPTURE_ACTIONS.has(a));
-  const can = (action: string) => availableActions.includes(action);
+  const genericActions = availableActions.filter((a) => !CAPTURE_ACTIONS.has(a.action));
+
+  /**
+   * Authorised, whether or not the guard passes yet.
+   *
+   * This is what the capture panels key on, and the distinction is the whole
+   * point: POST's guard requires balanced GL lines, so gating the journal grid
+   * on the guard passing means the grid never appears and the lines can never
+   * be entered. Same for the Treasury number and the refund amount.
+   */
+  const can = (action: string) => availableActions.some((a) => a.action === action);
+
+  const blockedReason = (action: string) =>
+    availableActions.find((a) => a.action === action && !a.isEnabled)?.blockedReason ?? null;
 
   const debitTotal = glLines.reduce((sum, l) => sum + (l.side === "Debit" ? l.amountNgn : 0), 0);
   const creditTotal = glLines.reduce((sum, l) => sum + (l.side === "Credit" ? l.amountNgn : 0), 0);
@@ -236,8 +254,8 @@ export function RequestDetail() {
             GL posting
           </h2>
           <p className="mt-1 text-sm text-gray-600">
-            Debits must equal credits and at least two lines are required. Whoever posts here
-            cannot be the person who authorises it.
+            {blockedReason("POST") ??
+              "Debits must equal credits and at least two lines are required. Whoever posts here cannot be the person who authorises it."}
           </p>
 
           <label className="mt-3 block text-sm text-gray-700" htmlFor="jv">
@@ -523,11 +541,11 @@ export function RequestDetail() {
               to do the job they already do. Large tap targets because the
               approval path is used from a phone. */}
           <div className="mt-3 flex flex-wrap gap-2">
-            {genericActions.map((action) => (
+            {genericActions.map(({ action, isEnabled }) => (
               <button
                 key={action}
                 type="button"
-                disabled={busy}
+                disabled={busy || !isEnabled}
                 onClick={() => void act(action)}
                 className={
                   action === "REJECT"
@@ -541,6 +559,23 @@ export function RequestDetail() {
               </button>
             ))}
           </div>
+
+          {/* Why a disabled button is disabled, in the definition's own words.
+              Without this the screen shows a greyed-out Verify and no
+              explanation, which is barely better than showing nothing --
+              the guardMessage names the field to fill in. */}
+          {genericActions.some((a) => !a.isEnabled) && (
+            <ul className="mt-3 space-y-1">
+              {genericActions
+                .filter((a) => !a.isEnabled && a.blockedReason)
+                .map((a) => (
+                  <li key={a.action} className="text-sm text-amber-800">
+                    <span className="font-medium">{ACTION_LABELS[a.action] ?? a.action}:</span>{" "}
+                    {a.blockedReason}
+                  </li>
+                ))}
+            </ul>
+          )}
         </section>
       )}
 

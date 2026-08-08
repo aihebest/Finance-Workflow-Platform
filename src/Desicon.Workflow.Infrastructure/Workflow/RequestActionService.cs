@@ -154,7 +154,7 @@ public sealed class RequestActionService
     /// against the same data in a transaction; nothing is authorised by having
     /// appeared in this list.
     /// </summary>
-    public async Task<IReadOnlyList<string>> GetAvailableActionsAsync(
+    public async Task<IReadOnlyList<AvailableAction>> GetAvailableActionsAsync(
         Guid requestId,
         ActingUser actingUser,
         CancellationToken cancellationToken = default)
@@ -165,24 +165,38 @@ public sealed class RequestActionService
 
         if (request is null)
         {
-            return Array.Empty<string>();
+            return Array.Empty<AvailableAction>();
         }
 
         var definition = await _definitions.GetAsync(request.ModuleKey, cancellationToken);
 
         request.ActorId = actingUser.OnBehalfOf ?? actingUser.UserId;
 
-        var transitions = await _engine.GetAvailableTransitionsAsync(
+        var availability = await _engine.GetTransitionAvailabilityAsync(
             definition, request, actingUser, cancellationToken);
 
-        // Distinct because a state can carry two transitions with the same
-        // action name and different guards -- FINANCE_APPROVE's APPROVE splits
-        // on NetPayableNgn to POSTING or REFUND_DUE. The user takes one action;
-        // which branch it lands in is the engine's decision, not a second
-        // button.
-        return transitions
-            .Select(t => t.Action)
-            .Distinct(StringComparer.Ordinal)
+        // Grouped by action name because a state can carry two transitions
+        // sharing one name and differing only in guard -- FINANCE_APPROVE's
+        // APPROVE splits on NetPayableNgn to POSTING or REFUND_DUE. The user
+        // takes one action; which branch it lands in is the engine's decision,
+        // not a second button.
+        //
+        // An action is enabled if ANY of its branches is satisfiable, and the
+        // blocked reason is taken from the first branch that is not. Reporting
+        // it as blocked because the *other* branch's guard failed would be
+        // actively misleading: "this applies only when the advance exceeded the
+        // amount spent" is not the reason a normal claim cannot be approved.
+        return availability
+            .GroupBy(a => a.Transition.Action, StringComparer.Ordinal)
+            .Select(group =>
+            {
+                var enabled = group.Any(a => a.GuardSatisfied);
+
+                return new AvailableAction(
+                    group.Key,
+                    enabled,
+                    enabled ? null : group.Select(a => a.BlockedReason).FirstOrDefault(r => r is not null));
+            })
             .ToList();
     }
 

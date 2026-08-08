@@ -25,10 +25,24 @@ public sealed class AvailableActionsTests : IntegrationTestBase
 {
     public AvailableActionsTests(WorkflowApiFixture fixture) : base(fixture) { }
 
+    /// <summary>Actions the caller is authorised for, enabled or not.</summary>
     private static string[] ActionsOf(JsonElement detail) =>
         detail.GetProperty("availableActions").EnumerateArray()
-            .Select(e => e.GetString()!)
+            .Select(e => e.GetProperty("action").GetString()!)
             .ToArray();
+
+    /// <summary>Actions they can take right now.</summary>
+    private static string[] EnabledActionsOf(JsonElement detail) =>
+        detail.GetProperty("availableActions").EnumerateArray()
+            .Where(e => e.GetProperty("isEnabled").GetBoolean())
+            .Select(e => e.GetProperty("action").GetString()!)
+            .ToArray();
+
+    private static string? BlockedReasonFor(JsonElement detail, string action) =>
+        detail.GetProperty("availableActions").EnumerateArray()
+            .Where(e => e.GetProperty("action").GetString() == action)
+            .Select(e => e.GetProperty("blockedReason").GetString())
+            .FirstOrDefault();
 
     [Fact]
     public async Task The_resolved_approver_is_offered_the_actions_that_state_allows()
@@ -115,8 +129,16 @@ public sealed class AvailableActionsTests : IntegrationTestBase
             .GetAsync($"/api/v1/requests/{id}")).ShouldSucceedAsync();
 
         withoutBankDetails.GetProperty("currentState").GetString().Should().Be("AUTHORISATION");
-        ActionsOf(withoutBankDetails).Should()
+        EnabledActionsOf(withoutBankDetails).Should()
             .NotContain("AUTHORISE", "a bank transfer to an account nobody recorded cannot be authorised");
+
+        // Authorised but blocked, not absent -- and the refusal says why. The
+        // Finance Manager holds the authority; what is missing is the account
+        // number. Reporting that as "no actions" would send them to check
+        // their own permissions.
+        ActionsOf(withoutBankDetails).Should().Contain("AUTHORISE");
+        BlockedReasonFor(withoutBankDetails, "AUTHORISE").Should()
+            .NotBeNullOrWhiteSpace("a disabled action must say what to fix");
 
         await WithDbAsync(async db =>
         {
@@ -130,7 +152,7 @@ public sealed class AvailableActionsTests : IntegrationTestBase
         var withBankDetails = await (await financeManagerClient
             .GetAsync($"/api/v1/requests/{id}")).ShouldSucceedAsync();
 
-        ActionsOf(withBankDetails).Should().Contain("AUTHORISE");
+        EnabledActionsOf(withBankDetails).Should().Contain("AUTHORISE");
 
         // And the offer is honest: taking it succeeds.
         await (await WorkflowSteps.AuthorisePostingExpenseAsync(financeManagerClient, id)).ShouldSucceedAsync();
@@ -170,6 +192,66 @@ public sealed class AvailableActionsTests : IntegrationTestBase
         var forInputer = await (await inputer.GetAsync($"/api/v1/requests/{id}")).ShouldSucceedAsync();
 
         forInputer.GetProperty("currentState").GetString().Should().Be("AUTHORISATION");
-        ActionsOf(forInputer).Should().NotContain("AUTHORISE");
+        EnabledActionsOf(forInputer).Should().NotContain("AUTHORISE");
+    }
+
+    /// <summary>
+    /// The deadlock this shape exists to prevent, pinned at the state where it
+    /// was found in dev.
+    ///
+    /// FINANCE_VERIFY's VERIFY guard is
+    ///   ReceiptStatus == 'Yes' && TreasuryNumber != null
+    /// and the Treasury number is captured BY that action. An availability
+    /// query that returns only guard-satisfied transitions therefore reports
+    /// nothing at all here, and a screen keyed on that renders no field to
+    /// enter the number into -- so the number can never be entered, and the
+    /// claim cannot leave the state. Three capture steps were unreachable in
+    /// the browser for exactly this reason, and EXP-2026-000005 stopped here.
+    ///
+    /// The RETURN alternative does not rescue it: its own guard requires
+    /// ReceiptStatus == 'Incomplete', so on a claim with receipts the Finance
+    /// Officer genuinely has no enabled action. Authorisation and guard
+    /// satisfaction have to be reported separately or the state is a dead end.
+    /// </summary>
+    [Fact]
+    public async Task An_action_blocked_only_by_data_it_captures_is_still_offered()
+    {
+        var org = await WithDbAsync(db => WorkflowSteps.CreateOrgChartAsync(db, "ACTIONS-E"));
+        var beneficiary = await WithDbAsync(db => TestData.CreateEmployeeBeneficiaryAsync(db, org.Requester));
+
+        var id = await WorkflowSteps.CreateAndSubmitExpenseAsync(
+            Fixture, org, beneficiary.Id, "Yes",
+            TestData.ExpenseLine("Test ICT router", new DateOnly(2026, 8, 8), 200_000m));
+
+        await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(org.LineManager), id, "VERIFY"))
+            .ShouldSucceedAsync();
+        await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(org.DeptHead), id, "VERIFY"))
+            .ShouldSucceedAsync();
+
+        var financeOfficerClient = Fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer");
+        var atFinanceVerify = await (await financeOfficerClient
+            .GetAsync($"/api/v1/requests/{id}")).ShouldSucceedAsync();
+
+        atFinanceVerify.GetProperty("currentState").GetString().Should().Be("FINANCE_VERIFY");
+
+        // No Treasury number yet, so nothing is takeable...
+        EnabledActionsOf(atFinanceVerify).Should().BeEmpty();
+
+        // ...but VERIFY is offered, with the definition's own guardMessage
+        // attached, so the screen knows to render the field.
+        ActionsOf(atFinanceVerify).Should().Contain("VERIFY");
+        BlockedReasonFor(atFinanceVerify, "VERIFY").Should().Contain("Treasury");
+
+        // And supplying it through the same generic endpoint the screen uses
+        // makes the action live.
+        await (await WorkflowSteps.ActionAsync(
+                financeOfficerClient, id, "VERIFY",
+                payload: new Dictionary<string, object?> { ["TreasuryNumber"] = "TN-ACT-E" }))
+            .ShouldSucceedAsync();
+
+        var afterVerify = await (await financeOfficerClient
+            .GetAsync($"/api/v1/requests/{id}")).ShouldSucceedAsync();
+
+        afterVerify.GetProperty("currentState").GetString().Should().Be("FINANCE_APPROVE");
     }
 }
