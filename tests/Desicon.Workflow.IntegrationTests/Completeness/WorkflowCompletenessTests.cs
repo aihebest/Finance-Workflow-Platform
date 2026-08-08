@@ -70,46 +70,44 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
             return id;
         }
 
-        async Task<Guid> DriveToFinanceVerifyAsync(string receiptStatus, decimal amount)
+        async Task<Guid> DriveToCostControlVerifyAsync(string receiptStatus, decimal amount)
         {
             var id = await DriveToDeptHeadAsync(receiptStatus, amount);
-            await StepAsync(() => WorkflowSteps.ActionAsync(deptHeadClient, id, "VERIFY"), "DEPT_HEAD", "VERIFY", "FINANCE_VERIFY");
+            await StepAsync(() => WorkflowSteps.ActionAsync(deptHeadClient, id, "VERIFY"), "DEPT_HEAD", "VERIFY", "COST_CONTROL_VERIFY");
             return id;
         }
 
         async Task<Guid> DriveToFinanceApproveAsync(decimal amount, string treasuryNumber)
         {
-            var id = await DriveToFinanceVerifyAsync("Yes", amount);
+            var id = await DriveToCostControlVerifyAsync("Yes", amount);
             await StepAsync(
                 () => WorkflowSteps.ActionAsync(financeOfficerClient, id, "VERIFY", payload: TreasuryNumber(treasuryNumber)),
-                "FINANCE_VERIFY", "VERIFY", "FINANCE_APPROVE");
+                "COST_CONTROL_VERIFY", "VERIFY", "FINANCE_APPROVE");
+            return id;
+        }
+
+        async Task<Guid> DriveToDmdApprovalAsync(decimal amount, string treasuryNumber)
+        {
+            var id = await DriveToFinanceApproveAsync(amount, treasuryNumber);
+            await StepAsync(() => WorkflowSteps.ActionAsync(financeManagerClient, id, "APPROVE"), "FINANCE_APPROVE", "APPROVE", "DMD_APPROVAL");
             return id;
         }
 
         async Task<Guid> DriveToPostingAsync(decimal amount, string treasuryNumber)
         {
-            var id = await DriveToFinanceApproveAsync(amount, treasuryNumber);
-            await StepAsync(() => WorkflowSteps.ActionAsync(financeManagerClient, id, "APPROVE"), "FINANCE_APPROVE", "APPROVE", "POSTING");
+            var id = await DriveToDmdApprovalAsync(amount, treasuryNumber);
+            await StepAsync(
+                () => WorkflowSteps.ApproveAsDirectorOfFinanceAsync(Fixture, org, id),
+                "DMD_APPROVAL", "APPROVE", "AWAITING_POSTING");
             return id;
         }
 
-        async Task<Guid> DriveToAuthorisationAsync(decimal amount, string treasuryNumber, string journalVoucherNumber)
+        async Task<Guid> DriveToAwaitingPaymentAsync(decimal amount, string treasuryNumber, string bcDocumentNumber)
         {
             var id = await DriveToPostingAsync(amount, treasuryNumber);
             await StepAsync(
-                () => WorkflowSteps.CaptureGlLinesExpenseAsync(
-                    financeOfficerClient, id, journalVoucherNumber,
-                    WorkflowSteps.GlLine("Debit", "1000-EXP", amount), WorkflowSteps.GlLine("Credit", "2000-CASH", amount)),
-                "POSTING", "POST", "AUTHORISATION");
-            return id;
-        }
-
-        async Task<Guid> DriveToAwaitingPaymentAsync(decimal amount, string treasuryNumber, string journalVoucherNumber)
-        {
-            var id = await DriveToAuthorisationAsync(amount, treasuryNumber, journalVoucherNumber);
-            await StepAsync(
-                () => WorkflowSteps.AuthorisePostingExpenseAsync(financeManagerClient, id),
-                "AUTHORISATION", "AUTHORISE", "AWAITING_PAYMENT");
+                () => WorkflowSteps.MarkPostedExpenseAsync(financeOfficerClient, id, bcDocumentNumber),
+                "AWAITING_POSTING", "MARK_POSTED", "AWAITING_PAYMENT");
             return id;
         }
 
@@ -143,8 +141,8 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         await StepAsync(() => WorkflowSteps.ActionAsync(deptHeadClient, claim4, "REJECT", comment: "Not a valid claim."), "DEPT_HEAD", "REJECT", "REJECTED");
 
         // FINANCE_VERIFY RETURN (Incomplete receipts).
-        var claim5 = await DriveToFinanceVerifyAsync("Incomplete", 500m);
-        await StepAsync(() => WorkflowSteps.ActionAsync(financeOfficerClient, claim5, "RETURN", comment: "Receipts incomplete."), "FINANCE_VERIFY", "RETURN", "RETURNED");
+        var claim5 = await DriveToCostControlVerifyAsync("Incomplete", 500m);
+        await StepAsync(() => WorkflowSteps.ActionAsync(financeOfficerClient, claim5, "RETURN", comment: "Receipts incomplete."), "COST_CONTROL_VERIFY", "RETURN", "RETURNED");
 
         // FINANCE_APPROVE RETURN.
         var claim6 = await DriveToFinanceApproveAsync(500m, "TN-06");
@@ -163,12 +161,28 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
             await db.SaveChangesAsync();
         });
         await StepAsync(() => WorkflowSteps.ActionAsync(financeManagerClient, claim8, "APPROVE"), "FINANCE_APPROVE", "APPROVE", "REFUND_DUE");
-        await StepAsync(() => WorkflowSteps.ConfirmRefundAsync(financeOfficerClient, claim8, 500m), "REFUND_DUE", "CONFIRM_REFUND", "POSTING");
-        await StepAsync(() => WorkflowSteps.ActionAsync(financeOfficerClient, claim8, "RETURN", comment: "Wrong GL account."), "POSTING", "RETURN", "RETURNED");
+        await StepAsync(() => WorkflowSteps.ConfirmRefundAsync(financeManagerClient, claim8, 500m), "REFUND_DUE", "CONFIRM_REFUND", "AWAITING_POSTING");
+        await StepAsync(() => WorkflowSteps.ActionAsync(financeOfficerClient, claim8, "RETURN", comment: "Wrong cost centre."), "AWAITING_POSTING", "RETURN", "RETURNED");
 
-        // AUTHORISATION RETURN -> POSTING (checker rejects the inputer's work).
-        var claim9 = await DriveToAuthorisationAsync(500m, "TN-09", "JV-09");
-        await StepAsync(() => WorkflowSteps.ActionAsync(financeManagerClient, claim9, "RETURN", comment: "Debits and credits look wrong."), "AUTHORISATION", "RETURN", "POSTING");
+        // REFUND_DUE RETURN -- the exit that did not exist until version 2. An
+        // employee who never pays back an over-drawn advance previously left
+        // the claim parked with no action available to anyone.
+        var claim8b = await DriveToFinanceApproveAsync(1_000m, "TN-08B");
+        await WithDbAsync(async db =>
+        {
+            var expense = await db.ExpenseRequests.FirstAsync(e => e.RequestId == claim8b);
+            expense.AdvanceAmountNgn = 1_500m;
+            await db.SaveChangesAsync();
+        });
+        await StepAsync(() => WorkflowSteps.ActionAsync(financeManagerClient, claim8b, "APPROVE"), "FINANCE_APPROVE", "APPROVE", "REFUND_DUE");
+        await StepAsync(() => WorkflowSteps.ActionAsync(financeManagerClient, claim8b, "RETURN", comment: "Refund never received."), "REFUND_DUE", "RETURN", "RETURNED");
+
+        // DMD_APPROVAL RETURN and REJECT.
+        var claim9 = await DriveToDmdApprovalAsync(500m, "TN-09");
+        await StepAsync(() => WorkflowSteps.ActionAsync(Fixture.CreateClient(org.DirectorOfFinance, "DirectorOfFinance"), claim9, "RETURN", comment: "Query the cost centre."), "DMD_APPROVAL", "RETURN", "RETURNED");
+
+        var claim9b = await DriveToDmdApprovalAsync(500m, "TN-09B");
+        await StepAsync(() => WorkflowSteps.ActionAsync(Fixture.CreateClient(org.DirectorOfFinance, "DirectorOfFinance"), claim9b, "REJECT", comment: "Not payable."), "DMD_APPROVAL", "REJECT", "REJECTED");
 
         // AWAITING_PAYMENT RETURN.
         var claim10 = await DriveToAwaitingPaymentAsync(500m, "TN-10", "JV-10");
@@ -229,46 +243,44 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
             return id;
         }
 
-        async Task<Guid> DriveToFinanceVerifyAsync(string purpose, decimal amount)
+        async Task<Guid> DriveToCostControlVerifyAsync(string purpose, decimal amount)
         {
             var id = await DriveToDeptHeadAsync(purpose, amount);
-            await StepAsync(() => WorkflowSteps.ActionAsync(deptHeadClient, id, "VERIFY"), "DEPT_HEAD", "VERIFY", "FINANCE_VERIFY");
+            await StepAsync(() => WorkflowSteps.ActionAsync(deptHeadClient, id, "VERIFY"), "DEPT_HEAD", "VERIFY", "COST_CONTROL_VERIFY");
             return id;
         }
 
         async Task<Guid> DriveToFinanceApproveAsync(string purpose, decimal amount, string treasuryNumber)
         {
-            var id = await DriveToFinanceVerifyAsync(purpose, amount);
+            var id = await DriveToCostControlVerifyAsync(purpose, amount);
             await StepAsync(
                 () => WorkflowSteps.ActionAsync(financeOfficerClient, id, "VERIFY", payload: TreasuryNumber(treasuryNumber)),
-                "FINANCE_VERIFY", "VERIFY", "FINANCE_APPROVE");
+                "COST_CONTROL_VERIFY", "VERIFY", "FINANCE_APPROVE");
+            return id;
+        }
+
+        async Task<Guid> DriveToDmdApprovalAsync(string purpose, decimal amount, string treasuryNumber)
+        {
+            var id = await DriveToFinanceApproveAsync(purpose, amount, treasuryNumber);
+            await StepAsync(() => WorkflowSteps.ActionAsync(financeManagerClient, id, "APPROVE"), "FINANCE_APPROVE", "APPROVE", "DMD_APPROVAL");
             return id;
         }
 
         async Task<Guid> DriveToPostingAsync(string purpose, decimal amount, string treasuryNumber)
         {
-            var id = await DriveToFinanceApproveAsync(purpose, amount, treasuryNumber);
-            await StepAsync(() => WorkflowSteps.ActionAsync(financeManagerClient, id, "APPROVE"), "FINANCE_APPROVE", "APPROVE", "POSTING");
+            var id = await DriveToDmdApprovalAsync(purpose, amount, treasuryNumber);
+            await StepAsync(
+                () => WorkflowSteps.ApproveAsDirectorOfFinanceAsync(Fixture, org, id),
+                "DMD_APPROVAL", "APPROVE", "AWAITING_POSTING");
             return id;
         }
 
-        async Task<Guid> DriveToAuthorisationAsync(string purpose, decimal amount, string treasuryNumber, string journalVoucherNumber)
+        async Task<Guid> DriveToCashReleaseAsync(string purpose, decimal amount, string treasuryNumber, string bcDocumentNumber)
         {
             var id = await DriveToPostingAsync(purpose, amount, treasuryNumber);
             await StepAsync(
-                () => WorkflowSteps.CaptureGlLinesAdvanceAsync(
-                    financeOfficerClient, id, journalVoucherNumber,
-                    WorkflowSteps.GlLine("Debit", "1100-ADV", amount), WorkflowSteps.GlLine("Credit", "2000-CASH", amount)),
-                "POSTING", "POST", "AUTHORISATION");
-            return id;
-        }
-
-        async Task<Guid> DriveToCashReleaseAsync(string purpose, decimal amount, string treasuryNumber, string journalVoucherNumber)
-        {
-            var id = await DriveToAuthorisationAsync(purpose, amount, treasuryNumber, journalVoucherNumber);
-            await StepAsync(
-                () => WorkflowSteps.AuthorisePostingAdvanceAsync(financeManagerClient, id),
-                "AUTHORISATION", "AUTHORISE", "CASH_RELEASE");
+                () => WorkflowSteps.MarkPostedAdvanceAsync(financeOfficerClient, id, bcDocumentNumber),
+                "AWAITING_POSTING", "MARK_POSTED", "CASH_RELEASE");
             return id;
         }
 
@@ -337,12 +349,12 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         await StepAsync(() => WorkflowSteps.ActionAsync(deptHeadClient, advH, "REJECT", comment: "Not approved."), "DEPT_HEAD", "REJECT", "REJECTED");
 
         // FINANCE_VERIFY RETURN.
-        var advI = await DriveToFinanceVerifyAsync("FV return advance", 1_000m);
-        await StepAsync(() => WorkflowSteps.ActionAsync(financeOfficerClient, advI, "RETURN", comment: "Missing supporting documents."), "FINANCE_VERIFY", "RETURN", "RETURNED");
+        var advI = await DriveToCostControlVerifyAsync("FV return advance", 1_000m);
+        await StepAsync(() => WorkflowSteps.ActionAsync(financeOfficerClient, advI, "RETURN", comment: "Missing supporting documents."), "COST_CONTROL_VERIFY", "RETURN", "RETURNED");
 
         // FINANCE_VERIFY REJECT.
-        var advJ = await DriveToFinanceVerifyAsync("FV reject advance", 1_000m);
-        await StepAsync(() => WorkflowSteps.ActionAsync(financeOfficerClient, advJ, "REJECT", comment: "Not approved."), "FINANCE_VERIFY", "REJECT", "REJECTED");
+        var advJ = await DriveToCostControlVerifyAsync("FV reject advance", 1_000m);
+        await StepAsync(() => WorkflowSteps.ActionAsync(financeOfficerClient, advJ, "REJECT", comment: "Not approved."), "COST_CONTROL_VERIFY", "REJECT", "REJECTED");
 
         // FINANCE_APPROVE RETURN.
         var advK = await DriveToFinanceApproveAsync("FA return advance", 1_000m, "TN-K-01");
@@ -352,13 +364,16 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         var advL = await DriveToFinanceApproveAsync("FA reject advance", 1_000m, "TN-L-01");
         await StepAsync(() => WorkflowSteps.ActionAsync(financeManagerClient, advL, "REJECT", comment: "Not approved."), "FINANCE_APPROVE", "REJECT", "REJECTED");
 
-        // POSTING RETURN.
-        var advM = await DriveToPostingAsync("POST return advance", 1_000m, "TN-M-01");
-        await StepAsync(() => WorkflowSteps.ActionAsync(financeOfficerClient, advM, "RETURN", comment: "Wrong GL account."), "POSTING", "RETURN", "RETURNED");
+        // AWAITING_POSTING RETURN.
+        var advM = await DriveToPostingAsync("Posting return advance", 1_000m, "TN-M-01");
+        await StepAsync(() => WorkflowSteps.ActionAsync(financeOfficerClient, advM, "RETURN", comment: "Wrong cost centre."), "AWAITING_POSTING", "RETURN", "RETURNED");
 
-        // AUTHORISATION RETURN -> RETURNED.
-        var advN = await DriveToAuthorisationAsync("AUTH return advance", 1_000m, "TN-N-01", "JV-N-01");
-        await StepAsync(() => WorkflowSteps.ActionAsync(financeManagerClient, advN, "RETURN", comment: "Debits and credits look wrong."), "AUTHORISATION", "RETURN", "RETURNED");
+        // DMD_APPROVAL RETURN and REJECT.
+        var advN = await DriveToDmdApprovalAsync("DMD return advance", 1_000m, "TN-N-01");
+        await StepAsync(() => WorkflowSteps.ActionAsync(Fixture.CreateClient(org.DirectorOfFinance, "DirectorOfFinance"), advN, "RETURN", comment: "Query this."), "DMD_APPROVAL", "RETURN", "RETURNED");
+
+        var advN2 = await DriveToDmdApprovalAsync("DMD reject advance", 1_000m, "TN-N-02");
+        await StepAsync(() => WorkflowSteps.ActionAsync(Fixture.CreateClient(org.DirectorOfFinance, "DirectorOfFinance"), advN2, "REJECT", comment: "Not payable."), "DMD_APPROVAL", "REJECT", "REJECTED");
 
         // CASH_RELEASE RETURN.
         var advO = await DriveToCashReleaseAsync("Release return advance", 1_000m, "TN-O-01", "JV-O-01");

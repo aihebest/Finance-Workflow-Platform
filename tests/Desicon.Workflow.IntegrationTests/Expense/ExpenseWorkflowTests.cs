@@ -25,7 +25,7 @@ public sealed class ExpenseWorkflowTests : IntegrationTestBase
             TestData.ExpenseLine("Hotel", new DateOnly(2026, 1, 3), 3_000m));
 
         await WorkflowSteps.DriveExpenseToFinanceApproveAsync(Fixture, org, id, "TN-0001");
-        await WorkflowSteps.DriveExpenseToAwaitingPaymentAsync(Fixture, org, id, "JV-0001", 8_000m);
+        await WorkflowSteps.DriveExpenseToAwaitingPaymentAsync(Fixture, org, id, "BC-0001");
 
         // EXECUTE_PAYMENT through its dedicated endpoint.
         //
@@ -195,10 +195,16 @@ public sealed class ExpenseWorkflowTests : IntegrationTestBase
         afterApprove.GetProperty("netPayableNgn").GetDecimal().Should().Be(-500m);
         afterApprove.GetProperty("isRefundDue").GetBoolean().Should().BeTrue();
 
+        // Confirmed by the Accounts Manager, not the Accounts Officer --
+        // whether money is owed to the employee or back to the company, the
+        // retirement form makes it the same person's call.
         var confirmed = await (await WorkflowSteps.ConfirmRefundAsync(
-                Fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer"), id, 500m))
+                Fixture.CreateClient(org.FinanceManager, "FinanceManager"), id, 500m))
             .ShouldSucceedAsync();
-        confirmed.GetProperty("toState").GetString().Should().Be("POSTING");
+
+        // Straight to posting, bypassing the Director of Finance: his gate
+        // authorises money leaving, and this is money arriving.
+        confirmed.GetProperty("toState").GetString().Should().Be("AWAITING_POSTING");
     }
 
     [Fact]

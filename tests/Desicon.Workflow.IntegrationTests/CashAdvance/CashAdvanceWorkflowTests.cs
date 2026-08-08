@@ -81,17 +81,22 @@ public sealed class CashAdvanceWorkflowTests : IntegrationTestBase
         var approve = await (await WorkflowSteps.ActionAsync(
                 Fixture.CreateClient(org.FinanceManager, "FinanceManager"), expenseId, "APPROVE"))
             .ShouldSucceedAsync();
-        approve.GetString("toState").Should().Be("POSTING");
+        // Net payable is positive -- the employee spent more than the advance
+        // -- so this is money leaving, and the Director of Finance's gate
+        // applies. A retirement that balanced or refunded would have gone
+        // straight to posting instead.
+        approve.GetString("toState").Should().Be("DMD_APPROVAL");
 
-        await (await WorkflowSteps.CaptureGlLinesExpenseAsync(
-                Fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer"), expenseId, "JV-EXP-RETIRE",
-                WorkflowSteps.GlLine("Debit", "1000-EXP", 6_000m), WorkflowSteps.GlLine("Credit", "1100-ADV", 6_000m)))
+        await (await WorkflowSteps.ApproveAsDirectorOfFinanceAsync(Fixture, org, expenseId))
             .ShouldSucceedAsync();
 
-        var authorise = await (await WorkflowSteps.AuthorisePostingExpenseAsync(
-                Fixture.CreateClient(org.FinanceManager, "FinanceManager"), expenseId))
+        // RetireLinkedAdvance now fires on MARK_POSTED rather than on the
+        // journal authorisation that no longer exists: the advance is retired
+        // at the point Business Central records the claim against it.
+        var posted = await (await WorkflowSteps.MarkPostedExpenseAsync(
+                Fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer"), expenseId, "BC-EXP-RETIRE"))
             .ShouldSucceedAsync();
-        authorise.GetString("toState").Should().Be("AWAITING_PAYMENT");
+        posted.GetString("toState").Should().Be("AWAITING_PAYMENT");
 
         var advanceAfter = await (await Fixture.CreateClient(org.Requester).GetAsync($"/api/v1/requests/{advanceId}"))
             .ShouldSucceedAsync();
