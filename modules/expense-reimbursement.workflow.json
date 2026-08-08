@@ -110,6 +110,12 @@
       "guardMessage": "The refund received must equal the amount over-drawn.",
       "note": "The Accounts Manager confirms the refund, as on the retirement form -- whether money is owed to the employee or back to the company, it is the same person's call. Goes straight to posting: the Director of Finance authorises money leaving, and this is money arriving."
     },
+    {
+      "from": "REFUND_DUE", "to": "RETURNED", "action": "RETURN",
+      "actor": { "role": "FinanceManager" },
+      "requiresComment": true,
+      "note": "The negative path the validator flagged as missing, and it was missing in version 1 too. Without it, a claim where the employee never pays back the over-drawn amount has exactly one exit -- CONFIRM_REFUND -- whose guard requires the refund to have been received. An employee who simply does not pay leaves the request parked in REFUND_DUE with no action available to anybody, which is how a debt becomes invisible rather than collected."
+    },
 
     {
       "from": "DMD_APPROVAL", "to": "AWAITING_POSTING", "action": "APPROVE",
