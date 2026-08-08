@@ -1,9 +1,0 @@
-2026-08-08T00:43:22.2536186Z State: Stopping, Action: StoppingSite, LastError: ContainerStartupFailure, LastErrorTimestamp: 08/08/2026 00:15:54, LastErrorDetails: The container did not complete startup successfully. Please inspect your container logs for more details., Details: Site started at 08/08/2026 00:16:51 (UTC), DetailsLevel: INFO
-2026-08-08T00:43:22.2538655Z State: Stopping, Action: StoppingSiteContainers, LastError: ContainerStartupFailure, LastErrorTimestamp: 08/08/2026 00:15:54, LastErrorDetails: The container did not complete startup successfully. Please inspect your container logs for more details., Details: Site started at 08/08/2026 00:16:51 (UTC), DetailsLevel: INFO
-2026-08-08T00:43:22.2539430Z Container is terminating. Grace period: 5 seconds.
-2026-08-08T00:43:22.2587313Z Stop and delete container. Retry count = 0
-2026-08-08T00:43:22.2589323Z Stopping container: 4fc5a5fec338_app-desicon-fw-api-dev.
-2026-08-08T00:43:22.3448267Z Deleting container: 4fc5a5fec338_app-desicon-fw-api-dev. Retry count = 0
-2026-08-08T00:43:22.4025027Z Container spec TerminationMessagePolicy  path 
-2026-08-08T00:43:22.4026888Z Container is terminated. Total time elapsed: 148 ms.
-2026-08-08T00:43:22.7011023Z Site: app-desicon-fw-api-dev stopped.

@@ -50,3 +50,9 @@ local.settings.json
 # TypeScript incremental build cache. Machine-local; committing it makes every
 # checkout differ and tells tsc things about a build that did not happen here.
 *.tsbuildinfo
+
+# Downloaded App Service logs (az webapp log download). Bulky, and they carry
+# every SQL statement the app executed plus stack traces -- diagnostic output
+# belongs in Application Insights, not in version control.
+applogs/
+*.zip
