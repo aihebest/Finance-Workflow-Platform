@@ -121,6 +121,27 @@ export interface ExpenseLineInput {
   fxRateDate: string;
 }
 
+/**
+ * One side of a journal entry. `side` matches the PostingSide enum the API
+ * parses case-insensitively; the string form is what travels on the wire.
+ */
+export interface GlLineInput {
+  side: "Debit" | "Credit";
+  accountNumber: string;
+  narration: string;
+  amountNgn: number;
+}
+
+/**
+ * Actions the caller may take right now, as computed by the API from the
+ * workflow definition's actor resolvers and guards.
+ *
+ * Advisory only. Every entry is re-checked inside the transaction when the
+ * action is actually executed, so a stale list can produce a refusal but never
+ * an unauthorised transition.
+ */
+export type AvailableAction = string;
+
 export interface ExpenseDraftInput {
   /**
    * Omitted means "pay me". The API resolves the requester's own beneficiary

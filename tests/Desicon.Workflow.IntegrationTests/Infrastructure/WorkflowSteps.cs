@@ -94,6 +94,20 @@ public static class WorkflowSteps
     public static Task<HttpResponseMessage> AcknowledgeExpenseAsync(HttpClient client, Guid id) =>
         PostAsync(client, $"/api/v1/expenses/{id}/acknowledge", null);
 
+    /// <summary>
+    /// EXECUTE_PAYMENT through its own endpoint rather than /actions.
+    ///
+    /// The generic endpoint moves the state but leaves PaymentReference and
+    /// PaymentDate null, because captured fields reach the audit event's
+    /// PayloadJson and nothing copies them onto the entity. Tests that drive
+    /// through payment should use this, so what they exercise is what the
+    /// browser does.
+    /// </summary>
+    public static Task<HttpResponseMessage> ExecutePaymentAsync(
+        HttpClient client, Guid id, string paymentReference, DateTimeOffset? paymentDate = null) =>
+        PostAsync(client, $"/api/v1/expenses/{id}/execute-payment",
+            new { PaymentReference = paymentReference, PaymentDate = paymentDate });
+
     public static Task<HttpResponseMessage> ConfirmRefundAsync(HttpClient client, Guid id, decimal refundReceivedAmountNgn) =>
         PostAsync(client, $"/api/v1/expenses/{id}/refund-received", new { RefundReceivedAmountNgn = refundReceivedAmountNgn });
 

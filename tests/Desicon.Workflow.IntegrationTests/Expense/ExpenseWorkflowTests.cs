@@ -27,30 +27,25 @@ public sealed class ExpenseWorkflowTests : IntegrationTestBase
         await WorkflowSteps.DriveExpenseToFinanceApproveAsync(Fixture, org, id, "TN-0001");
         await WorkflowSteps.DriveExpenseToAwaitingPaymentAsync(Fixture, org, id, "JV-0001", 8_000m);
 
-        // EXECUTE_PAYMENT: no guard blocks it, so the transition itself
-        // succeeds and the state advances -- but ApplyEffectAsync has no case
-        // for this transition's effect (it declares none), and CapturedFields
-        // are otherwise only ever written into the audit event's PayloadJson,
-        // never applied back onto the entity. PaymentReference/PaymentDate
-        // are therefore captured by the JSON definition but can never be
-        // persisted through any code path that exists today -- see
-        // RequestActionService.ApplyEffectAsync's three-case switch. This
-        // assertion documents that finding rather than assuming otherwise.
+        // EXECUTE_PAYMENT through its dedicated endpoint.
+        //
+        // This assertion used to read the other way round: it pinned
+        // paymentReference and paymentDate as Null, because the transition
+        // declares them in "captures" and nothing anywhere copied captured
+        // fields onto the entity -- they reached the audit event's PayloadJson
+        // and stopped. The state advanced, so the claim looked paid while the
+        // columns recording how it was paid stayed empty. /execute-payment now
+        // stages both before the transition runs, and this asserts that.
         var financeOfficerClient = Fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer");
-        await (await WorkflowSteps.ActionAsync(
-                financeOfficerClient, id, "EXECUTE_PAYMENT",
-                payload: new Dictionary<string, object?>
-                {
-                    ["PaymentReference"] = "PMT-0001",
-                    ["PaymentDate"] = DateTimeOffset.UtcNow
-                }))
+        await (await WorkflowSteps.ExecutePaymentAsync(financeOfficerClient, id, "PMT-0001"))
             .ShouldSucceedAsync();
 
         var afterPayment = await (await Fixture.CreateClient(org.Requester)
             .GetAsync($"/api/v1/requests/{id}")).ShouldSucceedAsync();
         afterPayment.GetProperty("currentState").GetString().Should().Be("AWAITING_ACK");
-        afterPayment.GetProperty("paymentReference").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
-        afterPayment.GetProperty("paymentDate").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+        afterPayment.GetProperty("paymentReference").GetString().Should().Be("PMT-0001");
+        afterPayment.GetProperty("paymentDate").ValueKind.Should()
+            .NotBe(System.Text.Json.JsonValueKind.Null, "a paid claim must record when it was paid");
 
         // Beneficiary == the requester here (self-beneficiary expense claim),
         // and "Beneficiary" is one of the two self-service resolvers exempted

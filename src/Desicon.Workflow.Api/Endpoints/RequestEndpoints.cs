@@ -137,6 +137,7 @@ public static class RequestEndpoints
         HttpResponse httpResponse,
         WorkflowDbContext db,
         ReadAccessScope readAccess,
+        RequestActionService actionService,
         ICurrentUserAccessor currentUser,
         CancellationToken cancellationToken)
     {
@@ -160,9 +161,18 @@ public static class RequestEndpoints
 
         await AttachGlPostingLinesAsync(db, request, cancellationToken);
 
+        // Read-only: GetAvailableActionsAsync opens no transaction and writes
+        // nothing. It re-reads the request through its own tracked query,
+        // which the identity map resolves back to the instance above -- the
+        // staged guard fields it sets therefore land on the entity this
+        // response is serialised from, which is why AttachGlPostingLinesAsync
+        // above and the staging inside it do not conflict.
+        var actingUser = await currentUser.GetActingUserAsync(cancellationToken);
+        var availableActions = await actionService.GetAvailableActionsAsync(id, actingUser, cancellationToken);
+
         httpResponse.SetETag(request.RowVersion);
 
-        return Results.Ok(ToDetailDto(request));
+        return Results.Ok(ToDetailDto(request, availableActions));
     }
 
     private static async Task<IResult> UpdateDraftAsync(
@@ -496,7 +506,11 @@ public static class RequestEndpoints
             .OrderByDescending(a => a.StateEnteredAt)
             .ToListAsync(cancellationToken);
 
-        return Results.Ok(advances.Select(ToDetailDto));
+        // Lambda rather than a method group: ToDetailDto's optional
+        // availableActions parameter makes it non-convertible to
+        // Func<CashAdvanceRequest, object>, which C# reports as an unrelated
+        // overload-resolution error.
+        return Results.Ok(advances.Select(a => ToDetailDto(a)));
     }
 
     internal static async Task AttachGlPostingLinesAsync(
@@ -716,10 +730,20 @@ public static class RequestEndpoints
         request.ClosedAt
     };
 
-    internal static object ToDetailDto(Request request) => request switch
+    /// <summary>
+    /// <paramref name="availableActions"/> is what the caller may do next, and
+    /// is null on every path that does not have an acting user to evaluate it
+    /// against (draft creation, list projections). Null and empty are
+    /// deliberately the same on the wire -- "no buttons" -- because a screen
+    /// that distinguished "not computed" from "nothing permitted" would have to
+    /// guess which one it was looking at.
+    /// </summary>
+    internal static object ToDetailDto(
+        Request request, IReadOnlyList<string>? availableActions = null) => request switch
     {
         ExpenseRequest expense => new
         {
+            AvailableActions = availableActions ?? Array.Empty<string>(),
             expense.RequestId,
             expense.RequestNumber,
             expense.ModuleKey,
@@ -772,6 +796,7 @@ public static class RequestEndpoints
 
         CashAdvanceRequest advance => new
         {
+            AvailableActions = availableActions ?? Array.Empty<string>(),
             advance.RequestId,
             advance.RequestNumber,
             advance.ModuleKey,
