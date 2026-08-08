@@ -1,5 +1,6 @@
 using Azure.Identity;
 using Desicon.Workflow.Infrastructure.DependencyInjection;
+using Microsoft.Azure.Functions.Worker;
 using Desicon.Workflow.Infrastructure.Notifications;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.SqlClient.AlwaysEncrypted.AzureKeyVaultProvider;
