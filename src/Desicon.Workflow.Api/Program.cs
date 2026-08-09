@@ -8,6 +8,7 @@ using Desicon.Workflow.Core.Engine;
 using Desicon.Workflow.Core.Guards;
 using Desicon.Workflow.Core.Scheduling;
 using Desicon.Workflow.Infrastructure.DependencyInjection;
+using Desicon.Workflow.Infrastructure.Attachments;
 using Desicon.Workflow.Infrastructure.Persistence;
 using Desicon.Workflow.Infrastructure.Security;
 using Desicon.Workflow.Infrastructure.Workflow;
@@ -55,6 +56,16 @@ var definitionsPath = Path.GetFullPath(
 // Previously duplicated in both, including the holiday seeding, which is the
 // one piece where a silent divergence moves SLA deadlines.
 builder.Services.AddWorkflowPlatform(connectionString, definitionsPath);
+
+// Receipt attachments. Blank endpoint disables upload -- see AddAttachments
+// for why that is a refusal rather than a startup failure. The credential is
+// the same DefaultAzureCredential the Always Encrypted provider uses above:
+// managed identity in Azure, az login locally.
+builder.Services.AddAttachments(
+    new AttachmentStorageOptions(
+        builder.Configuration["Storage:BlobEndpoint"] ?? string.Empty,
+        builder.Configuration["Storage:AttachmentsContainer"] ?? "attachments"),
+    new DefaultAzureCredential());
 
 builder.Services.AddScoped<AdvanceRetirementHandler>();
 builder.Services.AddScoped<RequestActionService>();
@@ -273,6 +284,7 @@ app.MapExpenseEndpoints();
 app.MapCashAdvanceEndpoints();
 app.MapBeneficiaryEndpoints();
 app.MapBeneficiaryLookupEndpoints();
+app.MapAttachmentEndpoints();
 
 app.Run();
 

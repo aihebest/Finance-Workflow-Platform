@@ -1,8 +1,12 @@
 import { api } from "./client";
 import type {
+  AdvanceRetirementDraft,
+  AttachmentSummary,
   AuditEntry,
   BeneficiarySummary,
+  CashAdvanceDraftInput,
   ExpenseDraftInput,
+  OutstandingAdvance,
   RequestSummary,
 } from "./types";
 
@@ -98,3 +102,66 @@ export const confirmRefund = (id: string, refundReceivedAmountNgn: number, comme
     refundReceivedAmountNgn,
     comment: comment ?? null,
   });
+
+/**
+ * Creates a CASH_ADVANCE draft. Same generic endpoint as an expense claim —
+ * the API parses `payload` against CashAdvanceDraftPayload by module key.
+ */
+export const createCashAdvanceDraft = (input: CashAdvanceDraftInput) =>
+  api.post<{ requestId: string; requestNumber: string }>("/api/v1/requests", {
+    moduleKey: "CASH_ADVANCE",
+    payload: input,
+  });
+
+/** Advances still carrying a balance, with how overdue each one is. */
+export const getOutstandingAdvances = () =>
+  api.get<OutstandingAdvance[]>("/api/v1/advances/outstanding");
+
+/**
+ * Starts a retirement.
+ *
+ * An advance is retired *by* an expense claim, not by an action on the advance
+ * itself: the server creates a linked draft carrying the outstanding balance
+ * as its Cash Advance Taken, and that claim then runs the ordinary approval
+ * chain. Netting happens when it is posted.
+ */
+export const retireAdvance = (id: string) =>
+  api.post<AdvanceRetirementDraft>(`/api/v1/advances/${id}/retire`, {});
+
+/** Receipts and supporting documents on a request. */
+export const getAttachments = (id: string) =>
+  api.get<AttachmentSummary[]>(`/api/v1/requests/${id}/attachments`);
+
+/**
+ * Uploads one file.
+ *
+ * Multipart through the API rather than direct to storage: read access to an
+ * attachment is then decided by the same rules that decide read access to the
+ * request, rather than by a second mechanism that has to agree with the first.
+ */
+export const uploadAttachment = (id: string, file: File) => {
+  const form = new FormData();
+  form.append("file", file);
+  return api.postForm<AttachmentSummary>(`/api/v1/requests/${id}/attachments`, form);
+};
+
+/**
+ * Downloads an attachment and saves it under its original name.
+ *
+ * Goes through fetch rather than an href because the API needs the bearer
+ * token, and an anchor cannot send one. The object URL is revoked immediately
+ * -- it holds the whole file in memory until it is.
+ */
+export const downloadAttachment = async (id: string, attachmentId: string, fileName: string) => {
+  const blob = await api.getBlob(`/api/v1/requests/${id}/attachments/${attachmentId}`);
+  const url = URL.createObjectURL(blob);
+
+  try {
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.click();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+};

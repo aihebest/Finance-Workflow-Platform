@@ -9,6 +9,7 @@ import {
   markPosted,
 } from "../api/requests";
 import { ACTION_LABELS, ApiError, type AuditEntry, type AvailableAction } from "../api/types";
+import { Attachments } from "../components/Attachments";
 import { Money } from "../components/Money";
 
 type Detail = Record<string, unknown>;
@@ -247,6 +248,16 @@ export function RequestDetail() {
           </div>
         </section>
       )}
+
+      {/* Evidence sits directly above the actions, so an approver sees what
+          was purchased in the same glance as the button that approves it.
+          Reloading on change matters: Cost Control's guard counts attachments,
+          so uploading one can turn a disabled Verify live. */}
+      <Attachments
+        requestId={id}
+        canUpload={!detail.closedAt}
+        onChanged={() => void load()}
+      />
 
       {/* --- Business Central posting (AWAITING_POSTING) --- */}
       {can("MARK_POSTED") && (

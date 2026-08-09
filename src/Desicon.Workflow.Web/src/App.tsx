@@ -2,6 +2,8 @@ import { AuthenticatedTemplate, UnauthenticatedTemplate, useMsal } from "@azure/
 import { NavLink, Route, Routes } from "react-router-dom";
 import { apiScopes } from "./auth/msal";
 import { Inbox } from "./pages/Inbox";
+import { MyAdvances } from "./pages/MyAdvances";
+import { NewCashAdvance } from "./pages/NewCashAdvance";
 import { NewExpense } from "./pages/NewExpense";
 import { RequestDetail } from "./pages/RequestDetail";
 
@@ -33,10 +35,6 @@ export function App() {
       <AuthenticatedTemplate>
         <div className="mx-auto max-w-5xl p-4">
           <nav className="mb-4 flex gap-4 border-b border-gray-200 pb-2">
-            {/* Only the approval path is built so far. My Requests, My
-                Advances and the capture forms follow; deliberately not stubbed
-                with dead links, because a nav item that goes nowhere teaches
-                people the app is broken. */}
             <NavLink
               to="/expenses/new"
               className={({ isActive }) =>
@@ -46,6 +44,28 @@ export function App() {
               }
             >
               New Expense
+            </NavLink>
+
+            <NavLink
+              to="/advances/new"
+              className={({ isActive }) =>
+                isActive
+                  ? "border-b-2 border-blue-700 pb-2 font-medium text-blue-700"
+                  : "pb-2 text-gray-600 hover:text-gray-900"
+              }
+            >
+              New Cash Advance
+            </NavLink>
+
+            <NavLink
+              to="/advances"
+              className={({ isActive }) =>
+                isActive
+                  ? "border-b-2 border-blue-700 pb-2 font-medium text-blue-700"
+                  : "pb-2 text-gray-600 hover:text-gray-900"
+              }
+            >
+              My Advances
             </NavLink>
 
             <NavLink
@@ -64,6 +84,8 @@ export function App() {
             <Route path="/" element={<Inbox />} />
             <Route path="/requests/:id" element={<RequestDetail />} />
             <Route path="/expenses/new" element={<NewExpense />} />
+            <Route path="/advances/new" element={<NewCashAdvance />} />
+            <Route path="/advances" element={<MyAdvances />} />
           </Routes>
         </div>
       </AuthenticatedTemplate>

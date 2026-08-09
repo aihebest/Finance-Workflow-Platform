@@ -36,6 +36,9 @@ public class WorkflowDbContext : DbContext
 
     public DbSet<GlPostingLine> GlPostingLines => Set<GlPostingLine>();
 
+    /// <summary>Receipt metadata. The bytes are in blob storage.</summary>
+    public DbSet<Attachment> Attachments => Set<Attachment>();
+
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
 
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();

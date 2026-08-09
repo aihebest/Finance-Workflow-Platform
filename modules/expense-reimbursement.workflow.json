@@ -65,8 +65,8 @@
     {
       "from": "COST_CONTROL_VERIFY", "to": "FINANCE_APPROVE", "action": "VERIFY",
       "actor": { "role": "FinanceOfficer" },
-      "guard": "ReceiptStatus == 'Yes' && TreasuryNumber != null",
-      "guardMessage": "Receipts must be complete and a Treasury number captured before this proceeds.",
+      "guard": "ReceiptStatus == 'Yes' && TreasuryNumber != null && AttachmentCount > 0",
+      "guardMessage": "Receipts must be complete, at least one receipt attached, and a Treasury number captured before this proceeds.",
       "captures": ["TreasuryNumber"],
       "note": "The state is named for the work, not for a separate team: at this point Accounts are verifying that the request is costed to the right centre and taking it into BC. Same people as AWAITING_POSTING, so the same FinanceOfficer role -- their BC work at posting is simply deeper than the costing check they do here."
     },

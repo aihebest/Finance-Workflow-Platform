@@ -135,6 +135,7 @@ public class Request : IWorkflowSubject
             [nameof(EscalationCount)] = r => r.EscalationCount,
             [nameof(SubmittedAt)] = r => r.SubmittedAt,
             [nameof(ActorId)] = r => r.ActorId,
+            [nameof(AttachmentCount)] = r => r.AttachmentCount,
         };
 
     /// <summary>The field names this allowlist is the entire surface a
@@ -166,4 +167,20 @@ public class Request : IWorkflowSubject
     /// "ActorId != PostedByUserId".
     /// </summary>
     public Guid? ActorId { get; set; }
+
+    /// <summary>
+    /// How many files are attached to this request.
+    /// </summary>
+    /// <remarks>
+    /// Not a column. Staged from the Attachments table immediately before
+    /// guard evaluation, the same way GlPostingLines and
+    /// BeneficiaryHasBankDetails are, so a definition can require evidence
+    /// before letting a claim past Cost Control.
+    ///
+    /// Counted rather than derived from ReceiptStatus because those answer
+    /// different questions: ReceiptStatus is what the requester said, this is
+    /// what they actually provided. The gap between the two is the whole
+    /// reason attachments exist.
+    /// </remarks>
+    public int AttachmentCount { get; set; }
 }

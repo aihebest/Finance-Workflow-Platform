@@ -38,6 +38,13 @@ locals {
     ASPNETCORE_ENVIRONMENT                = var.environment
     ASPNETCORE_FORWARDEDHEADERS_ENABLED   = "true"
     KeyVault__Uri                         = var.key_vault_uri
+
+    # Attachments. The container, its customer-managed key and this app's
+    # "Storage Blob Data Contributor" role assignment have existed since this
+    # module was written; nothing had ever been told where the account is, so
+    # nothing could use them. Empty disables uploads rather than crashing.
+    Storage__BlobEndpoint          = var.storage_blob_endpoint
+    Storage__AttachmentsContainer  = var.attachments_container_name
     ApplicationInsights__ConnectionString = var.app_insights_connection_string
     # Connection string carries no credential — Managed Identity authenticates.
     #

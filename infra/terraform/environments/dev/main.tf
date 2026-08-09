@@ -224,7 +224,9 @@ module "app_service" {
 
   key_vault_id       = module.keyvault.id
   key_vault_uri      = module.keyvault.uri
-  storage_account_id = module.storage.id
+  storage_account_id         = module.storage.id
+  storage_blob_endpoint      = module.storage.primary_blob_endpoint
+  attachments_container_name = module.storage.attachments_container_name
   sql_connection_uri = module.sql.connection_uri
 
   # Explicit, not inferred from *_id nullness: these ids are module outputs
