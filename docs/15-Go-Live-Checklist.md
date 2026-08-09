@@ -134,9 +134,10 @@ should ever run down it again. Version 2 is the floor.
 
 ---
 
-## 3b. Add a CI check for model/migration drift
+## 3b. Model/migration drift
 
-**Outstanding, and cheap.**
+**Done 9 August 2026** — CI runs
+`dotnet ef migrations has-pending-model-changes` between Build and Test.
 
 On 9 August the EF model and the migrations disagreed for three commits and 54
 green integration tests did not notice. The migration added
@@ -147,19 +148,14 @@ stamped a version explicitly, so the stale default was never reached.
 It would have surfaced later as an unexplained `AlterColumn` inside an
 unrelated migration, and whoever hit it would have had no way to know why.
 
-`dotnet ef migrations script` does not compare the snapshot to the model, so CI
-cannot currently see this. One step closes it:
+`dotnet ef migrations script` does not compare the snapshot to the model, so
+that step is the only thing in the pipeline that can see this. Non-zero exit
+means somebody changed an entity or its configuration without adding a
+migration.
 
-```yaml
-- name: Check for pending model changes
-  run: |
-    dotnet ef migrations has-pending-model-changes \
-      --project src/Desicon.Workflow.Infrastructure
-```
-
-Non-zero exit means somebody changed an entity or configuration without adding
-a migration. Seconds to run, and it catches a class of drift that passing tests
-demonstrably do not.
+Nothing to do at go-live. Recorded here because the class of failure it catches
+— a disagreement that passing tests demonstrably do not notice — is worth
+remembering when adding future checks.
 
 ---
 

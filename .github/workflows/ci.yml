@@ -44,6 +44,23 @@ jobs:
       - name: Build
         run: dotnet build Desicon.FinanceWorkflow.sln --no-restore
 
+      # The EF model and the migrations can disagree without anything failing.
+      # On 9 Aug 2026 they did, for three commits, while 54 integration tests
+      # stayed green: a migration carried a database default the model no
+      # longer declared, and nothing reached it because every code path set the
+      # value explicitly. It would have surfaced much later as an unexplained
+      # AlterColumn inside an unrelated migration.
+      #
+      # `migrations script` does not compare the snapshot to the model, so this
+      # is the only step that can see it. Non-zero means somebody changed an
+      # entity or its configuration without adding a migration.
+      - name: Check for pending model changes
+        run: |
+          dotnet tool restore
+          dotnet ef migrations has-pending-model-changes \
+            --project src/Desicon.Workflow.Infrastructure \
+            --no-build
+
       - name: Test
         run: dotnet test Desicon.FinanceWorkflow.sln --no-build
 
