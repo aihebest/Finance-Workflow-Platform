@@ -97,7 +97,19 @@ internal static class FunctionsHost
                 var notifications = new NotificationOptions
                 {
                     ApplicationBaseUrl = context.Configuration["Notifications:ApplicationBaseUrl"] ?? string.Empty,
-                    SenderMailbox = context.Configuration["Notifications:SenderMailbox"] ?? string.Empty
+                    SenderMailbox = context.Configuration["Notifications:SenderMailbox"] ?? string.Empty,
+
+                    // Notifications__RoleMailboxes__FinanceOfficer and friends.
+                    // Read by enumerating children rather than binding, so this
+                    // needs no configuration-binder package and so a blank value
+                    // is dropped rather than becoming an empty recipient -- an
+                    // app setting present but empty is a common way to configure
+                    // a mailbox to nowhere.
+                    RoleMailboxes = context.Configuration
+                        .GetSection("Notifications:RoleMailboxes")
+                        .GetChildren()
+                        .Where(c => !string.IsNullOrWhiteSpace(c.Value))
+                        .ToDictionary(c => c.Key, c => c.Value!, StringComparer.OrdinalIgnoreCase)
                 };
 
                 var useGraph = context.Configuration.GetValue("Notifications:UseGraph", false);

@@ -42,7 +42,7 @@ terraform {
 }
 
 locals {
-  common_app_settings = {
+  common_app_settings = merge({
     FUNCTIONS_WORKER_RUNTIME              = "dotnet-isolated"
     WEBSITE_RUN_FROM_PACKAGE              = "1"
     ASPNETCORE_ENVIRONMENT                = var.environment
@@ -59,7 +59,22 @@ locals {
     Notifications__UseGraph           = tostring(var.notifications_use_graph)
     Notifications__SenderMailbox      = var.notifications_sender_mailbox
     Notifications__ApplicationBaseUrl = var.notifications_application_base_url
-  }
+  }, {
+    # Role mailboxes, flattened into Notifications__RoleMailboxes__<Role>.
+    #
+    # A workflow definition can name a role as a notification recipient, and
+    # roles exist only as Entra app role assignments -- they arrive as a claim
+    # on a token and are recorded nowhere, so there is no membership list to
+    # read. Without an entry here the recipient resolves to nobody and the
+    # dispatcher parks the message naming the role, which is correct but is
+    # still nobody being told.
+    #
+    # A role with no entry stays unresolvable on purpose. Defaulting an unknown
+    # role to some general mailbox would turn a loud failure into a quiet
+    # misdelivery.
+    for role, mailbox in var.notifications_role_mailboxes :
+    "Notifications__RoleMailboxes__${role}" => mailbox
+  })
 }
 
 # ── Functions runtime storage: a data service like any other ───────────────
