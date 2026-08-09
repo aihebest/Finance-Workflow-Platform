@@ -179,6 +179,58 @@ resource "azurerm_cdn_frontdoor_firewall_policy" "this" {
     type    = "Microsoft_DefaultRuleSet"
     version = "2.1"
     action  = "Block"
+
+    # ── Receipt uploads ───────────────────────────────────────────────────
+    # Found 9 Aug 2026: every POST to /api/v1/requests/{id}/attachments was
+    # blocked here and never reached the API. The panel reported only
+    # "Request failed (403)" because Front Door answers with an HTML error
+    # page rather than ProblemDetails, so nothing in the application or its
+    # logs said the WAF had refused it. 61 integration tests were green --
+    # none of them go through Front Door, and each seeds attachment rows
+    # straight into the table.
+    #
+    #   200002  Failed to parse request body
+    #   200003  Multipart request body failed strict validation
+    #
+    # Both scored against 949110 (anomaly threshold) until it blocked. Neither
+    # detects an attack: they are protocol-hygiene rules written for form
+    # posts, and a JPEG is not a form field. Every rule that looks for an
+    # actual attack -- SQLi 942xxx, XSS 941xxx, RCE 932xxx, LFI 930xxx --
+    # stays enabled, on this path as on every other.
+    #
+    # WHY DISABLED GLOBALLY RATHER THAN SCOPED TO THE UPLOAD PATH
+    # -----------------------------------------------------------
+    # Front Door has no path-scoped exclusion for a managed rule; the only
+    # per-path mechanism is a custom rule with action Allow, which skips the
+    # entire managed ruleset for whatever it matches. Its match variable is
+    # RequestUri, which includes the query string, so a rule matching
+    # "ends with /attachments" is satisfied by
+    #   POST /api/v1/requests/{id}/actions?x=/attachments
+    # -- a real endpoint, with the WAF turned off for it. Trading two
+    # parser-hygiene rules site-wide for an attacker-controlled bypass of the
+    # whole ruleset is the wrong way round.
+    #
+    # Worth knowing either way: Front Door inspects only the first 128 KB of
+    # a body, so a 10 MB receipt was never being scanned in full regardless.
+    # What actually guards this endpoint is in the API -- authentication, the
+    # ReadAccessScope check, a content-type allowlist, the 10 MB cap, blob
+    # paths built from ids and never from filenames, and a forced
+    # Content-Disposition: attachment on the way back out.
+    override {
+      rule_group_name = "General"
+
+      rule {
+        rule_id = "200002"
+        enabled = false
+        action  = "Log"
+      }
+
+      rule {
+        rule_id = "200003"
+        enabled = false
+        action  = "Log"
+      }
+    }
   }
 
   managed_rule {

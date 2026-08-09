@@ -100,6 +100,40 @@ again — not either of these two.
 - [ ] Drop the `FinanceOfficer` key from `notifications_role_mailboxes` at the
       same time, and delete `modules/*.v2.workflow.json`
 
+### 1c. Shared and functional accounts break attribution
+
+`treasury@desicongroup.com` is a real sign-in account with the display name
+"Treasury", not only a mailbox — confirmed 9 August 2026 when it was assigned
+`TreasuryOfficer` and signed in. The directory also holds `ictadmin@`, `hr@`,
+`genservices@` and `logistics@` in the same shape.
+
+Everything this platform records about who did what keys off `Employee.Id`:
+`PostedByUserId`, `AuthorisedByUserId`, `AcknowledgedByUserId`,
+`BankDetailsSetByUserId`, and every row of the hash-chained `AuditEvent`
+table. When several people share one login, all of that names an *account*
+rather than a person. The chain is still tamper-evident; it is just evidence
+about `treasury@`.
+
+The controls most affected are the ones that cost the most to build:
+
+- Maker-checker guards compare `ActorId` to another `Employee.Id`. Two people
+  sharing one account are one actor as far as every guard is concerned, so a
+  guard that should refuse will pass.
+- The Director of Finance gate is a second pair of eyes. It is only that if
+  the eyes belong to a specific person.
+- `EXP-2026-000004` was traced by asking who acted and when. That question has
+  no answer for a shared account.
+
+This is not a defect in the platform and there is nothing to fix in the
+repository. It is a decision for management: either named accounts for anyone
+who acts on a request, with the shared address kept as a notification mailbox
+only, or an explicit acceptance that Accounts actions are attributed to a desk
+rather than a person.
+
+- [ ] Decide, and record the decision here
+- [ ] If named accounts: assign `TreasuryOfficer` to the individual, and leave
+      `treasury@` in `notifications_role_mailboxes` as the queue's address
+
 ---
 
 ## 2. Turn notifications on
@@ -243,6 +277,48 @@ plan whose headline is something else entirely.
 
 **Before any apply, read every line of the plan and account for each change.**
 Two intended edits producing four planned changes is the signal.
+
+---
+
+## 3d. Test through the front door, not around it
+
+**Found and fixed 9 August 2026.** Receipt upload had never worked in dev.
+Every `POST /api/v1/requests/{id}/attachments` was blocked by the Front Door
+WAF and never reached the API.
+
+Nothing reported it as a security event:
+
+- Front Door answers a block with an HTML error page, not ProblemDetails, so
+  the UI could only say `Request failed (403)` — no rule, no reason.
+- The API never saw the request, so its logs were silent and correct.
+- App Insights request telemetry is not flowing at all (§6), so the first
+  query run against it returned nothing, which looked like confirmation and
+  was actually no evidence either way.
+- 61 integration tests were green. None goes through Front Door, and each
+  seeds attachment rows directly into the table.
+
+The rules were `200002` (failed to parse request body) and `200003` (multipart
+failed strict validation), scoring against `949110` until it blocked. Both are
+now disabled with the reasoning recorded in `modules/frontdoor/main.tf`.
+
+**The lesson is the gap between where the tests stop and where the users
+start.** Everything between the test host and the browser — Front Door, the
+WAF, CORS, the SPA's own fetch layer — is unexercised by the suite, and that
+is precisely where this lived. It was found by one person clicking one button.
+
+- [ ] Extend the deploy smoke test to upload a small file through the Front
+      Door hostname and assert 201, so this class cannot return silently
+- [ ] Re-run the WAF query below after any managed-ruleset version bump; a new
+      version reinstates default rule behaviour
+
+```powershell
+$ws = az monitor log-analytics workspace list -g rg-desicon-fw-dev --query "[0].customerId" -o tsv
+az monitor log-analytics query --workspace $ws --analytics-query "AzureDiagnostics | where TimeGenerated > ago(2h) | where Category == 'FrontDoorWebApplicationFirewallLog' | where action_s == 'Block' | order by TimeGenerated desc | take 20" --query "[].{time:TimeGenerated, rule:ruleName_s, uri:requestUri_s}" -o table
+```
+
+A blocked request is invisible to the application by construction. This query
+is the only place it is visible at all, which is worth remembering the next
+time something works locally and not in dev.
 
 ---
 
