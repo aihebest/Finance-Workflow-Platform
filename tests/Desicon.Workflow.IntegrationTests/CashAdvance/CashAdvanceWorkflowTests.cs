@@ -81,22 +81,26 @@ public sealed class CashAdvanceWorkflowTests : IntegrationTestBase
         var approve = await (await WorkflowSteps.ActionAsync(
                 Fixture.CreateClient(org.FinanceManager, "FinanceManager"), expenseId, "APPROVE"))
             .ShouldSucceedAsync();
-        // Net payable is positive -- the employee spent more than the advance
-        // -- so this is money leaving, and the Director of Finance's gate
-        // applies. A retirement that balanced or refunded would have gone
-        // straight to posting instead.
-        approve.GetString("toState").Should().Be("DMD_APPROVAL");
+        // The claim is 6,000 against a 6,000 advance, so NetPayableNgn is
+        // exactly zero: the employee spent what they took. Nobody is paid and
+        // nobody owes anything, so the Director of Finance's gate does not
+        // apply -- it authorises money leaving, and no money leaves. Straight
+        // to Business Central.
+        //
+        // This is the ordinary case for a retirement, not an edge case, and it
+        // is why the DMD branch is conditional on NetPayableNgn > 0 rather than
+        // sitting on the path unconditionally.
+        approve.GetString("toState").Should().Be("AWAITING_POSTING");
 
-        await (await WorkflowSteps.ApproveAsDirectorOfFinanceAsync(Fixture, org, expenseId))
-            .ShouldSucceedAsync();
-
-        // RetireLinkedAdvance now fires on MARK_POSTED rather than on the
-        // journal authorisation that no longer exists: the advance is retired
-        // at the point Business Central records the claim against it.
+        // RetireLinkedAdvance fires on MARK_POSTED rather than on the journal
+        // authorisation that no longer exists: the advance is retired at the
+        // point Business Central records the claim against it. And because
+        // there is nothing to pay, the claim closes here rather than joining a
+        // payment queue it could never leave.
         var posted = await (await WorkflowSteps.MarkPostedExpenseAsync(
                 Fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer"), expenseId, "BC-EXP-RETIRE"))
             .ShouldSucceedAsync();
-        posted.GetString("toState").Should().Be("AWAITING_PAYMENT");
+        posted.GetString("toState").Should().Be("CLOSED");
 
         var advanceAfter = await (await Fixture.CreateClient(org.Requester).GetAsync($"/api/v1/requests/{advanceId}"))
             .ShouldSucceedAsync();

@@ -164,6 +164,21 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         await StepAsync(() => WorkflowSteps.ConfirmRefundAsync(financeManagerClient, claim8, 500m), "REFUND_DUE", "CONFIRM_REFUND", "AWAITING_POSTING");
         await StepAsync(() => WorkflowSteps.ActionAsync(financeOfficerClient, claim8, "RETURN", comment: "Wrong cost centre."), "AWAITING_POSTING", "RETURN", "RETURNED");
 
+        // FINANCE_APPROVE -> AWAITING_POSTING and AWAITING_POSTING -> CLOSED:
+        // the zero-net-payable branch. A retirement where the employee spent
+        // exactly the advance pays nobody, so it skips the Director of Finance
+        // and closes at posting rather than entering a payment queue with
+        // nothing in it to pay.
+        var claim8c = await DriveToFinanceApproveAsync(1_000m, "TN-08C");
+        await WithDbAsync(async db =>
+        {
+            var expense = await db.ExpenseRequests.FirstAsync(e => e.RequestId == claim8c);
+            expense.AdvanceAmountNgn = 1_000m;
+            await db.SaveChangesAsync();
+        });
+        await StepAsync(() => WorkflowSteps.ActionAsync(financeManagerClient, claim8c, "APPROVE"), "FINANCE_APPROVE", "APPROVE", "AWAITING_POSTING");
+        await StepAsync(() => WorkflowSteps.MarkPostedExpenseAsync(financeOfficerClient, claim8c, "BC-08C"), "AWAITING_POSTING", "MARK_POSTED", "CLOSED");
+
         // REFUND_DUE RETURN -- the exit that did not exist until version 2. An
         // employee who never pays back an over-drawn advance previously left
         // the claim parked with no action available to anyone.
