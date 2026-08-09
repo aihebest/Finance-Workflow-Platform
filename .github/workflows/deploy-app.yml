@@ -457,17 +457,28 @@ jobs:
               --name "$FUNCTION_APP_NAME" \
               --query "[].name" -o tsv --only-show-errors 2>/dev/null || true)
 
-            if echo "$names" | grep -q "RetirementSweep"; then
+            # Every timer the host is supposed to carry, not just one.
+            # Checking a single name proves the package deployed and the host
+            # started; it says nothing about whether a newly added function
+            # registered, which is exactly when this check is worth having.
+            missing=""
+            for fn in RetirementSweep ReminderSweep EscalationSweep \
+                      OutboxDispatchSweep AuditChainVerification \
+                      PaymentApprovalDigestSweep; do
+              echo "$names" | grep -q "^${fn}$" || missing="${missing} ${fn}"
+            done
+
+            if [ -z "$missing" ] && [ -n "$names" ]; then
               echo "Functions registered:"
               echo "$names"
               exit 0
             fi
 
-            echo "attempt ${attempt}: host reports [${names:-none}]"
+            echo "attempt ${attempt}: host reports [${names:-none}], missing:${missing:- none}"
             sleep 20
           done
 
-          echo "::error::RetirementSweep was not registered after deployment."
+          echo "::error::Expected functions were not registered after deployment. Missing:${missing:- unknown}"
           echo "Current WEBSITE_RUN_FROM_PACKAGE:"
           az functionapp config appsettings list \
             --resource-group "$AZURE_RESOURCE_GROUP" --name "$FUNCTION_APP_NAME" \

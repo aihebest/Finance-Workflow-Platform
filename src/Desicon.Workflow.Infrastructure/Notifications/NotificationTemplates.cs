@@ -47,6 +47,23 @@ public sealed class NotificationOptions
 }
 
 /// <summary>
+/// One line of a digest.
+/// </summary>
+/// <param name="RequestId">For the deep link.</param>
+/// <param name="RequestNumber">What the reader will quote when they ask about it.</param>
+/// <param name="ModuleKey">EXPENSE or CASH_ADVANCE, rendered in words.</param>
+/// <param name="RequesterName">Whose request it is. A digest without names is a list of numbers.</param>
+/// <param name="AmountNgn">Naira. The digest totals these.</param>
+/// <param name="WaitingDays">Calendar days in the current state, for sorting and for shame.</param>
+public sealed record DigestItem(
+    Guid RequestId,
+    string RequestNumber,
+    string ModuleKey,
+    string RequesterName,
+    decimal AmountNgn,
+    int WaitingDays);
+
+/// <summary>
 /// Renders the templates the workflow definitions reference.
 ///
 /// Copy lives in code rather than in files, deliberately and provisionally.
@@ -155,6 +172,83 @@ public sealed class NotificationRenderer
         };
 
         var body = BuildBody(lead, requestNumber, module, currentState, link);
+
+        return (subject, body);
+    }
+
+    /// <summary>
+    /// One email listing everything waiting on a person, rather than one email
+    /// per item.
+    /// </summary>
+    /// <param name="items">
+    /// Oldest first. The point of a digest is to make the thing that has been
+    /// waiting longest impossible to miss, and sorting by age does that
+    /// without any highlighting the reader has to interpret.
+    /// </param>
+    /// <remarks>
+    /// Separate from <see cref="Render"/> because a digest is not a template
+    /// applied to one request: it has no single request number, no single
+    /// state, and its deep link is per row. Forcing it through the same
+    /// signature would mean inventing a payload shape that pretends otherwise.
+    /// </remarks>
+    public (string Subject, string HtmlBody) RenderPaymentApprovalDigest(
+        IReadOnlyList<DigestItem> items)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+
+        var subject = items.Count == 1
+            ? "1 payment awaiting your approval"
+            : $"{items.Count} payments awaiting your approval";
+
+        var rows = string.Concat(items.Select(item =>
+        {
+            var link = BuildDeepLink(item.RequestId.ToString());
+            var number = string.IsNullOrWhiteSpace(link)
+                ? WebUtility.HtmlEncode(item.RequestNumber)
+                : $"""<a href="{link}">{WebUtility.HtmlEncode(item.RequestNumber)}</a>""";
+
+            var waited = item.WaitingDays == 1 ? "1 day" : $"{item.WaitingDays} days";
+
+            return $"""
+                <tr>
+                  <td style="padding:6px 12px 6px 0">{number}</td>
+                  <td style="padding:6px 12px 6px 0">{WebUtility.HtmlEncode(FriendlyModule(item.ModuleKey))}</td>
+                  <td style="padding:6px 12px 6px 0">{WebUtility.HtmlEncode(item.RequesterName)}</td>
+                  <td style="padding:6px 12px 6px 0;text-align:right">{item.AmountNgn:N2}</td>
+                  <td style="padding:6px 0">{waited}</td>
+                </tr>
+                """;
+        }));
+
+        var total = items.Sum(i => i.AmountNgn);
+
+        // States plainly that nothing else releases the money. The whole
+        // control depends on this not reading as one approval among several,
+        // and a digest is read faster than a single-request mail.
+        var body = $"""
+            <p>The following {(items.Count == 1 ? "payment is" : "payments are")} waiting for your approval.
+            No payment can be made against any of them until you approve — nobody else can release this money.</p>
+            <table style="border-collapse:collapse;font-family:sans-serif;font-size:14px">
+              <thead>
+                <tr style="text-align:left;border-bottom:1px solid #ccc">
+                  <th style="padding:6px 12px 6px 0">Request</th>
+                  <th style="padding:6px 12px 6px 0">Type</th>
+                  <th style="padding:6px 12px 6px 0">Raised by</th>
+                  <th style="padding:6px 12px 6px 0;text-align:right">Amount (NGN)</th>
+                  <th style="padding:6px 0">Waiting</th>
+                </tr>
+              </thead>
+              <tbody>{rows}</tbody>
+              <tfoot>
+                <tr style="border-top:1px solid #ccc;font-weight:600">
+                  <td colspan="3" style="padding:6px 12px 6px 0">Total</td>
+                  <td style="padding:6px 12px 6px 0;text-align:right">{total:N2}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+            <p style="color:#666;font-size:12px">Oldest first. This is sent on weekday mornings and only when something is waiting.</p>
+            """;
 
         return (subject, body);
     }
