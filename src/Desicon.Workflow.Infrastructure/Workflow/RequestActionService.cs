@@ -168,7 +168,7 @@ public sealed class RequestActionService
             return Array.Empty<AvailableAction>();
         }
 
-        var definition = await _definitions.GetAsync(request.ModuleKey, cancellationToken);
+        var definition = await _definitions.GetAsync(request.ModuleKey, request.DefinitionVersion, cancellationToken);
 
         request.ActorId = actingUser.OnBehalfOf ?? actingUser.UserId;
 
@@ -292,7 +292,7 @@ public sealed class RequestActionService
             throw new InvalidOperationException($"Request '{requestId}' does not exist.");
         }
 
-        var definition = await _definitions.GetAsync(request.ModuleKey, cancellationToken);
+        var definition = await _definitions.GetAsync(request.ModuleKey, request.DefinitionVersion, cancellationToken);
 
         var effectiveActorId = actingUser.OnBehalfOf ?? actingUser.UserId;
         request.ActorId = effectiveActorId;

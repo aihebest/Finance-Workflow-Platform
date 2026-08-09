@@ -28,6 +28,23 @@ public sealed class RequestConfiguration : IEntityTypeConfiguration<Request>
         builder.Property(r => r.TreasuryNumber).HasMaxLength(50);
         builder.Property(r => r.JournalVoucherNumber).HasMaxLength(50);
 
+        // NO database default, deliberately.
+        //
+        // It had one, set to 2, on the reasoning that a row written by
+        // something bypassing the aggregate should still carry a version. That
+        // was backwards, and it broke LEAVE_REQUEST immediately: leave drafts
+        // are seeded directly, DefinitionVersion stayed at the CLR default of
+        // 0, EF therefore omitted the column from the INSERT, and the database
+        // default silently recorded them as version 2 -- a version that module
+        // has never had. Every leave request then failed to submit with
+        // "version 2 is not published".
+        //
+        // An unstamped row leaves 0 here, no version resolves, and the error
+        // names the module and what IS published. A missing value that becomes
+        // a plausible wrong one is the failure this whole mechanism exists to
+        // remove; defaulting it was the same mistake in miniature.
+        builder.Property(r => r.DefinitionVersion).IsRequired();
+
         // Business Central document numbers are the reference Accounts quote
         // when tracing a payment, so this is indexed: "which request is
         // BC document 12345" is a question that gets asked, and answering it

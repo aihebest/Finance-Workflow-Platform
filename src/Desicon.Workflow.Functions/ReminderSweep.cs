@@ -89,7 +89,8 @@ internal sealed partial class ReminderSweep
 
         foreach (var request in candidates)
         {
-            var definition = await _definitions.GetAsync(request.ModuleKey, cancellationToken);
+            var definition = await _definitions.GetAsync(
+                request.ModuleKey, request.DefinitionVersion, cancellationToken);
             var state = definition.FindState(request.CurrentState);
 
             if (state?.Sla?.ReminderEveryHours is not { } everyHours || everyHours <= 0)

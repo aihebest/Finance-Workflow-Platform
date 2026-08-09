@@ -101,6 +101,13 @@ public static class RequestEndpoints
 
         request.RequestNumber = await numberGenerator.GenerateAsync(definition, now, cancellationToken);
         request.FormRevision = definition.FormRevision;
+
+        // Pinned here and never changed. Everything this request does for the
+        // rest of its life is evaluated against this version, so publishing a
+        // new one cannot move the ground under work already in flight. Sits
+        // beside FormRevision because it is the same idea applied to the
+        // process rather than the printed page.
+        request.DefinitionVersion = definition.Version;
         request.CurrentState = definition.InitialState.Key;
         request.StateEnteredAt = now;
         request.RequesterId = employee.Id;
@@ -224,14 +231,16 @@ public static class RequestEndpoints
             {
                 case ExpenseRequest expense:
                 {
-                    var definition = await definitions.GetAsync(expense.ModuleKey, cancellationToken);
+                    var definition = await definitions.GetAsync(
+                        expense.ModuleKey, expense.DefinitionVersion, cancellationToken);
                     ApplyExpenseFields(
                         expense, payload, definition.GetPolicyValue("PAYMENT_METHOD_THRESHOLD_NGN", clock.UtcNow));
                     break;
                 }
                 case CashAdvanceRequest advance:
                 {
-                    var definition = await definitions.GetAsync(advance.ModuleKey, cancellationToken);
+                    var definition = await definitions.GetAsync(
+                        advance.ModuleKey, advance.DefinitionVersion, cancellationToken);
                     ApplyCashAdvanceFields(
                         advance, payload, definition.GetPolicyValue("PAYMENT_METHOD_THRESHOLD_NGN", clock.UtcNow));
                     break;

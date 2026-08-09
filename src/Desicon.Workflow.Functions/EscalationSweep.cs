@@ -114,7 +114,8 @@ internal sealed partial class EscalationSweep
 
         foreach (var request in breached)
         {
-            var definition = await _definitions.GetAsync(request.ModuleKey, cancellationToken);
+            var definition = await _definitions.GetAsync(
+                request.ModuleKey, request.DefinitionVersion, cancellationToken);
             var state = definition.FindState(request.CurrentState);
 
             if (state?.Sla?.EscalateTo is not { } target)

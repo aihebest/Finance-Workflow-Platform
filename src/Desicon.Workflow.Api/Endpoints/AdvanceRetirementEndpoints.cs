@@ -1,4 +1,4 @@
-﻿using Desicon.Workflow.Api.Security;
+using Desicon.Workflow.Api.Security;
 using Desicon.Workflow.Core.Definitions;
 using Desicon.Workflow.Core.Engine;
 using Desicon.Workflow.Domain.Common;
@@ -61,12 +61,21 @@ public static class AdvanceRetirementEndpoints
             db, bankDetailsAuditor, advance.RequesterId, advance.RequestId, advance.ModuleKey,
             effectiveActorId, now, cancellationToken);
 
+        // The current EXPENSE version, deliberately, not the advance's. This
+        // creates a NEW claim, and a new request is raised under whatever
+        // process is in force today. The advance's version pins the advance.
         var definition = await definitions.GetAsync("EXPENSE", cancellationToken);
 
         var expense = new ExpenseRequest
         {
             RequestNumber = await numberGenerator.GenerateAsync(definition, now, cancellationToken),
             FormRevision = definition.FormRevision,
+
+            // The version of EXPENSE in force now, which is why `definition`
+            // above is resolved unpinned: this is a new claim, raised today,
+            // under today's process. The advance being retired keeps its own
+            // version, which may be older.
+            DefinitionVersion = definition.Version,
             CurrentState = definition.InitialState.Key,
             StateEnteredAt = now,
             RequesterId = advance.RequesterId,
