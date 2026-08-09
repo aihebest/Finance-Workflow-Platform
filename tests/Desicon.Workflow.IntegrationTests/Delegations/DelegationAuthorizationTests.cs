@@ -100,20 +100,28 @@ public sealed class DelegationAuthorizationTests : IntegrationTestBase
         await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(org.LineManager), claimId, "VERIFY")).ShouldSucceedAsync();
         await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(org.DeptHead), claimId, "VERIFY")).ShouldSucceedAsync();
 
-        // FINANCE_VERIFY's VERIFY guard ("TreasuryNumber != null") reads
-        // straight off the tracked Request entity, not off CapturedFields --
-        // RequestEndpoints.ExecuteActionAsync stages it onto the entity
-        // before calling RequestActionService.ExecuteAsync for exactly this
-        // reason (see its own comment). This test bypasses that HTTP
-        // endpoint to get OnBehalfOf onto ActingUser, so it must stage
-        // TreasuryNumber itself or the engine's guard rejects the transition
-        // before EvaluatePolicyViolation ever runs.
+        // COST_CONTROL_VERIFY's VERIFY guard reads straight off the tracked
+        // Request entity, not off CapturedFields -- ExecuteActionAsync stages
+        // TreasuryNumber onto the entity before calling ExecuteAsync for
+        // exactly this reason (see its own comment). This test bypasses that
+        // HTTP endpoint to get OnBehalfOf onto ActingUser, so it must satisfy
+        // the guard itself or the engine rejects the transition before
+        // EvaluatePolicyViolation ever runs.
+        //
+        // The guard gained AttachmentCount > 0 when receipts were added, and
+        // this test failed the moment it did -- expecting PolicyViolation and
+        // getting GuardFailed. Worth noting rather than just fixing: the
+        // comment above was already the record of this exact hazard, and the
+        // hazard recurred anyway, because satisfying a guard means satisfying
+        // all of it and guards grow.
         await WithDbAsync(async db =>
         {
             var request = await db.Requests.FirstAsync(r => r.RequestId == claimId);
             request.TreasuryNumber = "TN-DELEGATE-SELF";
             await db.SaveChangesAsync();
         });
+
+        await WorkflowSteps.AttachReceiptAsync(Fixture, claimId, org.Requester.Id);
 
         using var scope = Fixture.CreateScope();
         var actionService = scope.ServiceProvider.GetRequiredService<RequestActionService>();
