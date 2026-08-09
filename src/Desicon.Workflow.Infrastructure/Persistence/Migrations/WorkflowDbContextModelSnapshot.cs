@@ -521,11 +521,6 @@ namespace Desicon.Workflow.Infrastructure.Persistence.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
-                    b.Property<int>("DefinitionVersion")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(2);
-
                     b.Property<int>("DepartmentId")
                         .HasColumnType("int");
 
