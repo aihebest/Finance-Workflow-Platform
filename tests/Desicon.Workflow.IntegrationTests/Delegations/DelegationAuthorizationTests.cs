@@ -80,15 +80,16 @@ public sealed class DelegationAuthorizationTests : IntegrationTestBase
     [Fact]
     public async Task A_delegate_cannot_approve_a_request_raised_by_the_person_they_are_delegating_for()
     {
-        // FINANCE_VERIFY's VERIFY transition is a role-only spec (FinanceOfficer,
-        // no identity resolver), so any FinanceOfficer -- including one acting
-        // OnBehalfOf someone else -- clears WorkflowEngine's own authorisation
-        // layer. RequestActionService.EvaluatePolicyViolation is what actually
+        // COST_CONTROL_VERIFY's VERIFY transition is a role-only spec
+        // (CostControlOfficer, no identity resolver), so any holder of that
+        // role -- including one acting OnBehalfOf someone else -- clears
+        // WorkflowEngine's own authorisation layer.
+        // RequestActionService.EvaluatePolicyViolation is what actually
         // blocks self-approval, and it must key off effectiveActorId
         // (OnBehalfOf ?? UserId), not actingUser.UserId: here the nominal
-        // caller is org.FinanceOfficer (not the requester, so a nominal-only
-        // check would wrongly allow this), but OnBehalfOf points at
-        // org.Requester -- the request's own requester -- so it must be
+        // caller is org.CostControlOfficer (not the requester, so a
+        // nominal-only check would wrongly allow this), but OnBehalfOf points
+        // at org.Requester -- the request's own requester -- so it must be
         // blocked.
         var org = await WithDbAsync(db => WorkflowSteps.CreateOrgChartAsync(db, "DEL-SELF"));
         var beneficiary = await WithDbAsync(db => TestData.CreateEmployeeBeneficiaryAsync(db, org.Requester));
@@ -100,14 +101,20 @@ public sealed class DelegationAuthorizationTests : IntegrationTestBase
         await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(org.LineManager), claimId, "VERIFY")).ShouldSucceedAsync();
         await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(org.DeptHead), claimId, "VERIFY")).ShouldSucceedAsync();
 
-        // FINANCE_VERIFY's VERIFY guard ("TreasuryNumber != null") reads
-        // straight off the tracked Request entity, not off CapturedFields --
-        // RequestEndpoints.ExecuteActionAsync stages it onto the entity
-        // before calling RequestActionService.ExecuteAsync for exactly this
-        // reason (see its own comment). This test bypasses that HTTP
-        // endpoint to get OnBehalfOf onto ActingUser, so it must stage
-        // TreasuryNumber itself or the engine's guard rejects the transition
-        // before EvaluatePolicyViolation ever runs.
+        // COST_CONTROL_VERIFY's VERIFY guard reads straight off the tracked
+        // Request entity, not off CapturedFields -- ExecuteActionAsync stages
+        // TreasuryNumber onto the entity before calling ExecuteAsync for
+        // exactly this reason (see its own comment). This test bypasses that
+        // HTTP endpoint to get OnBehalfOf onto ActingUser, so it must satisfy
+        // the guard itself or the engine rejects the transition before
+        // EvaluatePolicyViolation ever runs.
+        //
+        // The guard gained AttachmentCount > 0 when receipts were added, and
+        // this test failed the moment it did -- expecting PolicyViolation and
+        // getting GuardFailed. Worth noting rather than just fixing: the
+        // comment above was already the record of this exact hazard, and the
+        // hazard recurred anyway, because satisfying a guard means satisfying
+        // all of it and guards grow.
         await WithDbAsync(async db =>
         {
             var request = await db.Requests.FirstAsync(r => r.RequestId == claimId);
@@ -115,12 +122,14 @@ public sealed class DelegationAuthorizationTests : IntegrationTestBase
             await db.SaveChangesAsync();
         });
 
+        await WorkflowSteps.AttachReceiptAsync(Fixture, claimId, org.Requester.Id);
+
         using var scope = Fixture.CreateScope();
         var actionService = scope.ServiceProvider.GetRequiredService<RequestActionService>();
 
         var actingUser = new ActingUser(
-            UserId: org.FinanceOfficer.Id,
-            Roles: new HashSet<string> { "FinanceOfficer" },
+            UserId: org.CostControlOfficer.Id,
+            Roles: new HashSet<string> { "CostControlOfficer" },
             OnBehalfOf: org.Requester.Id);
 
         var result = await actionService.ExecuteAsync(
@@ -129,6 +138,6 @@ public sealed class DelegationAuthorizationTests : IntegrationTestBase
 
         result.Outcome.Should().Be(TransitionOutcome.PolicyViolation,
             "effectiveActorId (OnBehalfOf) equals this request's RequesterId, so self-approval must be " +
-            "blocked even though the nominal caller (org.FinanceOfficer) is not the requester");
+            "blocked even though the nominal caller (org.CostControlOfficer) is not the requester");
     }
 }

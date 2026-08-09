@@ -119,22 +119,53 @@ design in.
 
 ## Roles
 
-Three Entra app roles, created by `scripts/bootstrap-app-roles.ps1`:
+Four Entra app roles, created by `scripts/bootstrap-app-roles.ps1`:
 
-| Role | Who | Steps |
-|---|---|---|
-| `FinanceOfficer` | Cost Control / Accounts Officer | 4, 7, 8 |
-| `FinanceManager` | Accounts Manager | 5, and refund confirmation |
-| `DirectorOfFinance` | DMD | 6 |
+| Role | Who | Mailbox | Steps |
+|---|---|---|---|
+| `CostControlOfficer` | Cost Control | `costcontrol@` | 4 |
+| `TreasuryOfficer` | Accounts Officer / Treasury | `treasury@` | 7, 8 |
+| `FinanceManager` | Accounts Manager | `chima.onyealilachi@` | 5, and refund confirmation |
+| `DirectorOfFinance` | DMD | `tomy.john@` | 6 |
 
 Line manager and department head authority is **not** a role claim. It comes
 from the org chart — `Employees.LineManagerId` and
 `Departments.DepartmentHeadId` — resolved by `EmployeeActorResolver`. See the
 implementation-status note in `docs/04`.
 
-Aihe noted that payment is made by "the account personnel in charge of
-payment". Currently modelled as `FinanceOfficer`, the same role that posts. If
-that is a distinct person, splitting it is a one-line change to each definition.
+### How the split came about (9 August 2026)
+
+This section previously read:
+
+> Aihe noted that payment is made by "the account personnel in charge of
+> payment". Currently modelled as `FinanceOfficer`, the same role that posts.
+> If that is a distinct person, splitting it is a one-line change to each
+> definition.
+
+It was a distinct person, and the way that surfaced is worth keeping. Nobody
+re-read this paragraph. It came out when Aihe listed the role mailboxes and
+there were **two** addresses for one role — `costcontrol@` for the costing
+check and `treasury@` for the posting in Business Central.
+
+The consequences of the single role were not theoretical:
+
+- `Notifications__RoleMailboxes__FinanceOfficer` held one address, so the
+  `posting-required` notification — the entire reason this platform exists,
+  telling the Accounts Officer there is something waiting to go into BC — was
+  addressed to Cost Control. Treasury was never told. Every role in the map
+  resolved, nothing was logged as undeliverable, and the map looked complete.
+- One role gated `COST_CONTROL_VERIFY`, `AWAITING_POSTING` and
+  `AWAITING_PAYMENT`, so a single holder could check the costing, post against
+  their own check, and pay it.
+- Every integration test drove both desks as the same client, so a suite of 58
+  passing tests could not have distinguished this system from one that did
+  separate the duties.
+
+Workflow version 3 splits the role. `FinanceOfficer` remains published because
+requests raised under version 2 are pinned to it — see
+`docs/15-Go-Live-Checklist.md` section 3, and `RoleSeparationTests`, which
+asserts both that the new roles cannot cross into each other's stages and that
+a version-2 request still resolves the old one.
 
 ---
 

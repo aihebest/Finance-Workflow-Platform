@@ -25,7 +25,7 @@ ones. Both hold the role, everything works, and the weakness is silent.
 |---|---|---|
 | `wazuhalerts@desicongroup.com` | `FinanceManager` | Accounts Manager unavailable during testing |
 | `ictadmin@desicongroup.com` | `DirectorOfFinance` | DMD unavailable during testing |
-| `olanrewaju.atanda@desicongroup.com` | `FinanceOfficer` | Confirm whether this is the real holder |
+| `olanrewaju.atanda@desicongroup.com` | `FinanceOfficer` | Confirmed 9 Aug 2026 as **Cost Control**. Reassign to `CostControlOfficer` and revoke `FinanceOfficer` once version-2 requests drain |
 | `best.aihebholoria@desicongroup.com` | `FinanceManager` | Assigned during the 9 August walkthrough because the Accounts Manager was unavailable |
 | `ictadmin@desicongroup.com` | `DirectorOfFinance` | Assigned during the 9 August walkthrough because the DMD was unavailable |
 
@@ -57,9 +57,48 @@ or they sign out. A revoked person can keep acting for the remainder of their
 token lifetime.
 
 **Verify afterwards** that each role has exactly the intended holders, and that
-`FinanceManager` and `DirectorOfFinance` do not share a person. The maker-checker
-guards compare `Employee.Id`, so one human with two accounts would satisfy them
-while providing no separation at all.
+no one person holds two of `CostControlOfficer`, `TreasuryOfficer`,
+`FinanceManager` and `DirectorOfFinance`. The maker-checker guards compare
+`Employee.Id`, so one human with two accounts would satisfy them while
+providing no separation at all.
+
+### 1b. Retire `FinanceOfficer`
+
+Workflow version 3 replaced `FinanceOfficer` with `CostControlOfficer` and
+`TreasuryOfficer`. The old role is still defined and still assignable, and it
+grants everything both new roles grant — at `COST_CONTROL_VERIFY`,
+`AWAITING_POSTING`, `AWAITING_PAYMENT` and `CASH_RELEASE` — but only on
+requests pinned to version 2.
+
+It exists solely so those requests can be finished. Leaving it assigned after
+they drain restores exactly the collapse version 3 removed, and it will not
+announce itself: everything keeps working.
+
+**Roles created in dev 9 August 2026.** `CostControlOfficer` and
+`TreasuryOfficer` now exist in the directory. Creating them before version 3
+deploys is the right order: version 2 does not reference them, but a version-3
+request raised before they exist reaches `COST_CONTROL_VERIFY` and stops with
+an empty action list and no error.
+
+- [ ] Assign `CostControlOfficer` — Olanrewaju Atanda, confirmed 9 Aug 2026
+- [ ] Assign `TreasuryOfficer` — the Accounts Officer who posts in Business
+      Central
+
+`costcontrol@desicongroup.com` and `treasury@desicongroup.com` are **shared
+mailboxes**, not sign-in accounts. They are where notifications go; the app
+roles belong to the individual people who work those desks. Assigning a role to
+a shared mailbox that nobody signs into would make the directory look correct
+and leave the queue unworkable.
+
+That distinction also matters for section 2: the Exchange application access
+policy scopes `Mail.Send` to the *sender* mailbox, which is a third address
+again — not either of these two.
+- [ ] Do **not** assign `FinanceOfficer` to anyone new
+- [ ] When the version-2 query in section 3 returns zero open rows: revoke every
+      `FinanceOfficer` assignment, then disable and remove the role definition
+      (a role cannot be deleted while `isEnabled` is true — two PATCHes)
+- [ ] Drop the `FinanceOfficer` key from `notifications_role_mailboxes` at the
+      same time, and delete `modules/*.v2.workflow.json`
 
 ---
 
@@ -132,6 +171,29 @@ Version 1 was deliberately not preserved. It was not a Desicon process — it ha
 a GL journal this platform does not own and no Director of Finance — so nothing
 should ever run down it again. Version 2 is the floor.
 
+### Version 3, and the first real use of this mechanism
+
+**Published 9 August 2026.** Both modules moved to version 3 when
+`FinanceOfficer` was split into `CostControlOfficer` and `TreasuryOfficer`.
+Version 2 is retained in `modules/expense-reimbursement.v2.workflow.json` and
+`modules/cash-advance.v2.workflow.json`.
+
+This is what pinning was built for, and until now it had never been exercised
+against an actual difference: version 2 was the only version anything ran
+under, so "resolve by the stamped version" and "resolve by the latest version"
+had identical behaviour and no test could tell them apart.
+
+They no longer do. A version-2 request names a role version 3 does not define.
+Without pinning, publishing version 3 would have made every open request
+unactionable by anybody — no error, no failed test, just an empty action list
+on a request that stays open. `RoleSeparationTests` now asserts both halves:
+that a version-2 request still resolves `FinanceOfficer`, and that version 3's
+roles do **not** work on it.
+
+Both versions' roles must appear in `notifications_role_mailboxes`. Dropping
+`FinanceOfficer` the day version 3 shipped would have silenced every
+notification on every request still open under it.
+
 ---
 
 ## 3b. Model/migration drift
@@ -159,6 +221,31 @@ remembering when adding future checks.
 
 ---
 
+## 3c. Read the Terraform plan before applying
+
+A plan on 9 August, intended only to add two app settings, contained four
+changes. Two were the intended ones. The other two were drift, and one of them
+was a security control being switched off:
+
+- `express_vulnerability_assessment_enabled` on the SQL server, `true` in Azure
+  and unset in the configuration. The provider defaults it to `false`, so the
+  apply would have disabled SQL vulnerability assessment as a side effect. Now
+  set explicitly to `true`.
+- Key Vault network ACL IP rules, which `scripts/dev-db-connect.ps1` adds and
+  removes outside Terraform. Its own docstring warns about this. Applying drops
+  whichever developer IP is currently allowed; re-run the script afterwards.
+
+The lesson is not "check that one setting". It is that an unset attribute
+adopts the provider's default, and a provider default is not the same as the
+value the resource has today. Anything Azure has enabled and the configuration
+does not mention is one apply away from being turned off, quietly, inside a
+plan whose headline is something else entirely.
+
+**Before any apply, read every line of the plan and account for each change.**
+Two intended edits producing four planned changes is the signal.
+
+---
+
 ## 4. Confirm Business Central enforces maker-checker
 
 Version 1 of the workflow enforced that whoever entered a GL journal could not
@@ -171,6 +258,13 @@ This platform no longer sees journals and cannot enforce it.
 Somebody thought the separation mattered enough to design into the paper form.
 Confirm BC provides it before assuming it survived the move. If BC does not,
 that is a gap created by this project and it needs an answer.
+
+**Version 3 narrows this but does not close it.** Splitting `FinanceOfficer`
+means the person who verifies the costing is no longer the person who posts, so
+one separation is back — enforced here, on the approval trail. What this
+platform still cannot see is what happens *inside* BC once Treasury opens it:
+whether entering and authorising a journal there are two acts by two people.
+That question is unchanged, and it is the one to put to whoever administers BC.
 
 ---
 

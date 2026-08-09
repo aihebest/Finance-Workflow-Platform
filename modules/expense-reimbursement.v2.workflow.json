@@ -4,13 +4,13 @@
   "displayName": "Expense Form (Cash / Bank)",
   "formCode": "DEL-AC-FRM-002",
   "formRevision": "05",
-  "version": 3,
-  "effectiveFrom": "2026-08-09T00:00:00Z",
+  "version": 2,
+  "effectiveFrom": "2026-08-08T00:00:00Z",
   "numberFormat": "EXP-{yyyy}-{seq:000000}",
   "workingCalendar": "NG_STANDARD",
   "slaPausesOutsideWorkingHours": true,
 
-  "note": "Version 3 splits FinanceOfficer into CostControlOfficer and TreasuryOfficer. Version 2 recorded that Cost Control and the Accounts Officer who posts in Business Central were the same people; they are not. They are separate desks with separate mailboxes (costcontrol@ and treasury@), and one role covering both meant a single person could verify the costing, post it, and execute the payment -- with the posting notification going to the wrong desk, so the person who had to act was never told. Version 2 remains published for requests already open under it; see expense-reimbursement.v2.workflow.json and docs/15-Go-Live-Checklist.md section 3.",
+  "note": "Version 2 replaces the GL posting pair (POSTING/AUTHORISATION) with a single AWAITING_POSTING step, because posting is carried out in Microsoft Dynamics Business Central and not here. This platform owns the approval trail and tells the Accounts Officer there is something waiting; BC owns the ledger. Version 2 also adds DMD_APPROVAL: no cash moves at Desicon without the Director of Finance, and that gate was missing entirely from version 1. See docs/14-Process-As-Described.md.",
 
   "policyValues": [
     {
@@ -64,15 +64,15 @@
 
     {
       "from": "COST_CONTROL_VERIFY", "to": "FINANCE_APPROVE", "action": "VERIFY",
-      "actor": { "role": "CostControlOfficer" },
+      "actor": { "role": "FinanceOfficer" },
       "guard": "ReceiptStatus == 'Yes' && TreasuryNumber != null && AttachmentCount > 0",
       "guardMessage": "Receipts must be complete, at least one receipt attached, and a Treasury number captured before this proceeds.",
       "captures": ["TreasuryNumber"],
-      "note": "Cost Control checks that the claim is costed to the right centre. A separate desk from the Treasury officer who posts it at AWAITING_POSTING -- version 2 modelled them as one role, which let the same person check the costing and then post against their own check."
+      "note": "The state is named for the work, not for a separate team: at this point Accounts are verifying that the request is costed to the right centre and taking it into BC. Same people as AWAITING_POSTING, so the same FinanceOfficer role -- their BC work at posting is simply deeper than the costing check they do here."
     },
     {
       "from": "COST_CONTROL_VERIFY", "to": "RETURNED", "action": "RETURN",
-      "actor": { "role": "CostControlOfficer" },
+      "actor": { "role": "FinanceOfficer" },
       "guard": "ReceiptStatus == 'Incomplete'",
       "guardMessage": "Return is available when receipts are marked Incomplete.",
       "requiresComment": true,
@@ -130,7 +130,7 @@
 
     {
       "from": "AWAITING_POSTING", "to": "AWAITING_PAYMENT", "action": "MARK_POSTED",
-      "actor": { "role": "TreasuryOfficer" },
+      "actor": { "role": "FinanceOfficer" },
       "guard": "BcDocumentNumber != null && NetPayableNgn > 0",
       "guardMessage": "Enter the Business Central document number for this posting.",
       "captures": ["BcDocumentNumber"],
@@ -140,7 +140,7 @@
     },
     {
       "from": "AWAITING_POSTING", "to": "CLOSED", "action": "MARK_POSTED",
-      "actor": { "role": "TreasuryOfficer" },
+      "actor": { "role": "FinanceOfficer" },
       "guard": "BcDocumentNumber != null && NetPayableNgn <= 0",
       "guardMessage": "Enter the Business Central document number for this posting.",
       "captures": ["BcDocumentNumber"],
@@ -148,17 +148,17 @@
       "effect": "RetireLinkedAdvance",
       "note": "A retirement that paid nobody -- balanced exactly, or refunded to the company. Once BC has it there is nothing to pay and nothing for a recipient to acknowledge, so it closes here. Routing it through AWAITING_PAYMENT would leave a claim sitting in the Accounts Officer's payment queue forever with nothing to pay, which is how a queue stops being believed."
     },
-    { "from": "AWAITING_POSTING", "to": "RETURNED", "action": "RETURN", "actor": { "role": "TreasuryOfficer" }, "requiresComment": true },
+    { "from": "AWAITING_POSTING", "to": "RETURNED", "action": "RETURN", "actor": { "role": "FinanceOfficer" }, "requiresComment": true },
 
     {
       "from": "AWAITING_PAYMENT", "to": "AWAITING_ACK", "action": "EXECUTE_PAYMENT",
-      "actor": { "role": "TreasuryOfficer" },
+      "actor": { "role": "FinanceOfficer" },
       "guard": "(PaymentMethod == 'Cash' || BeneficiaryHasBankDetails == true) && ActorId != BeneficiaryBankDetailsSetByUserId",
       "guardMessage": "A bank transfer requires the beneficiary to have bank details on file, and whoever last set those details cannot be the person who pays against them.",
       "captures": ["PaymentReference", "PaymentDate"],
       "note": "PaymentMethod is derived by ExpenseRequest.ApplyPaymentMethodPolicy at submission/recalculation time, not captured here -- Finance cannot choose it at payment execution. The bank-details clauses moved here from version 1's AUTHORISE transition, which no longer exists; they guard the moment money actually leaves, which is where they belong."
     },
-    { "from": "AWAITING_PAYMENT", "to": "RETURNED", "action": "RETURN", "actor": { "role": "TreasuryOfficer" }, "requiresComment": true },
+    { "from": "AWAITING_PAYMENT", "to": "RETURNED", "action": "RETURN", "actor": { "role": "FinanceOfficer" }, "requiresComment": true },
 
     {
       "from": "AWAITING_ACK", "to": "CLOSED", "action": "ACKNOWLEDGE",
@@ -182,11 +182,11 @@
     { "on": "SLA_REMINDER", "to": "CurrentActor", "template": "reminder" },
     { "on": "SLA_BREACHED", "to": ["CurrentActor", "EscalationTarget"], "template": "escalation" },
 
-    { "on": "COST_CONTROL_VERIFY", "to": "CostControlOfficer", "template": "action-required" },
+    { "on": "COST_CONTROL_VERIFY", "to": "FinanceOfficer", "template": "action-required" },
     { "on": "FINANCE_APPROVE", "to": "FinanceManager", "template": "action-required" },
     { "on": "DMD_APPROVAL", "to": "DirectorOfFinance", "template": "payment-approval-required" },
-    { "on": "AWAITING_POSTING", "to": "TreasuryOfficer", "template": "posting-required" },
-    { "on": "AWAITING_PAYMENT", "to": "TreasuryOfficer", "template": "action-required" },
+    { "on": "AWAITING_POSTING", "to": "FinanceOfficer", "template": "posting-required" },
+    { "on": "AWAITING_PAYMENT", "to": "FinanceOfficer", "template": "action-required" },
 
     { "on": "RETURNED", "to": "Requester", "template": "returned-for-correction" },
     { "on": "REJECTED", "to": "Requester", "template": "rejected" },

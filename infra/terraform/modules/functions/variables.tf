@@ -167,10 +167,15 @@ variable "notifications_role_mailboxes" {
     rather than a person as a notification recipient.
 
     Keys must match the role values in modules/*.workflow.json exactly --
-    FinanceOfficer, FinanceManager, DirectorOfFinance. A role absent from this
-    map resolves to nobody and its notifications are parked with the role named
-    in LastError, which is deliberate: silence is the one answer a finance
-    approval notification must never give.
+    CostControlOfficer, TreasuryOfficer, FinanceManager, DirectorOfFinance,
+    and FinanceOfficer while any version-2 request is still open. A role absent
+    from this map resolves to nobody and its notifications are parked with the
+    role named in LastError, which is deliberate: silence is the one answer a
+    finance approval notification must never give.
+
+    Every published version's roles must appear here, not just the current
+    one. A version-2 request in AWAITING_POSTING still names FinanceOfficer,
+    and dropping the key the day version 3 ships would silence it.
   EOT
   type        = map(string)
   default     = {}

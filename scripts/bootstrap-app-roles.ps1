@@ -17,10 +17,12 @@
 
     WHAT THIS CREATES, AND WHAT IT DELIBERATELY DOES NOT
     ---------------------------------------------------
-    Two roles: FinanceOfficer and FinanceManager. Those are the only two the
-    code actually reads -- they are the `"actor": { "role": ... }` specs in
-    modules/*.workflow.json, and the only values RequestActionService can act
-    on.
+    Four roles: CostControlOfficer, TreasuryOfficer, FinanceManager and
+    DirectorOfFinance -- plus FinanceOfficer, which workflow version 3
+    superseded and which exists only so requests pinned to version 2 can still
+    be completed. Those are the values the code actually reads: the
+    `"actor": { "role": ... }` specs in modules/*.workflow.json, and the only
+    values RequestActionService can act on.
 
     The other five rows in the table (Employee, LineManager, DepartmentHead,
     ProcurementOfficer, Administrator) are NOT created here, and that is
@@ -57,14 +59,21 @@
 
 .PARAMETER Assign
     Zero or more "upn=RoleValue" pairs, e.g.
-        -Assign "ada@desicon.com=FinanceOfficer","obi@desicon.com=FinanceManager"
-    Assign the two to DIFFERENT people. The maker-checker guard on AUTHORISE
-    refuses a posting authorised by whoever input it, so one person holding
-    both roles cannot complete a claim -- correctly.
+        -Assign "ada@desicon.com=CostControlOfficer","obi@desicon.com=TreasuryOfficer"
+
+    Assign each to a DIFFERENT person. Nothing in this script enforces that,
+    and nothing at runtime will complain: the guards compare Employee.Id, so
+    one human holding two roles satisfies every one of them while providing no
+    separation at all. That is the failure mode -- not a refusal, a silence.
+
+    Do not assign FinanceOfficer to anyone new. See docs/15 section 1b.
 
 .EXAMPLE
     ./scripts/bootstrap-app-roles.ps1 -ApiClientId "<guid>" `
-        -Assign "ada@desicon.com=FinanceOfficer","obi@desicon.com=FinanceManager"
+        -Assign "ada@desicon.com=CostControlOfficer", `
+                "obi@desicon.com=TreasuryOfficer", `
+                "chima@desicon.com=FinanceManager", `
+                "tomy@desicon.com=DirectorOfFinance"
 #>
 [CmdletBinding()]
 param(
@@ -79,10 +88,32 @@ $ErrorActionPreference = "Stop"
 # Stable ids. Do not regenerate -- see TRAPS above.
 $RoleDefinitions = @(
     @{
+        id                 = "9d2c5f31-4a86-4b09-b7e2-1c6083f4a5d9"
+        value              = "CostControlOfficer"
+        displayName        = "Cost Control Officer"
+        description        = "Verifies that a claim or advance is costed to the right cost centre or project, checks receipts, and captures the Treasury number. Does not post to Business Central and does not touch money."
+        allowedMemberTypes = @("User")
+        isEnabled          = $true
+    },
+    @{
+        id                 = "2a7f4b60-c358-4e91-8d04-6b19e73c2f85"
+        value              = "TreasuryOfficer"
+        displayName        = "Treasury Officer (Accounts)"
+        description        = "Posts the approved request in Microsoft Dynamics Business Central, records the BC document number, executes payment and releases cash. Must not be the same person as the Cost Control Officer who verified it."
+        allowedMemberTypes = @("User")
+        isEnabled          = $true
+    },
+    # Superseded by the two roles above as of workflow version 3, and kept
+    # only because requests raised under version 2 are still pinned to it and
+    # cannot be actioned by anybody without it. Delete it -- and revoke its
+    # assignments -- once the version-2 query in docs/15 section 3 returns
+    # zero open rows. Leaving it assigned indefinitely restores exactly the
+    # collapse version 3 exists to undo: one holder acting at every stage.
+    @{
         id                 = "3f1b8c2a-6d4e-4a7b-9c15-2e8f0d6a4b31"
         value              = "FinanceOfficer"
-        displayName        = "Finance Officer"
-        description        = "Verifies receipts, captures the Treasury number, prepares GL lines as inputer, and executes payment. Cannot authorise their own posting."
+        displayName        = "Finance Officer (superseded -- version 2 only)"
+        description        = "SUPERSEDED by CostControlOfficer and TreasuryOfficer. Retained solely so requests raised under workflow version 2 can still be completed. Do not assign to anyone new."
         allowedMemberTypes = @("User")
         isEnabled          = $true
     },

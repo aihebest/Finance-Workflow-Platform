@@ -224,7 +224,9 @@ module "app_service" {
 
   key_vault_id       = module.keyvault.id
   key_vault_uri      = module.keyvault.uri
-  storage_account_id = module.storage.id
+  storage_account_id         = module.storage.id
+  storage_blob_endpoint      = module.storage.primary_blob_endpoint
+  attachments_container_name = module.storage.attachments_container_name
   sql_connection_uri = module.sql.connection_uri
 
   # Explicit, not inferred from *_id nullness: these ids are module outputs
@@ -292,10 +294,18 @@ module "functions" {
   # Keys must match the role values in modules/*.workflow.json exactly. A
   # mismatch does not fail the plan -- it resolves to nobody at dispatch time
   # and parks the message with the role named, which is loud but late.
+  #
+  # FinanceOfficer is workflow version 2's role and is kept only for requests
+  # still open under it. Until version 3 was published, this single key was the
+  # only mailbox for both desks -- so the posting notification, the one telling
+  # Treasury there is something waiting to go into Business Central, was being
+  # addressed to Cost Control. The map looked complete and every role resolved.
   notifications_role_mailboxes = {
-    FinanceOfficer    = "costcontrol@desicongroup.com"
-    FinanceManager    = "chima.onyealilachi@desicongroup.com"
-    DirectorOfFinance = "tomy.john@desicongroup.com"
+    CostControlOfficer = "costcontrol@desicongroup.com"
+    TreasuryOfficer    = "treasury@desicongroup.com"
+    FinanceManager     = "chima.onyealilachi@desicongroup.com"
+    DirectorOfFinance  = "tomy.john@desicongroup.com"
+    FinanceOfficer     = "costcontrol@desicongroup.com"
   }
   notifications_application_base_url = "https://${module.frontdoor.endpoint_hostname}"
 

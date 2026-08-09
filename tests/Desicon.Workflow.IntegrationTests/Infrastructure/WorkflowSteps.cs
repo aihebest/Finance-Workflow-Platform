@@ -2,21 +2,29 @@ using System.Text;
 using System.Text.Json;
 using Desicon.Workflow.Domain.People;
 using Desicon.Workflow.Infrastructure.Persistence;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Desicon.Workflow.IntegrationTests.Infrastructure;
 
 /// <summary>A minimal org chart shared by the path/completeness/delegation
-/// test classes: one department, one line-manager chain, one Finance pair.
-/// Role membership (FinanceOfficer/FinanceManager) is not a DB concept here
-/// -- it is granted per HttpClient via WorkflowApiFixture.CreateClient's
-/// X-Test-Roles header, matching how TestAuthHandler/CurrentUserAccessor
-/// read it.</summary>
+/// test classes: one department, one line-manager chain, and the Accounts
+/// desks. Role membership is not a DB concept here -- it is granted per
+/// HttpClient via WorkflowApiFixture.CreateClient's X-Test-Roles header,
+/// matching how TestAuthHandler/CurrentUserAccessor read it.
+///
+/// CostControlOfficer and TreasuryOfficer are deliberately DIFFERENT people.
+/// Workflow version 2 had a single FinanceOfficer covering both desks, so
+/// every test drove verification and posting as one employee and the suite
+/// could not have noticed that no separation existed. Two employees here is
+/// what makes CannotPostWhatTheyThemselvesVerified a real assertion rather
+/// than a restatement of the fixture.</summary>
 public sealed record OrgChart(
     Department Department,
     Employee Requester,
     Employee LineManager,
     Employee DeptHead,
-    Employee FinanceOfficer,
+    Employee CostControlOfficer,
+    Employee TreasuryOfficer,
     Employee FinanceManager,
     Employee DirectorOfFinance);
 
@@ -40,7 +48,11 @@ public static class WorkflowSteps
 
         var lineManager = await TestData.CreateEmployeeAsync(db, department, $"{prefix} Line Manager {suffix}");
         var requester = await TestData.CreateEmployeeAsync(db, department, $"{prefix} Requester {suffix}", lineManager);
-        var financeOfficer = await TestData.CreateEmployeeAsync(db, department, $"{prefix} Finance Officer {suffix}");
+        var costControlOfficer = await TestData.CreateEmployeeAsync(db, department, $"{prefix} Cost Control Officer {suffix}");
+
+        // Separate from Cost Control on purpose -- see OrgChart's remarks.
+        var treasuryOfficer = await TestData.CreateEmployeeAsync(db, department, $"{prefix} Treasury Officer {suffix}");
+
         var financeManager = await TestData.CreateEmployeeAsync(db, department, $"{prefix} Finance Manager {suffix}");
 
         // A distinct person from the Accounts Manager. The DMD gate is only a
@@ -49,7 +61,8 @@ public static class WorkflowSteps
         var directorOfFinance = await TestData.CreateEmployeeAsync(db, department, $"{prefix} Director of Finance {suffix}");
 
         return new OrgChart(
-            department, requester, lineManager, deptHead, financeOfficer, financeManager, directorOfFinance);
+            department, requester, lineManager, deptHead,
+            costControlOfficer, treasuryOfficer, financeManager, directorOfFinance);
     }
 
     // ---------------------------------------------------------------
@@ -163,10 +176,30 @@ public static class WorkflowSteps
     {
         await (await ActionAsync(fixture.CreateClient(org.LineManager), id, "VERIFY")).ShouldSucceedAsync();
         await (await ActionAsync(fixture.CreateClient(org.DeptHead), id, "VERIFY")).ShouldSucceedAsync();
+
+        // Evidence, because COST_CONTROL_VERIFY will not pass a claim without
+        // it: the Accounts Officer has to be able to see what was purchased.
+        // Seeded straight into the table rather than uploaded, so the suite
+        // needs no blob storage -- the guard counts rows, which is what this
+        // creates.
+        await AttachReceiptAsync(fixture, id, org.Requester.Id);
+
         await (await ActionAsync(
-                fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer"), id, "VERIFY",
+                fixture.CreateClient(org.CostControlOfficer, "CostControlOfficer"), id, "VERIFY",
                 payload: new Dictionary<string, object?> { ["TreasuryNumber"] = treasuryNumber }))
             .ShouldSucceedAsync();
+    }
+
+    /// <summary>
+    /// Attaches a receipt to a request, bypassing upload.
+    /// </summary>
+    public static async Task AttachReceiptAsync(
+        WorkflowApiFixture fixture, Guid requestId, Guid uploadedBy)
+    {
+        using var scope = fixture.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorkflowDbContext>();
+
+        await TestData.AttachReceiptAsync(db, requestId, uploadedBy, fixture.TimeProvider.GetUtcNow());
     }
 
     /// <summary>
@@ -193,7 +226,7 @@ public static class WorkflowSteps
         await (await ApproveAsDirectorOfFinanceAsync(fixture, org, id)).ShouldSucceedAsync();
 
         await (await MarkPostedExpenseAsync(
-                fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer"), id, bcDocumentNumber))
+                fixture.CreateClient(org.TreasuryOfficer, "TreasuryOfficer"), id, bcDocumentNumber))
             .ShouldSucceedAsync();
     }
 
@@ -223,14 +256,14 @@ public static class WorkflowSteps
         await (await ActionAsync(fixture.CreateClient(org.LineManager), id, "VERIFY")).ShouldSucceedAsync();
         await (await ActionAsync(fixture.CreateClient(org.DeptHead), id, "VERIFY")).ShouldSucceedAsync();
         await (await ActionAsync(
-                fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer"), id, "VERIFY",
+                fixture.CreateClient(org.CostControlOfficer, "CostControlOfficer"), id, "VERIFY",
                 payload: new Dictionary<string, object?> { ["TreasuryNumber"] = treasuryNumber }))
             .ShouldSucceedAsync();
         await (await ActionAsync(fixture.CreateClient(org.FinanceManager, "FinanceManager"), id, "APPROVE"))
             .ShouldSucceedAsync();
         await (await ApproveAsDirectorOfFinanceAsync(fixture, org, id)).ShouldSucceedAsync();
         await (await MarkPostedAdvanceAsync(
-                fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer"), id, bcDocumentNumber))
+                fixture.CreateClient(org.TreasuryOfficer, "TreasuryOfficer"), id, bcDocumentNumber))
             .ShouldSucceedAsync();
 
         return id;
@@ -246,7 +279,7 @@ public static class WorkflowSteps
         var id = await DriveCashAdvanceToCashReleaseAsync(
             fixture, org, purpose, amount, treasuryNumber, bcDocumentNumber, stationScope);
 
-        await (await ReleaseCashAsync(fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer"), id, releasedAt))
+        await (await ReleaseCashAsync(fixture.CreateClient(org.TreasuryOfficer, "TreasuryOfficer"), id, releasedAt))
             .ShouldSucceedAsync();
         await (await AcknowledgeAdvanceAsync(fixture.CreateClient(org.Requester), id)).ShouldSucceedAsync();
 

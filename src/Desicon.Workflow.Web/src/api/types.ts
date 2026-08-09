@@ -144,6 +144,68 @@ export interface AvailableAction {
   blockedReason: string | null;
 }
 
+/**
+ * One row of DEL-AC-FRM-003's table.
+ *
+ * The paper form has a naira box and a separate kobo box rather than a
+ * decimal, so the capture screen presents two inputs and combines them here.
+ * `decimal(18,2)` storage is right; the input shape is what makes the form
+ * recognisable.
+ */
+export interface AdvanceLineInput {
+  description: string;
+  currencyCode: string;
+  amount: number;
+  fxRate: number;
+  fxRateDate: string;
+}
+
+export interface CashAdvanceDraftInput {
+  purpose: string;
+  /** Which tick box: "Projects Specific" or "Non Projects Specific". */
+  allocationType: "Project" | "CostCentre";
+  projectCode?: string;
+  costCentreCode?: string;
+  /** Decides the retirement window: 24 working hours in station, 72 out. */
+  stationScope: "InStation" | "OutOfStation";
+  hasSupportingDocuments: boolean;
+  lines: AdvanceLineInput[];
+}
+
+/** An entry in GET /api/v1/advances/outstanding. */
+export interface OutstandingAdvance {
+  requestId: string;
+  requestNumber: string;
+  totalAmountNgn: number;
+  retiredAmountNgn: number;
+  retirementBalanceNgn: number;
+  retirementDueDate: string | null;
+  retirementStatus: string;
+  /** Days past the due date. Null when no due date has been set yet. */
+  ageingDays: number | null;
+}
+
+/** What POST /api/v1/advances/{id}/retire returns: a new, linked expense claim. */
+export interface AdvanceRetirementDraft {
+  expenseRequestId: string;
+  requestNumber: string;
+  currentState: string;
+  advanceAmountNgn: number;
+  lineCount: number;
+}
+
+/** An entry in GET /api/v1/requests/{id}/attachments. */
+export interface AttachmentSummary {
+  attachmentId: string;
+  fileName: string;
+  contentType: string;
+  sizeBytes: number;
+  uploadedByUserId: string;
+  uploadedAt: string;
+  /** SHA-256 of the bytes, so a file produced later can be shown to be this one. */
+  sha256: string;
+}
+
 export interface ExpenseDraftInput {
   /**
    * Omitted means "pay me". The API resolves the requester's own beneficiary

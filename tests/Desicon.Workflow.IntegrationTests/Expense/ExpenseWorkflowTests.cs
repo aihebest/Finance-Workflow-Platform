@@ -36,8 +36,8 @@ public sealed class ExpenseWorkflowTests : IntegrationTestBase
         // and stopped. The state advanced, so the claim looked paid while the
         // columns recording how it was paid stayed empty. /execute-payment now
         // stages both before the transition runs, and this asserts that.
-        var financeOfficerClient = Fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer");
-        await (await WorkflowSteps.ExecutePaymentAsync(financeOfficerClient, id, "PMT-0001"))
+        var treasuryClient = Fixture.CreateClient(org.TreasuryOfficer, "TreasuryOfficer");
+        await (await WorkflowSteps.ExecutePaymentAsync(treasuryClient, id, "PMT-0001"))
             .ShouldSucceedAsync();
 
         var afterPayment = await (await Fixture.CreateClient(org.Requester)
@@ -225,7 +225,7 @@ public sealed class ExpenseWorkflowTests : IntegrationTestBase
         await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(org.DeptHead), id, "VERIFY")).ShouldSucceedAsync();
 
         var returned = await (await WorkflowSteps.ActionAsync(
-                Fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer"), id, "RETURN",
+                Fixture.CreateClient(org.CostControlOfficer, "CostControlOfficer"), id, "RETURN",
                 comment: "Receipts incomplete."))
             .ShouldSucceedAsync();
         returned.GetProperty("toState").GetString().Should().Be("RETURNED");

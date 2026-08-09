@@ -240,6 +240,15 @@ public sealed class RequestActionService
             }
         }
 
+        // Evidence. COST_CONTROL_VERIFY's guard on a retirement requires at
+        // least one attachment, and AttachmentCount is not a column -- same
+        // arrangement as GlPostingLines above. Counted rather than trusted
+        // from ReceiptStatus, which records what the requester said rather
+        // than what they provided.
+        request.AttachmentCount = await _db.Attachments
+            .AsNoTracking()
+            .CountAsync(a => a.RequestId == requestId, cancellationToken);
+
         // Staged for the same reason GlPostingLines is above: SUBMIT's guard
         // (BLOCK_NEW_ADVANCE_WHEN_OVERDUE) needs to know whether this
         // requester has another advance currently Overdue, and that is a
@@ -536,7 +545,7 @@ public sealed class RequestActionService
     /// re-running actor resolution per request. Only resolver-based actor
     /// specs (Requester, Beneficiary, LineManagerOf, DepartmentHeadOf,
     /// CurrentActor) ever collapse to a single person in this model; a
-    /// role-only spec (e.g. FinanceOfficer) cannot, and is left null here --
+    /// role-only spec (e.g. TreasuryOfficer) cannot, and is left null here --
     /// InboxStateIndex covers that case by state membership instead. A
     /// resolver whose set spans more than one person (delegation active on a
     /// resolver step) is also left null rather than guessing which one is

@@ -36,15 +36,20 @@
         -Requester      "a.best@saidelafrica.com" `
         -Manager        "victor.obasi@desicongroup.com" `
         -Head           "uche.obodiwe@desicongroup.com" `
-        -FinanceOfficer "anita.ekeke@desicongroup.com" `
-        -FinanceManager "wisdom.iheagbam@desicongroup.com"
+        -CostControlOfficer "anita.ekeke@desicongroup.com" `
+        -TreasuryOfficer    "olanrewaju.atanda@desicongroup.com" `
+        -FinanceManager     "wisdom.iheagbam@desicongroup.com"
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$Requester,
     [Parameter(Mandatory = $true)][string]$Manager,
     [Parameter(Mandatory = $true)][string]$Head,
-    [Parameter(Mandatory = $true)][string]$FinanceOfficer,
+    # Two Accounts desks, not one. Cost Control checks the costing;
+    # Treasury posts it in Business Central and moves the money. Workflow
+    # version 3 separated them -- see docs/14.
+    [Parameter(Mandatory = $true)][string]$CostControlOfficer,
+    [Parameter(Mandatory = $true)][string]$TreasuryOfficer,
     [Parameter(Mandatory = $true)][string]$FinanceManager,
 
     [string]$SqlServer = "sql-desicon-fw-dev.database.windows.net",
@@ -92,15 +97,26 @@ $people = @(
     Resolve-DirectoryUser -Upn $Requester      -Slot "Requester"
     Resolve-DirectoryUser -Upn $Manager        -Slot "Line manager"
     Resolve-DirectoryUser -Upn $Head           -Slot "Department head"
-    Resolve-DirectoryUser -Upn $FinanceOfficer -Slot "Finance Officer"
-    Resolve-DirectoryUser -Upn $FinanceManager -Slot "Finance Manager"
+    Resolve-DirectoryUser -Upn $CostControlOfficer -Slot "Cost Control"
+    Resolve-DirectoryUser -Upn $TreasuryOfficer    -Slot "Treasury"
+    Resolve-DirectoryUser -Upn $FinanceManager     -Slot "Finance Manager"
 )
 
-$officer = $people | Where-Object Slot -eq "Finance Officer"
-$finMgr  = $people | Where-Object Slot -eq "Finance Manager"
+$officer  = $people | Where-Object Slot -eq "Cost Control"
+$treasury = $people | Where-Object Slot -eq "Treasury"
+$finMgr   = $people | Where-Object Slot -eq "Finance Manager"
 
-if ($officer.Oid -eq $finMgr.Oid) {
-    throw "Finance Officer and Finance Manager resolve to the same person ($($officer.Name)). AUTHORISE requires the authoriser to differ from the inputer, so every claim would stall at AUTHORISATION. Use two people."
+# Checked pairwise rather than one pair at a time. The version-2 script only
+# compared Cost Control against the Accounts Manager, which was the only
+# separation that existed then; a third and fourth approver added later would
+# have slipped past a check written to know about two.
+$accounts = @($officer, $treasury, $finMgr)
+foreach ($a in $accounts) {
+    foreach ($b in $accounts) {
+        if ($a.Slot -lt $b.Slot -and $a.Oid -eq $b.Oid) {
+            throw "$($a.Slot) and $($b.Slot) resolve to the same person ($($a.Name)). Each stage exists to be a separate pair of eyes; one person holding both satisfies every guard while providing no separation. Use different people."
+        }
+    }
 }
 
 $people | Format-Table Slot, Name, Email, Oid -AutoSize | Out-String | Write-Host
@@ -127,12 +143,18 @@ Invoke-Sqlcmd `
         "OfficerOid=$($officer.Oid)",
         "OfficerName=$($officer.Name)",
         "OfficerEmail=$($officer.Email)",
+        "TreasuryOid=$($treasury.Oid)",
+        "TreasuryName=$($treasury.Name)",
+        "TreasuryEmail=$($treasury.Email)",
         "FinManagerOid=$($finMgr.Oid)",
         "FinManagerName=$($finMgr.Name)",
         "FinManagerEmail=$($finMgr.Email)"
     ) | Format-Table -AutoSize
 
 Write-Host ""
-Write-Host "Now grant the two Finance roles -- they are Entra claims, not database rows:" -ForegroundColor Yellow
+Write-Host "Now grant the Finance roles -- they are Entra claims, not database rows:" -ForegroundColor Yellow
 Write-Host "  .\scripts\bootstrap-app-roles.ps1 -ApiClientId `"8deb5019-590d-4ef3-bb61-f5d450d341b5`" ``" -ForegroundColor Gray
-Write-Host "      -Assign `"$($officer.Email)=FinanceOfficer`",`"$($finMgr.Email)=FinanceManager`"" -ForegroundColor Gray
+Write-Host "      -Assign `"$($officer.Email)=CostControlOfficer`",`"$($treasury.Email)=TreasuryOfficer`",`"$($finMgr.Email)=FinanceManager`"" -ForegroundColor Gray
+Write-Host ""
+Write-Host "DirectorOfFinance is not seeded here -- assign it to the DMD separately," -ForegroundColor Yellow
+Write-Host "and to nobody who already holds one of the three above." -ForegroundColor Yellow

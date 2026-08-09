@@ -172,3 +172,15 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "storage_blob_endpoint" {
+  description = "Blob service endpoint for the attachments account, e.g. https://stx.blob.core.windows.net. Empty disables attachment upload."
+  type        = string
+  default     = ""
+}
+
+variable "attachments_container_name" {
+  description = "Container holding receipt attachments. Provisioned with a WORM retention policy by modules/storage."
+  type        = string
+  default     = "attachments"
+}

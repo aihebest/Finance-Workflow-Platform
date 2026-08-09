@@ -135,6 +135,38 @@ public static class TestData
         return request;
     }
 
+    /// <summary>
+    /// Attaches a receipt without touching blob storage.
+    /// </summary>
+    /// <remarks>
+    /// COST_CONTROL_VERIFY refuses a claim with no evidence, so almost every
+    /// path through the suite needs one. Inserting the row directly rather
+    /// than uploading keeps the tests off Azure Storage -- the guard counts
+    /// Attachments rows, and that is exactly what this provides.
+    ///
+    /// The blob it names does not exist, which is correct for these tests: they
+    /// cover the workflow, and downloading is BlobAttachmentStore's business.
+    /// </remarks>
+    public static async Task<Attachment> AttachReceiptAsync(
+        WorkflowDbContext db, Guid requestId, Guid uploadedBy, DateTimeOffset now, string fileName = "receipt.pdf")
+    {
+        var attachment = new Attachment
+        {
+            RequestId = requestId,
+            FileName = fileName,
+            ContentType = "application/pdf",
+            SizeBytes = 1024,
+            BlobPath = $"{requestId:D}/{Guid.NewGuid():D}",
+            Sha256 = new string('0', 64),
+            UploadedByUserId = uploadedBy,
+            UploadedAt = now
+        };
+
+        db.Attachments.Add(attachment);
+        await db.SaveChangesAsync();
+        return attachment;
+    }
+
     public static object ExpenseDraftPayload(Guid beneficiaryId, string receiptStatus, params object[] lines) =>
         new { beneficiaryId, receiptStatus, lines };
 

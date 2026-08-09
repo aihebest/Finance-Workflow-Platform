@@ -4,8 +4,8 @@
   "displayName": "Cash Advance - To Be Justified",
   "formCode": "DEL-AC-FRM-003",
   "formRevision": "05",
-  "version": 3,
-  "effectiveFrom": "2026-08-09T00:00:00Z",
+  "version": 2,
+  "effectiveFrom": "2026-08-08T00:00:00Z",
   "numberFormat": "ADV-{yyyy}-{seq:000000}",
   "workingCalendar": "NG_STANDARD",
   "slaPausesOutsideWorkingHours": true,
@@ -213,21 +213,21 @@
       "to": "FINANCE_APPROVE",
       "action": "VERIFY",
       "actor": {
-        "role": "CostControlOfficer"
+        "role": "FinanceOfficer"
       },
       "guard": "TreasuryNumber != null",
       "guardMessage": "Capture the Treasury number before passing this to the Finance Manager.",
       "captures": [
         "TreasuryNumber"
       ],
-      "note": "Cost Control checks that the advance is costed to the right centre. A separate desk from the Treasury officer who posts it at AWAITING_POSTING and releases the cash at CASH_RELEASE -- version 2 modelled them as one role, which let the same person check the costing, post against their own check, and hand over the money."
+      "note": "Cost Control's check: the request is costed to the right centre and taken into BC. Same Accounts people who post later at AWAITING_POSTING, so the same role -- the state is named for the work, not a separate team."
     },
     {
       "from": "COST_CONTROL_VERIFY",
       "to": "RETURNED",
       "action": "RETURN",
       "actor": {
-        "role": "CostControlOfficer"
+        "role": "FinanceOfficer"
       },
       "requiresComment": true
     },
@@ -236,7 +236,7 @@
       "to": "REJECTED",
       "action": "REJECT",
       "actor": {
-        "role": "CostControlOfficer"
+        "role": "FinanceOfficer"
       },
       "requiresComment": true
     },
@@ -286,7 +286,7 @@
       "to": "CASH_RELEASE",
       "action": "MARK_POSTED",
       "actor": {
-        "role": "TreasuryOfficer"
+        "role": "FinanceOfficer"
       },
       "guard": "BcDocumentNumber != null",
       "guardMessage": "Enter the Business Central document number for this posting.",
@@ -301,7 +301,7 @@
       "to": "RETURNED",
       "action": "RETURN",
       "actor": {
-        "role": "TreasuryOfficer"
+        "role": "FinanceOfficer"
       },
       "requiresComment": true
     },
@@ -328,7 +328,7 @@
       "to": "AWAITING_ACK",
       "action": "RELEASE_CASH",
       "actor": {
-        "role": "TreasuryOfficer"
+        "role": "FinanceOfficer"
       },
       "captures": [
         "CashReleasedAt"
@@ -341,7 +341,7 @@
       "to": "RETURNED",
       "action": "RETURN",
       "actor": {
-        "role": "TreasuryOfficer"
+        "role": "FinanceOfficer"
       },
       "requiresComment": true
     },
@@ -361,7 +361,7 @@
       "to": "RETURNED",
       "action": "RETURN",
       "actor": {
-        "role": "TreasuryOfficer"
+        "role": "FinanceOfficer"
       },
       "requiresComment": true
     },
@@ -442,7 +442,7 @@
     },
     {
       "on": "COST_CONTROL_VERIFY",
-      "to": "CostControlOfficer",
+      "to": "FinanceOfficer",
       "template": "action-required"
     },
     {
@@ -457,12 +457,12 @@
     },
     {
       "on": "AWAITING_POSTING",
-      "to": "TreasuryOfficer",
+      "to": "FinanceOfficer",
       "template": "posting-required"
     },
     {
       "on": "CASH_RELEASE",
-      "to": "TreasuryOfficer",
+      "to": "FinanceOfficer",
       "template": "action-required"
     },
     {
@@ -524,5 +524,5 @@
     "calendar": "NG_STANDARD",
     "note": "Per Finance direction 31 Jul 2026. On a 9-hour working day this makes 24h = 2.67 working days and 72h = 8 working days. Change 'unit' to CalendarHours if that proves not to be the intent."
   },
-  "note": "Version 3 splits FinanceOfficer into CostControlOfficer and TreasuryOfficer. Version 2 recorded that Cost Control and the Accounts Officer who posts in Business Central were the same people; they are not. They are separate desks with separate mailboxes (costcontrol@ and treasury@), and one role covering both meant a single person could verify the costing, post it, and release the cash -- with the posting notification going to the wrong desk, so the person who had to act was never told. Version 2 remains published for requests already open under it; see cash-advance.v2.workflow.json and docs/15-Go-Live-Checklist.md section 3."
+  "note": "Version 2 mirrors the expense module: GL posting moves to Microsoft Dynamics Business Central, so POSTING/AUTHORISATION collapse into a single AWAITING_POSTING step, and DMD_APPROVAL is added because no cash leaves Desicon without the Director of Finance. Unlike expense, the gate here is unconditional -- an advance always pays somebody. Retirement, which follows via a linked expense claim, never reaches him. See docs/14-Process-As-Described.md."
 }
