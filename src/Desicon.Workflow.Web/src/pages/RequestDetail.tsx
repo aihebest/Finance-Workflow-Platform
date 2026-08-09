@@ -1,20 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
-  captureGlLines,
   confirmRefund,
-  executePayment,
   executeAction,
+  executePayment,
   getHistory,
   getRequest,
+  markPosted,
 } from "../api/requests";
-import {
-  ACTION_LABELS,
-  ApiError,
-  type AuditEntry,
-  type AvailableAction,
-  type GlLineInput,
-} from "../api/types";
+import { ACTION_LABELS, ApiError, type AuditEntry, type AvailableAction } from "../api/types";
 import { Money } from "../components/Money";
 
 type Detail = Record<string, unknown>;
@@ -28,8 +22,6 @@ type ExpenseLine = {
   costCentreCode?: string | null;
   amountNgn?: number;
 };
-
-type GlLineRow = GlLineInput & { key: number };
 
 /**
  * Actions requiring a written reason.
@@ -45,19 +37,11 @@ const REQUIRES_COMMENT = new Set(["RETURN", "REJECT"]);
 /**
  * Actions that carry captured data and therefore have their own endpoint and
  * their own panel below. They are excluded from the generic button row: a bare
- * button for POST would send the action with no journal attached, the guard
- * would refuse it for having no GL lines, and the message would be true but
- * useless -- there was nowhere to enter them.
+ * button for MARK_POSTED would send the action with no BC document number,
+ * the guard would refuse it for lacking one, and the message would be true but
+ * useless -- there was nowhere to type it.
  */
-const CAPTURE_ACTIONS = new Set(["POST", "EXECUTE_PAYMENT", "CONFIRM_REFUND"]);
-
-const blankGlLine = (key: number): GlLineRow => ({
-  key,
-  side: "Debit",
-  accountNumber: "",
-  narration: "",
-  amountNgn: 0,
-});
+const CAPTURE_ACTIONS = new Set(["MARK_POSTED", "EXECUTE_PAYMENT", "CONFIRM_REFUND"]);
 
 const money = (value: number) =>
   new Intl.NumberFormat("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
@@ -75,8 +59,7 @@ export function RequestDetail() {
 
   // Capture state. Kept separate from `detail` because these are things the
   // user is typing, not things the server has said.
-  const [jvNumber, setJvNumber] = useState("");
-  const [glLines, setGlLines] = useState<GlLineRow[]>([blankGlLine(1), blankGlLine(2)]);
+  const [bcDocumentNumber, setBcDocumentNumber] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
   const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [refundAmount, setRefundAmount] = useState("");
@@ -121,8 +104,8 @@ export function RequestDetail() {
     }
 
     // TreasuryNumber is the one capture the generic /actions endpoint stages
-    // onto the entity itself, so VERIFY at FINANCE_VERIFY can send it inline
-    // rather than needing an endpoint of its own.
+    // onto the entity itself, so VERIFY at COST_CONTROL_VERIFY can send it
+    // inline rather than needing an endpoint of its own.
     const payload =
       action === "VERIFY" && treasuryNumber.trim().length > 0
         ? { TreasuryNumber: treasuryNumber.trim() }
@@ -145,30 +128,20 @@ export function RequestDetail() {
   const total = Number(detail.totalAmountNgn ?? 0);
   const netPayable = Number(detail.netPayableNgn ?? total);
   const lines = (detail.lines as ExpenseLine[] | undefined) ?? [];
-  const postedGlLines = (detail.glPostingLines as GlLineInput[] | undefined) ?? [];
-
   const genericActions = availableActions.filter((a) => !CAPTURE_ACTIONS.has(a.action));
 
   /**
    * Authorised, whether or not the guard passes yet.
    *
    * This is what the capture panels key on, and the distinction is the whole
-   * point: POST's guard requires balanced GL lines, so gating the journal grid
-   * on the guard passing means the grid never appears and the lines can never
-   * be entered. Same for the Treasury number and the refund amount.
+   * point: MARK_POSTED's guard requires a BC document number, so gating the
+   * field on the guard passing means the field never appears and the number
+   * can never be entered. Same for the Treasury number and the refund amount.
    */
   const can = (action: string) => availableActions.some((a) => a.action === action);
 
   const blockedReason = (action: string) =>
     availableActions.find((a) => a.action === action && !a.isEnabled)?.blockedReason ?? null;
-
-  const debitTotal = glLines.reduce((sum, l) => sum + (l.side === "Debit" ? l.amountNgn : 0), 0);
-  const creditTotal = glLines.reduce((sum, l) => sum + (l.side === "Credit" ? l.amountNgn : 0), 0);
-  const balanced = debitTotal === creditTotal && debitTotal > 0;
-
-  function updateGlLine(key: number, patch: Partial<GlLineInput>) {
-    setGlLines((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
-  }
 
   /**
    * Whether something typed on this screen resolves a block the server
@@ -193,7 +166,7 @@ export function RequestDetail() {
   function locallyUnblocked(action: string) {
     return (
       action === "VERIFY" &&
-      currentState === "FINANCE_VERIFY" &&
+      currentState === "COST_CONTROL_VERIFY" &&
       treasuryNumber.trim().length > 0
     );
   }
@@ -275,168 +248,61 @@ export function RequestDetail() {
         </section>
       )}
 
-      {/* --- GL posting (POSTING → AUTHORISATION) --- */}
-      {can("POST") && (
+      {/* --- Business Central posting (AWAITING_POSTING) --- */}
+      {can("MARK_POSTED") && (
         <section className="rounded border border-gray-200 bg-white p-4">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
-            GL posting
+            Posting in Business Central
           </h2>
           <p className="mt-1 text-sm text-gray-600">
-            {blockedReason("POST") ??
-              "Debits must equal credits and at least two lines are required. Whoever posts here cannot be the person who authorises it."}
+            Post this in Business Central first, then record the document number here. The journal
+            itself lives in BC — this records that it was posted and where to find it.
           </p>
 
-          <label className="mt-3 block text-sm text-gray-700" htmlFor="jv">
-            Journal voucher number
+          <label className="mt-3 block text-sm text-gray-700" htmlFor="bc-document">
+            BC document number
           </label>
           <input
-            id="jv"
-            value={jvNumber}
-            onChange={(e) => setJvNumber(e.target.value)}
-            className="mt-1 w-full max-w-xs rounded border border-gray-300 p-2 text-sm focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+            id="bc-document"
+            value={bcDocumentNumber}
+            onChange={(e) => setBcDocumentNumber(e.target.value)}
+            placeholder="Business Central posting or document number"
+            className="mt-1 min-h-11 w-72 rounded border border-gray-300 p-2 text-sm focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
           />
 
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 text-left text-xs uppercase text-gray-500">
-                  <th className="py-2 pr-2 font-medium">Side</th>
-                  <th className="py-2 pr-2 font-medium">Account</th>
-                  <th className="py-2 pr-2 font-medium">Narration</th>
-                  <th className="py-2 pl-2 text-right font-medium">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {glLines.map((line) => (
-                  <tr key={line.key} className="border-b border-gray-100">
-                    <td className="py-1 pr-2">
-                      <select
-                        aria-label={`Side, line ${line.key}`}
-                        value={line.side}
-                        onChange={(e) =>
-                          updateGlLine(line.key, { side: e.target.value as "Debit" | "Credit" })
-                        }
-                        className="min-h-11 rounded border border-gray-300 p-2 text-sm"
-                      >
-                        <option value="Debit">Debit</option>
-                        <option value="Credit">Credit</option>
-                      </select>
-                    </td>
-                    <td className="py-1 pr-2">
-                      <input
-                        aria-label={`Account number, line ${line.key}`}
-                        value={line.accountNumber}
-                        onChange={(e) => updateGlLine(line.key, { accountNumber: e.target.value })}
-                        className="min-h-11 w-32 rounded border border-gray-300 p-2 text-sm"
-                      />
-                    </td>
-                    <td className="py-1 pr-2">
-                      <input
-                        aria-label={`Narration, line ${line.key}`}
-                        value={line.narration}
-                        onChange={(e) => updateGlLine(line.key, { narration: e.target.value })}
-                        className="min-h-11 w-full rounded border border-gray-300 p-2 text-sm"
-                      />
-                    </td>
-                    <td className="py-1 pl-2">
-                      <input
-                        aria-label={`Amount, line ${line.key}`}
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={line.amountNgn || ""}
-                        onChange={(e) =>
-                          updateGlLine(line.key, { amountNgn: Number(e.target.value) || 0 })
-                        }
-                        className="min-h-11 w-32 rounded border border-gray-300 p-2 text-right text-sm tabular-nums"
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colSpan={3} className="pt-3 text-right text-sm text-gray-600">
-                    Debits
-                  </td>
-                  <td className="pt-3 pl-2 text-right text-sm tabular-nums">{money(debitTotal)}</td>
-                </tr>
-                <tr>
-                  <td colSpan={3} className="text-right text-sm text-gray-600">
-                    Credits
-                  </td>
-                  <td className="pl-2 text-right text-sm tabular-nums">{money(creditTotal)}</td>
-                </tr>
-                <tr>
-                  <td colSpan={3} className="pt-1 text-right text-sm font-medium text-gray-700">
-                    Difference
-                  </td>
-                  <td
-                    className={
-                      balanced
-                        ? "pt-1 pl-2 text-right text-sm font-medium tabular-nums text-green-700"
-                        : "pt-1 pl-2 text-right text-sm font-medium tabular-nums text-red-700"
-                    }
-                  >
-                    {money(debitTotal - creditTotal)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+          <p className="mt-2 text-sm text-gray-500">
+            {netPayable > 0
+              ? "Once posted, this moves to payment."
+              : "Nothing is payable on this claim, so it closes once posted."}
+          </p>
 
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setGlLines((rows) => [...rows, blankGlLine(rows.length + 1)])}
-              className="min-h-11 rounded border border-gray-400 px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
-            >
-              Add line
-            </button>
-            <button
-              type="button"
-              disabled={busy || !balanced || jvNumber.trim().length === 0}
-              onClick={() =>
-                void run(() =>
-                  captureGlLines(
-                    id,
-                    jvNumber.trim(),
-                    glLines.map(({ key: _key, ...line }) => line),
-                    comment.trim() || undefined,
-                  ),
-                )
-              }
-              className="min-h-11 rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800 disabled:opacity-50"
-            >
-              Post journal
-            </button>
-          </div>
+          <button
+            type="button"
+            disabled={busy || bcDocumentNumber.trim().length === 0}
+            onClick={() =>
+              void run(() => markPosted(id, bcDocumentNumber.trim(), comment.trim() || undefined))
+            }
+            className="mt-3 min-h-11 rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800 disabled:opacity-50"
+          >
+            Mark posted in BC
+          </button>
         </section>
       )}
 
-      {/* Posted lines, once they exist -- what the checker is authorising. */}
-      {postedGlLines.length > 0 && !can("POST") && (
+      {/* Once recorded, the reference is the thread back to the ledger. Shown
+          to everyone who can see the request, not just Accounts: "where is this
+          in BC" is the question asked when a payment is queried. */}
+      {detail.bcDocumentNumber && !can("MARK_POSTED") ? (
         <section className="rounded border border-gray-200 bg-white p-4">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
-            Posted journal
-            {detail.journalVoucherNumber ? ` · JV ${String(detail.journalVoucherNumber)}` : ""}
+            Business Central
           </h2>
-          <table className="mt-3 w-full text-sm">
-            <tbody>
-              {postedGlLines.map((line, index) => (
-                <tr key={index} className="border-b border-gray-100">
-                  <td className="py-2 pr-2 text-gray-600">{line.side}</td>
-                  <td className="py-2 pr-2 tabular-nums">{line.accountNumber}</td>
-                  <td className="py-2 pr-2">{line.narration}</td>
-                  <td className="py-2 pl-2 text-right tabular-nums">
-                    {money(Number(line.amountNgn ?? 0))}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <p className="mt-2 text-sm text-gray-700">
+            Posted as document{" "}
+            <span className="font-medium tabular-nums">{String(detail.bcDocumentNumber)}</span>
+          </p>
         </section>
-      )}
+      ) : null}
 
       {/* --- Payment (AWAITING_PAYMENT → AWAITING_ACK) --- */}
       {can("EXECUTE_PAYMENT") && (
@@ -449,6 +315,13 @@ export function RequestDetail() {
             the policy threshold — it is not chosen here. The reference is what the beneficiary
             will be asked to confirm against.
           </p>
+
+          {/* The guard's own words when payment is blocked — most often that
+              the beneficiary has no account number on file, which is fixable
+              and which nothing else on this screen would explain. */}
+          {blockedReason("EXECUTE_PAYMENT") && (
+            <p className="mt-2 text-sm text-amber-800">{blockedReason("EXECUTE_PAYMENT")}</p>
+          )}
 
           <div className="mt-3 flex flex-wrap gap-4">
             <div>
@@ -479,7 +352,11 @@ export function RequestDetail() {
 
           <button
             type="button"
-            disabled={busy || paymentReference.trim().length === 0}
+            disabled={
+              busy ||
+              paymentReference.trim().length === 0 ||
+              blockedReason("EXECUTE_PAYMENT") !== null
+            }
             onClick={() =>
               void run(() =>
                 executePayment(
@@ -538,7 +415,7 @@ export function RequestDetail() {
               Verification -- without it the transition is refused, so the
               field appears with the action that needs it rather than on a
               separate screen. */}
-          {currentState === "FINANCE_VERIFY" && can("VERIFY") && (
+          {currentState === "COST_CONTROL_VERIFY" && can("VERIFY") && (
             <>
               <label className="mt-3 block text-sm text-gray-700" htmlFor="treasury">
                 Treasury number

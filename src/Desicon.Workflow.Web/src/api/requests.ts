@@ -3,7 +3,6 @@ import type {
   AuditEntry,
   BeneficiarySummary,
   ExpenseDraftInput,
-  GlLineInput,
   RequestSummary,
 } from "./types";
 
@@ -67,16 +66,16 @@ export const submitRequest = (id: string) =>
  * correct way to take these actions.
  */
 
-/** POSTING → AUTHORISATION. Debits must equal credits; the API re-checks. */
-export const captureGlLines = (
-  id: string,
-  journalVoucherNumber: string,
-  lines: GlLineInput[],
-  comment?: string,
-) =>
-  api.post<{ toState: string; outcome: string }>(`/api/v1/expenses/${id}/gl-lines`, {
-    journalVoucherNumber,
-    lines,
+/**
+ * AWAITING_POSTING → AWAITING_PAYMENT (or → CLOSED when nothing is payable).
+ *
+ * The Accounts Officer posts in Business Central, then records here that she
+ * has. No journal lines travel with this: BC owns the ledger, and this
+ * platform owns the approval trail plus the reference joining the two.
+ */
+export const markPosted = (id: string, bcDocumentNumber: string, comment?: string) =>
+  api.post<{ toState: string; outcome: string }>(`/api/v1/expenses/${id}/mark-posted`, {
+    bcDocumentNumber,
     comment: comment ?? null,
   });
 
@@ -93,7 +92,7 @@ export const executePayment = (
     comment: comment ?? null,
   });
 
-/** REFUND_DUE → POSTING. Must equal the amount over-drawn, to the naira. */
+/** REFUND_DUE → AWAITING_POSTING. Must equal the amount over-drawn, to the naira. */
 export const confirmRefund = (id: string, refundReceivedAmountNgn: number, comment?: string) =>
   api.post<{ toState: string; outcome: string }>(`/api/v1/expenses/${id}/refund-received`, {
     refundReceivedAmountNgn,

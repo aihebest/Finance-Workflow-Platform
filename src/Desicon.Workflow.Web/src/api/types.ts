@@ -80,8 +80,7 @@ export const ACTION_LABELS: Record<string, string> = {
   ENDORSE: "Endorse",
   RETURN: "Return for correction",
   REJECT: "Reject",
-  POST: "Post",
-  AUTHORISE: "Authorise",
+  MARK_POSTED: "Mark posted in BC",
   EXECUTE_PAYMENT: "Execute payment",
   ACKNOWLEDGE: "Acknowledge receipt",
   CONFIRM_REFUND: "Confirm refund",
@@ -119,17 +118,6 @@ export interface ExpenseLineInput {
   amount: number;
   fxRate: number;
   fxRateDate: string;
-}
-
-/**
- * One side of a journal entry. `side` matches the PostingSide enum the API
- * parses case-insensitively; the string form is what travels on the wire.
- */
-export interface GlLineInput {
-  side: "Debit" | "Credit";
-  accountNumber: string;
-  narration: string;
-  amountNgn: number;
 }
 
 /**
