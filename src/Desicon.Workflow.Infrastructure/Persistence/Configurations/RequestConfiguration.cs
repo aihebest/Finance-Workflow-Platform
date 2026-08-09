@@ -27,6 +27,16 @@ public sealed class RequestConfiguration : IEntityTypeConfiguration<Request>
         builder.Property(r => r.FormRevision).HasMaxLength(10).IsRequired();
         builder.Property(r => r.TreasuryNumber).HasMaxLength(50);
         builder.Property(r => r.JournalVoucherNumber).HasMaxLength(50);
+
+        // Business Central document numbers are the reference Accounts quote
+        // when tracing a payment, so this is indexed: "which request is
+        // BC document 12345" is a question that gets asked, and answering it
+        // with a table scan on a growing table is the kind of thing nobody
+        // notices until the table is large.
+        builder.Property(r => r.BcDocumentNumber).HasMaxLength(50);
+        builder.HasIndex(r => r.BcDocumentNumber)
+            .HasDatabaseName("IX_Request_BcDocumentNumber")
+            .HasFilter("[BcDocumentNumber] IS NOT NULL");
         builder.Property(r => r.CurrentState).HasMaxLength(50).IsRequired();
 
         builder.Property(r => r.StateEnteredAt)

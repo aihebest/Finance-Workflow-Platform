@@ -19,6 +19,31 @@ public sealed class NotificationOptions
     /// provisioned yet, which is why LoggingNotificationSender exists.
     /// </summary>
     public string SenderMailbox { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Where to write when a workflow definition names a role rather than a
+    /// person: role key (FinanceOfficer, FinanceManager, DirectorOfFinance) to
+    /// mailbox address.
+    /// </summary>
+    /// <remarks>
+    /// Roles live in Entra as app role assignments and reach this application
+    /// only as a claim on an incoming token. Nothing records who holds one, so
+    /// "email the Accounts Officer" had no list to read and every role-based
+    /// notification resolved to nobody -- which was every step in the Finance
+    /// chain.
+    ///
+    /// A shared mailbox per role rather than a lookup of role holders, and the
+    /// reason is operational rather than technical: the request that goes
+    /// missing is the one that arrived while its owner was on leave. A mailbox
+    /// the team watches survives an absence; an individual's inbox does not.
+    /// It also keeps this out of Graph, so no extra application permission is
+    /// needed to send a notification.
+    ///
+    /// Configured as Notifications:RoleMailboxes:FinanceOfficer and so on. A
+    /// role with no entry stays unresolved and is reported by name, exactly as
+    /// before -- silence is never the answer here.
+    /// </remarks>
+    public Dictionary<string, string> RoleMailboxes { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 /// <summary>
@@ -73,6 +98,20 @@ public sealed class NotificationRenderer
             "reminder" =>
                 ($"Reminder: {module} {requestNumber} is still waiting",
                  "This request is still waiting for you and its deadline has not yet passed."),
+
+            // The Director of Finance's gate. Worded to say plainly that
+            // nothing else releases the money, because the whole control
+            // depends on it not being mistaken for one approval among several.
+            "payment-approval-required" =>
+                ($"Payment approval required: {module} {requestNumber}",
+                 "This request has been approved by Accounts and is waiting for your authorisation to pay. No payment can be made against it until you approve — nobody else can release this money."),
+
+            // The Accounts Officer's queue. Names Business Central explicitly:
+            // the action is not in this application, and an email that does
+            // not say so sends her looking for a button that does not exist.
+            "posting-required" =>
+                ($"Ready to post: {module} {requestNumber}",
+                 "This request is fully approved and is waiting to be posted in Business Central. Post it there, then come back and record the BC document number against it."),
 
             "escalation" =>
                 ($"Escalated: {module} {requestNumber}",

@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using Desicon.Workflow.Domain.People;
 using Desicon.Workflow.Infrastructure.Persistence;
@@ -17,7 +17,8 @@ public sealed record OrgChart(
     Employee LineManager,
     Employee DeptHead,
     Employee FinanceOfficer,
-    Employee FinanceManager);
+    Employee FinanceManager,
+    Employee DirectorOfFinance);
 
 /// <summary>
 /// Shared HTTP-driving helpers for the EXPENSE and CASH_ADVANCE workflows.
@@ -42,7 +43,13 @@ public static class WorkflowSteps
         var financeOfficer = await TestData.CreateEmployeeAsync(db, department, $"{prefix} Finance Officer {suffix}");
         var financeManager = await TestData.CreateEmployeeAsync(db, department, $"{prefix} Finance Manager {suffix}");
 
-        return new OrgChart(department, requester, lineManager, deptHead, financeOfficer, financeManager);
+        // A distinct person from the Accounts Manager. The DMD gate is only a
+        // control if it is a second pair of eyes -- one employee holding both
+        // roles would satisfy every guard while providing no separation at all.
+        var directorOfFinance = await TestData.CreateEmployeeAsync(db, department, $"{prefix} Director of Finance {suffix}");
+
+        return new OrgChart(
+            department, requester, lineManager, deptHead, financeOfficer, financeManager, directorOfFinance);
     }
 
     // ---------------------------------------------------------------
@@ -84,12 +91,15 @@ public static class WorkflowSteps
         HttpClient client, Guid id, string action, object? payload = null, string? comment = null) =>
         PostAsync(client, $"/api/v1/requests/{id}/actions", new { Action = action, Comment = comment, Payload = payload });
 
-    public static Task<HttpResponseMessage> CaptureGlLinesExpenseAsync(
-        HttpClient client, Guid id, string journalVoucherNumber, params object[] lines) =>
-        PostAsync(client, $"/api/v1/expenses/{id}/gl-lines", new { JournalVoucherNumber = journalVoucherNumber, Lines = lines });
-
-    public static Task<HttpResponseMessage> AuthorisePostingExpenseAsync(HttpClient client, Guid id) =>
-        PostAsync(client, $"/api/v1/expenses/{id}/authorise-posting", null);
+    /// <summary>
+    /// MARK_POSTED: the Accounts Officer records that she has posted in
+    /// Business Central. Replaces the gl-lines / authorise-posting pair, which
+    /// modelled a journal this platform no longer keeps -- BC owns the ledger
+    /// from definition version 2 onward.
+    /// </summary>
+    public static Task<HttpResponseMessage> MarkPostedExpenseAsync(
+        HttpClient client, Guid id, string bcDocumentNumber) =>
+        PostAsync(client, $"/api/v1/expenses/{id}/mark-posted", new { BcDocumentNumber = bcDocumentNumber });
 
     public static Task<HttpResponseMessage> AcknowledgeExpenseAsync(HttpClient client, Guid id) =>
         PostAsync(client, $"/api/v1/expenses/{id}/acknowledge", null);
@@ -114,21 +124,23 @@ public static class WorkflowSteps
     public static Task<HttpResponseMessage> ReleaseCashAsync(HttpClient client, Guid id, DateTimeOffset cashReleasedAt) =>
         PostAsync(client, $"/api/v1/advances/{id}/release", new { CashReleasedAt = cashReleasedAt });
 
-    public static Task<HttpResponseMessage> CaptureGlLinesAdvanceAsync(
-        HttpClient client, Guid id, string journalVoucherNumber, params object[] lines) =>
-        PostAsync(client, $"/api/v1/advances/{id}/gl-lines", new { JournalVoucherNumber = journalVoucherNumber, Lines = lines });
+    public static Task<HttpResponseMessage> MarkPostedAdvanceAsync(
+        HttpClient client, Guid id, string bcDocumentNumber) =>
+        PostAsync(client, $"/api/v1/advances/{id}/mark-posted", new { BcDocumentNumber = bcDocumentNumber });
 
-    public static Task<HttpResponseMessage> AuthorisePostingAdvanceAsync(HttpClient client, Guid id) =>
-        PostAsync(client, $"/api/v1/advances/{id}/authorise-posting", null);
+    /// <summary>
+    /// The Director of Finance's approval. Nothing is paid without it, so
+    /// every driver that reaches a payment or a cash release goes through here.
+    /// </summary>
+    public static Task<HttpResponseMessage> ApproveAsDirectorOfFinanceAsync(
+        WorkflowApiFixture fixture, OrgChart org, Guid id) =>
+        ActionAsync(fixture.CreateClient(org.DirectorOfFinance, "DirectorOfFinance"), id, "APPROVE");
 
     public static Task<HttpResponseMessage> AcknowledgeAdvanceAsync(HttpClient client, Guid id) =>
         PostAsync(client, $"/api/v1/advances/{id}/acknowledge", null);
 
     public static Task<HttpResponseMessage> RetireAdvanceAsync(HttpClient client, Guid id) =>
         PostAsync(client, $"/api/v1/advances/{id}/retire", null);
-
-    public static object GlLine(string side, string accountNumber, decimal amountNgn, string? narration = null) =>
-        new { side, accountNumber, narration, amountNgn };
 
     // ---------------------------------------------------------------
     // Composite drivers -- happy-path only, assert success internally.
@@ -157,21 +169,31 @@ public static class WorkflowSteps
             .ShouldSucceedAsync();
     }
 
-    /// <summary>Drives an expense claim from FINANCE_APPROVE through POSTING
-    /// and AUTHORISATION to AWAITING_PAYMENT. Assumes NetPayableNgn >= 0 (the
-    /// APPROVE action then targets POSTING, not REFUND_DUE).</summary>
+    /// <summary>
+    /// Drives an expense claim from FINANCE_APPROVE through the Director of
+    /// Finance and the Business Central posting to AWAITING_PAYMENT.
+    /// </summary>
+    /// <remarks>
+    /// Assumes NetPayableNgn &gt; 0. That is now load-bearing rather than
+    /// incidental: APPROVE branches three ways on the net payable, and only the
+    /// positive branch reaches the DMD. A claim that balanced exactly or is in
+    /// refund goes to posting directly and closes there, so driving one of
+    /// those through here would fail at the first step with a guard message
+    /// about a branch the caller never intended.
+    ///
+    /// The parameter is a BC document number, not a JV number. This platform
+    /// no longer keeps a journal.
+    /// </remarks>
     public static async Task DriveExpenseToAwaitingPaymentAsync(
-        WorkflowApiFixture fixture, OrgChart org, Guid id, string journalVoucherNumber, decimal glAmountNgn)
+        WorkflowApiFixture fixture, OrgChart org, Guid id, string bcDocumentNumber)
     {
         await (await ActionAsync(fixture.CreateClient(org.FinanceManager, "FinanceManager"), id, "APPROVE"))
             .ShouldSucceedAsync();
 
-        await (await CaptureGlLinesExpenseAsync(
-                fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer"), id, journalVoucherNumber,
-                GlLine("Debit", "1000-EXP", glAmountNgn), GlLine("Credit", "2000-CASH", glAmountNgn)))
-            .ShouldSucceedAsync();
+        await (await ApproveAsDirectorOfFinanceAsync(fixture, org, id)).ShouldSucceedAsync();
 
-        await (await AuthorisePostingExpenseAsync(fixture.CreateClient(org.FinanceManager, "FinanceManager"), id))
+        await (await MarkPostedExpenseAsync(
+                fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer"), id, bcDocumentNumber))
             .ShouldSucceedAsync();
     }
 
@@ -189,10 +211,11 @@ public static class WorkflowSteps
     }
 
     /// <summary>Drives a cash advance from DRAFT all the way to CASH_RELEASE
-    /// (posted, authorised, awaiting release).</summary>
+    /// -- approved by Accounts, authorised by the Director of Finance, and
+    /// posted in Business Central.</summary>
     public static async Task<Guid> DriveCashAdvanceToCashReleaseAsync(
         WorkflowApiFixture fixture, OrgChart org, string purpose, decimal amount,
-        string treasuryNumber, string journalVoucherNumber,
+        string treasuryNumber, string bcDocumentNumber,
         string stationScope = "InStation")
     {
         var id = await CreateAndSubmitCashAdvanceAsync(fixture, org, purpose, amount, stationScope);
@@ -205,11 +228,9 @@ public static class WorkflowSteps
             .ShouldSucceedAsync();
         await (await ActionAsync(fixture.CreateClient(org.FinanceManager, "FinanceManager"), id, "APPROVE"))
             .ShouldSucceedAsync();
-        await (await CaptureGlLinesAdvanceAsync(
-                fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer"), id, journalVoucherNumber,
-                GlLine("Debit", "1100-ADV", amount), GlLine("Credit", "2000-CASH", amount)))
-            .ShouldSucceedAsync();
-        await (await AuthorisePostingAdvanceAsync(fixture.CreateClient(org.FinanceManager, "FinanceManager"), id))
+        await (await ApproveAsDirectorOfFinanceAsync(fixture, org, id)).ShouldSucceedAsync();
+        await (await MarkPostedAdvanceAsync(
+                fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer"), id, bcDocumentNumber))
             .ShouldSucceedAsync();
 
         return id;
@@ -219,11 +240,11 @@ public static class WorkflowSteps
     /// acknowledged).</summary>
     public static async Task<Guid> DriveCashAdvanceToOutstandingAsync(
         WorkflowApiFixture fixture, OrgChart org, string purpose, decimal amount,
-        string treasuryNumber, string journalVoucherNumber, DateTimeOffset releasedAt,
+        string treasuryNumber, string bcDocumentNumber, DateTimeOffset releasedAt,
         string stationScope = "InStation")
     {
         var id = await DriveCashAdvanceToCashReleaseAsync(
-            fixture, org, purpose, amount, treasuryNumber, journalVoucherNumber, stationScope);
+            fixture, org, purpose, amount, treasuryNumber, bcDocumentNumber, stationScope);
 
         await (await ReleaseCashAsync(fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer"), id, releasedAt))
             .ShouldSucceedAsync();

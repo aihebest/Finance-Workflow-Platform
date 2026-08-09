@@ -34,7 +34,31 @@ public class Request : IWorkflowSubject
     public string? TreasuryNumber { get; set; }
 
     /// <summary>Assigned by Accounts at GL posting.</summary>
+    /// <remarks>
+    /// Retained but no longer captured by either module. GL posting moved to
+    /// Business Central in definition version 2, so new requests carry
+    /// <see cref="BcDocumentNumber"/> instead. Kept because requests raised
+    /// under version 1 have one, and dropping the column would erase the only
+    /// reference by which those reconcile.
+    /// </remarks>
     public string? JournalVoucherNumber { get; set; }
+
+    /// <summary>
+    /// The Business Central document number the Accounts Officer posted this
+    /// under.
+    /// </summary>
+    /// <remarks>
+    /// The single key joining this approval trail to the ledger entry. This
+    /// platform records that a posting happened and where to find it; BC holds
+    /// the journal itself. Without this number, reconciling the two systems
+    /// means matching on amounts and dates, which stops working the first time
+    /// two people claim the same sum on the same day.
+    ///
+    /// Required by the MARK_POSTED guard rather than optional, for that
+    /// reason: the records where someone was in a hurry are exactly the ones
+    /// later needing to be traced.
+    /// </remarks>
+    public string? BcDocumentNumber { get; set; }
 
     public string CurrentState { get; set; } = string.Empty;
 
@@ -83,6 +107,7 @@ public class Request : IWorkflowSubject
             [nameof(ModuleKey)] = r => r.ModuleKey,
             [nameof(TreasuryNumber)] = r => r.TreasuryNumber,
             [nameof(JournalVoucherNumber)] = r => r.JournalVoucherNumber,
+            [nameof(BcDocumentNumber)] = r => r.BcDocumentNumber,
             [nameof(CurrentState)] = r => r.CurrentState,
             [nameof(RequesterId)] = r => r.RequesterId,
             [nameof(DepartmentId)] = r => r.DepartmentId,

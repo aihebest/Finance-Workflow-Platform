@@ -31,6 +31,7 @@ public static class CashAdvanceEndpoints
         group.MapPost("/{id:guid}/release", ReleaseCashAsync);
         group.MapPost("/{id:guid}/gl-lines", CaptureGlLinesAsync);
         group.MapPost("/{id:guid}/authorise-posting", AuthorisePostingAsync);
+        group.MapPost("/{id:guid}/mark-posted", MarkPostedAsync);
     }
 
     private static async Task<IResult> GetOutstandingAsync(
@@ -247,8 +248,60 @@ public static class CashAdvanceEndpoints
         return result.ToApiResult(httpRequest.Path);
     }
 
+    /// <summary>
+    /// The Accounts Officer records that she has posted this advance in
+    /// Business Central, and under which document number.
+    /// </summary>
+    /// <remarks>
+    /// Twin of the expense module's mark-posted. BcDocumentNumber is a guard
+    /// field on MARK_POSTED and the guard reads it off the tracked entity, so
+    /// it is committed before ExecuteAsync rather than merely carried inside
+    /// TransitionRequest -- the same reason gl-lines and refund-received each
+    /// needed an endpoint of their own.
+    /// </remarks>
+    private static async Task<IResult> MarkPostedAsync(
+        Guid id,
+        MarkPostedDto dto,
+        HttpRequest httpRequest,
+        WorkflowDbContext db,
+        RequestActionService actionService,
+        ICurrentUserAccessor currentUser,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(dto.BcDocumentNumber))
+        {
+            return ProblemResults.BadRequest("'bcDocumentNumber' is required.", httpRequest.Path);
+        }
+
+        var advance = await db.CashAdvanceRequests.FirstOrDefaultAsync(a => a.RequestId == id, cancellationToken);
+        if (advance is null)
+        {
+            return ProblemResults.NotFound("Cash advance request", id, httpRequest.Path);
+        }
+
+        advance.BcDocumentNumber = dto.BcDocumentNumber.Trim();
+        await db.SaveChangesAsync(cancellationToken);
+
+        var actingUser = await currentUser.GetActingUserAsync(cancellationToken);
+
+        var result = await actionService.ExecuteAsync(
+            id, actingUser,
+            new TransitionRequest(
+                "MARK_POSTED", dto.Comment,
+                new Dictionary<string, object?> { ["BcDocumentNumber"] = advance.BcDocumentNumber },
+                dto.IdempotencyKey),
+            cancellationToken);
+
+        return result.ToApiResult(httpRequest.Path);
+    }
+
     private sealed record ReleaseCashDto(
         DateTimeOffset CashReleasedAt,
+        string? Comment = null,
+        string? IdempotencyKey = null);
+
+    private sealed record MarkPostedDto(
+        string BcDocumentNumber,
         string? Comment = null,
         string? IdempotencyKey = null);
 
