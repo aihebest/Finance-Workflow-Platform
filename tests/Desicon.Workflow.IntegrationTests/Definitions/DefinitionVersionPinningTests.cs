@@ -38,11 +38,11 @@ public sealed class DefinitionVersionPinningTests : IDisposable
         }
     }
 
-    /// <param name="extraState">
-    /// Present in v3 only, so the two versions are distinguishable by more than
-    /// a number — a test that only compared version numbers would pass even if
-    /// the wrong definition were returned.
-    /// </param>
+    /// <summary>
+    /// Writes one definition file. <c>extraState</c> is present in v3 only, so
+    /// the two versions differ by more than a number — a test comparing version
+    /// numbers alone would pass even if the wrong definition came back.
+    /// </summary>
     private void WriteDefinition(string moduleKey, int version, string effectiveFrom, string? extraState = null)
     {
         var states = extraState is null
@@ -179,6 +179,6 @@ public sealed class DefinitionVersionPinningTests : IDisposable
         var all = await provider.GetAllAsync();
 
         all.Should().HaveCount(2);
-        all.Select(d => d.Version).Should().BeEquivalentTo(new[] { 2, 3 });
+        all.Select(d => d.Version).OrderBy(v => v).Should().Equal(2, 3);
     }
 }
