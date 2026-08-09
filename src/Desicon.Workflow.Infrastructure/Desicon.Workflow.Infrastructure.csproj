@@ -10,7 +10,14 @@
       Graph SDK. Which credential to use is the host's decision: managed
       identity in Azure, az login locally.
     -->
-    <PackageReference Include="Azure.Core" Version="1.42.0" />
+    <!--
+      1.44.1, not 1.42.0. Azure.Storage.Blobs 12.22.2 requires >= 1.44.1
+      transitively, and NuGet reports the direct reference as a downgrade
+      (NU1605, an error here). Pinning the higher version is the fix; the
+      alternative -- letting the transitive win silently -- is how a
+      MissingMethodException arrives at runtime instead of at build.
+    -->
+    <PackageReference Include="Azure.Core" Version="1.44.1" />
     <!--
       Blob storage for receipt attachments. Same arrangement as Azure.Core
       above: the SDK lives here, the choice of credential stays with the host.
