@@ -118,6 +118,12 @@ module "storage" {
   public_network_access_enabled = true
   ip_rules                      = var.deployer_ip_addresses
 
+  # The App Service, which is what actually writes receipts here. ip_rules
+  # above admits only the deployer; without this line every upload fails with
+  # AuthorizationFailure and the account looks perfectly configured. The sql
+  # and functions modules have carried the equivalent line all along.
+  vnet_rule_subnet_ids = [module.network.app_subnet_id]
+
   log_analytics_workspace_id = module.monitoring.log_analytics_workspace_id
   tags                       = local.tags
 }

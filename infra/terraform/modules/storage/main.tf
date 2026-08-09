@@ -85,10 +85,36 @@ resource "azurerm_storage_account" "this" {
     user_assigned_identity_id = azurerm_user_assigned_identity.cmk.id
   }
 
+  # ── Who may reach this account ────────────────────────────────────────────
+  # ip_rules admits the *deployer* -- a developer laptop or a CI runner. It
+  # cannot admit the App Service: its outbound traffic leaves through the
+  # integrated app subnet with a private source address that no ip_rules entry
+  # will ever match. virtual_network_subnet_ids is the only thing that does.
+  #
+  # Found 9 Aug 2026, on the first byte ever written to this account. The
+  # container had been provisioned since the infrastructure work -- immutable,
+  # versioned, customer-managed key, all correct -- and every upload failed
+  # with AuthorizationFailure. Nothing reported it, because nothing had ever
+  # tried: the integration tests seed attachment rows straight into the
+  # database and never touch storage.
+  #
+  # The sql module documents this exact trap in a twenty-line comment, and the
+  # functions storage account already carried the rule. This account was the
+  # one that did not, and no test, plan or policy check could tell -- an empty
+  # allow-list is indistinguishable from a correct one until something knocks.
+  #
+  # Requires the Microsoft.Storage service endpoint on each subnet; see
+  # modules/network, which already sets it. A rule naming a subnet without
+  # that endpoint is accepted and silently never matches, which is the same
+  # failure wearing a different hat.
   network_rules {
     default_action = "Deny"
     bypass         = ["AzureServices"]
     ip_rules       = var.ip_rules
+
+    # Empty when the private endpoint is the only path in, matching the sql
+    # module's treatment of its own vnet rules.
+    virtual_network_subnet_ids = var.use_private_endpoints ? [] : var.vnet_rule_subnet_ids
   }
 
   blob_properties {

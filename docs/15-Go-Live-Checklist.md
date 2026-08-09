@@ -301,6 +301,25 @@ The rules were `200002` (failed to parse request body) and `200003` (multipart
 failed strict validation), scoring against `949110` until it blocked. Both are
 now disabled with the reasoning recorded in `modules/frontdoor/main.tf`.
 
+### And immediately behind it, a second one
+
+With the WAF fixed the upload reached the API and threw a 500. The storage
+account holding receipts had `default_action = Deny` and **zero** virtual
+network rules, so the App Service — whose traffic leaves through the
+integrated subnet with a private source address — could never reach it. The
+single `ip_rules` entry admits a developer laptop, which is why the account
+looked reachable to whoever checked it by hand.
+
+The `sql` module documents this precise trap in a twenty-line comment. The
+functions storage account already carried the rule. The attachments account
+was the one that did not, and an empty allow-list is indistinguishable from a
+correct one until something knocks.
+
+Two failures, stacked, on one endpoint — and neither could surface until a
+byte was actually sent. The container had existed, correctly configured with
+immutability, versioning and a customer-managed key, since the infrastructure
+work.
+
 **The lesson is the gap between where the tests stop and where the users
 start.** Everything between the test host and the browser — Front Door, the
 WAF, CORS, the SPA's own fetch layer — is unexercised by the suite, and that
