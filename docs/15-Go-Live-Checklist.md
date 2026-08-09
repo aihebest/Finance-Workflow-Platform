@@ -26,6 +26,13 @@ ones. Both hold the role, everything works, and the weakness is silent.
 | `wazuhalerts@desicongroup.com` | `FinanceManager` | Accounts Manager unavailable during testing |
 | `ictadmin@desicongroup.com` | `DirectorOfFinance` | DMD unavailable during testing |
 | `olanrewaju.atanda@desicongroup.com` | `FinanceOfficer` | Confirm whether this is the real holder |
+| `best.aihebholoria@desicongroup.com` | `FinanceManager` | Assigned during the 9 August walkthrough because the Accounts Manager was unavailable |
+| `ictadmin@desicongroup.com` | `DirectorOfFinance` | Assigned during the 9 August walkthrough because the DMD was unavailable |
+
+Note that `ictadmin` is also the seeded Department Head, so during that
+walkthrough one account both approved at department level and authorised the
+payment. The workflow permitted it — `DMD_APPROVAL`'s guard only forbids the
+requester — so it proved the gate functions, not that it separates anyone.
 
 **To list who currently holds what:**
 
@@ -81,28 +88,78 @@ because people stop checking the queue.
 
 ---
 
-## 3. Pin definition versions
+## 3. Never delete a definition file while requests are open under it
 
-**Outstanding work, not configuration.**
+**Done 9 August 2026** — requests now carry `Request.DefinitionVersion`,
+stamped at creation, and every path that acts on an existing request resolves
+by it. A new version applies to requests raised after it and to nothing already
+moving.
 
-Workflow definitions resolve by `moduleKey` alone —
-`IWorkflowDefinitionProvider.GetAsync` takes no version, and `Request` has no
-`DefinitionVersion` column. Every request is evaluated against whatever
-definition is deployed *now*, including requests raised weeks earlier.
+That creates a standing operational rule. A definition file must stay published
+for as long as anything is still open under it. Removing one does not fail
+quietly — `IWorkflowDefinitionProvider.GetAsync` throws and names the versions
+that *are* published — but a request whose definition cannot be loaded cannot
+be actioned by anybody until the file comes back.
 
-A request sitting in a state that a new version removes has no way out:
-`TransitionsFrom` returns an empty list, no error is raised, and the request
-disappears from everyone's list of things to do while still being open.
+Before retiring any version:
 
-This already happened twice in dev on 8 August: `EXP-2026-000005` stranded in
-`AUTHORISATION` by the version 2 rewrite, and `EXP-2026-000004` stranded by an
-org-chart edit that moved its resolved actor. Two causes, one root — the
-platform assumes definitions and reporting lines hold still, and neither does.
+```sql
+SELECT DefinitionVersion, ModuleKey, COUNT(*) AS StillOpen
+FROM Requests
+WHERE ClosedAt IS NULL
+GROUP BY DefinitionVersion, ModuleKey
+ORDER BY ModuleKey, DefinitionVersion;
+```
 
-Desicon will change these definitions; that is the point of a definition-driven
-engine. Options are in `docs/12-Decision-Log.md`. **This should not reach UAT
-unresolved**, because UAT is where requests first live long enough for a
-definition to change underneath them.
+Zero rows for that version is the only safe answer.
+
+`DefinitionVersion = 0` means nobody stamped it. Every creation path does, so a
+0 indicates a row written outside the application — a data fix, an import — and
+it will refuse to transition until corrected. That is intended: the alternative
+is guessing which process it belongs to.
+
+### What pinning does not fix
+
+It holds the process still. It does not hold the org chart still.
+
+`EXP-2026-000004` was stranded not by a definition change but by an employee's
+line manager changing: `CurrentActorId` is stamped at each transition while the
+actor resolver runs live, so the two disagreed and the request became invisible
+to the person who could act and inert for the person who could see it. That
+would still happen today. See `docs/12-Decision-Log.md`.
+
+Version 1 was deliberately not preserved. It was not a Desicon process — it had
+a GL journal this platform does not own and no Director of Finance — so nothing
+should ever run down it again. Version 2 is the floor.
+
+---
+
+## 3b. Add a CI check for model/migration drift
+
+**Outstanding, and cheap.**
+
+On 9 August the EF model and the migrations disagreed for three commits and 54
+green integration tests did not notice. The migration added
+`DefinitionVersion` with a database default of 2; the model, corrected shortly
+after, declared none. Nothing fired, because by then every creation path
+stamped a version explicitly, so the stale default was never reached.
+
+It would have surfaced later as an unexplained `AlterColumn` inside an
+unrelated migration, and whoever hit it would have had no way to know why.
+
+`dotnet ef migrations script` does not compare the snapshot to the model, so CI
+cannot currently see this. One step closes it:
+
+```yaml
+- name: Check for pending model changes
+  run: |
+    dotnet ef migrations has-pending-model-changes \
+      --project src/Desicon.Workflow.Infrastructure
+```
+
+Non-zero exit means somebody changed an entity or configuration without adding
+a migration. Seconds to run, and it catches a class of drift that passing tests
+demonstrably do not.
 
 ---
 
