@@ -63,11 +63,21 @@ public sealed class OutboxDispatcherTests : IntegrationTestBase
     }
 
     /// <summary>
-    /// "FinanceManager" appears in the workflow definitions as a notification
-    /// recipient and there is no role-membership store to resolve it against.
-    /// The dispatcher must say so rather than send to nobody and report
-    /// success, and must not burn five retry attempts on something that will
-    /// never resolve.
+    /// A role specifier with no mailbox configured for it.
+    ///
+    /// Roles reach this application only as a claim on an incoming token, so
+    /// there is no membership store to resolve one against. Version 2 added
+    /// NotificationOptions.RoleMailboxes, which answers the question for any
+    /// role an administrator has configured -- but a role with no entry is
+    /// still unresolvable, and that is what this covers. DispatchAsync
+    /// deliberately builds options with no RoleMailboxes at all so the case
+    /// stays reachable.
+    ///
+    /// The dispatcher must name the specifier rather than send to nobody and
+    /// report success, and must not burn five retry attempts on something no
+    /// amount of waiting will fix. A finance approval nobody was told about is
+    /// the failure this system exists to prevent, so silence is the one answer
+    /// it must never give.
     /// </summary>
     [Fact]
     public async Task A_message_with_no_resolvable_recipient_is_parked_with_the_specifier_named()
@@ -175,18 +185,23 @@ public sealed class OutboxDispatcherTests : IntegrationTestBase
 
         var db = sp.GetRequiredService<WorkflowDbContext>();
 
+        // Built here rather than resolved: WorkflowApiFactory does not call
+        // AddNotifications, so nothing registers NotificationOptions in the
+        // test container. Constructing it locally also keeps the role mailboxes
+        // under this test's control -- see
+        // A_message_with_no_resolvable_recipient_is_parked_with_the_specifier_named,
+        // which depends on a role having NO mailbox configured.
+        var options = new NotificationOptions
+        {
+            ApplicationBaseUrl = "https://finance.desicon.test",
+            SenderMailbox = "finance-workflow@desicon.test"
+        };
+
         var dispatcher = new OutboxDispatcher(
             db,
             sender,
-            new NotificationRecipientResolver(
-                db,
-                sp.GetRequiredService<IActorResolver>(),
-                sp.GetRequiredService<NotificationOptions>()),
-            new NotificationRenderer(new NotificationOptions
-            {
-                ApplicationBaseUrl = "https://finance.desicon.test",
-                SenderMailbox = "finance-workflow@desicon.test"
-            }),
+            new NotificationRecipientResolver(db, sp.GetRequiredService<IActorResolver>(), options),
+            new NotificationRenderer(options),
             sp.GetRequiredService<IWorkflowClock>());
 
         return await dispatcher.DispatchPendingAsync(cancellationToken: CancellationToken.None);
