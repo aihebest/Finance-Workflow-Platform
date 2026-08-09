@@ -78,6 +78,16 @@ resource "azurerm_mssql_server" "this" {
   public_network_access_enabled        = var.public_network_access_enabled
   outbound_network_restriction_enabled = true
 
+  # Stated explicitly because the provider's default is false and Azure has
+  # this enabled today. Left unset, the next apply would have turned SQL
+  # vulnerability assessment OFF as a side effect of an unrelated change --
+  # found in a plan on 9 Aug 2026 that was only meant to add two app settings.
+  #
+  # A security control that switches itself off during a routine deployment,
+  # with the change buried in a four-item plan nobody reads closely, is the
+  # same failure this project keeps finding: silent, and invisible afterwards.
+  express_vulnerability_assessment_enabled = true
+
   # No SQL login exists at all -- Entra ID is the only way in.
   azuread_administrator {
     login_username              = var.entra_admin_login

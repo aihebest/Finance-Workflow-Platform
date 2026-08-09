@@ -159,6 +159,31 @@ remembering when adding future checks.
 
 ---
 
+## 3c. Read the Terraform plan before applying
+
+A plan on 9 August, intended only to add two app settings, contained four
+changes. Two were the intended ones. The other two were drift, and one of them
+was a security control being switched off:
+
+- `express_vulnerability_assessment_enabled` on the SQL server, `true` in Azure
+  and unset in the configuration. The provider defaults it to `false`, so the
+  apply would have disabled SQL vulnerability assessment as a side effect. Now
+  set explicitly to `true`.
+- Key Vault network ACL IP rules, which `scripts/dev-db-connect.ps1` adds and
+  removes outside Terraform. Its own docstring warns about this. Applying drops
+  whichever developer IP is currently allowed; re-run the script afterwards.
+
+The lesson is not "check that one setting". It is that an unset attribute
+adopts the provider's default, and a provider default is not the same as the
+value the resource has today. Anything Azure has enabled and the configuration
+does not mention is one apply away from being turned off, quietly, inside a
+plan whose headline is something else entirely.
+
+**Before any apply, read every line of the plan and account for each change.**
+Two intended edits producing four planned changes is the signal.
+
+---
+
 ## 4. Confirm Business Central enforces maker-checker
 
 Version 1 of the workflow enforced that whoever entered a GL journal could not
