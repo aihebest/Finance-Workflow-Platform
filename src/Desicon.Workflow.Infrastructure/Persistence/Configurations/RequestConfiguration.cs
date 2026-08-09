@@ -28,6 +28,11 @@ public sealed class RequestConfiguration : IEntityTypeConfiguration<Request>
         builder.Property(r => r.TreasuryNumber).HasMaxLength(50);
         builder.Property(r => r.JournalVoucherNumber).HasMaxLength(50);
 
+        // Defaulted at the database rather than only in code, so a row written
+        // by anything that bypasses the aggregate -- a data fix, a bulk import
+        // -- still carries a version rather than a 0 that resolves to nothing.
+        builder.Property(r => r.DefinitionVersion).HasDefaultValue(2);
+
         // Business Central document numbers are the reference Accounts quote
         // when tracing a payment, so this is indexed: "which request is
         // BC document 12345" is a question that gets asked, and answering it

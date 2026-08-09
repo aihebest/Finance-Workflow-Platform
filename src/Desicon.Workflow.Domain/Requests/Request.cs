@@ -30,6 +30,24 @@ public class Request : IWorkflowSubject
     /// nicety.</summary>
     public string FormRevision { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The workflow definition version this request was raised under. Stamped
+    /// at creation and never changed.
+    /// </summary>
+    /// <remarks>
+    /// The states and transitions available to a request are whatever its own
+    /// version declares, for as long as it stays open, however many newer
+    /// versions are published meanwhile. Publishing a change must not move the
+    /// ground under work already in flight.
+    ///
+    /// FormRevision above is the same idea for the printed form, and the
+    /// reasoning was already written down there: a request reprints in the
+    /// layout it was captured under. That the process itself needed the same
+    /// treatment was the part nobody had joined up -- the document was
+    /// version-controlled and the workflow was not.
+    /// </remarks>
+    public int DefinitionVersion { get; set; }
+
     /// <summary>Assigned by Treasury on receipt.</summary>
     public string? TreasuryNumber { get; set; }
 

@@ -23,7 +23,18 @@ public static class ModuleEndpoints
     {
         var all = await definitions.GetAllAsync(cancellationToken);
 
-        return Results.Ok(all.Select(d => new
+        // One row per module. GetAllAsync returns every version, because the
+        // inbox index needs them all; a module list that named EXPENSE twice
+        // would just be confusing, and a caller choosing a module to raise
+        // wants the one in force.
+        var now = DateTimeOffset.UtcNow;
+
+        var current = all
+            .Where(d => d.EffectiveFrom <= now)
+            .GroupBy(d => d.ModuleKey, StringComparer.Ordinal)
+            .Select(g => g.OrderByDescending(d => d.Version).First());
+
+        return Results.Ok(current.Select(d => new
         {
             d.ModuleKey,
             d.DisplayName,

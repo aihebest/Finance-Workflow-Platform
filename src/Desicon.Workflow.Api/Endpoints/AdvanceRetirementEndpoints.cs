@@ -1,4 +1,4 @@
-﻿using Desicon.Workflow.Api.Security;
+using Desicon.Workflow.Api.Security;
 using Desicon.Workflow.Core.Definitions;
 using Desicon.Workflow.Core.Engine;
 using Desicon.Workflow.Domain.Common;
@@ -61,6 +61,9 @@ public static class AdvanceRetirementEndpoints
             db, bankDetailsAuditor, advance.RequesterId, advance.RequestId, advance.ModuleKey,
             effectiveActorId, now, cancellationToken);
 
+        // The current EXPENSE version, deliberately, not the advance's. This
+        // creates a NEW claim, and a new request is raised under whatever
+        // process is in force today. The advance's version pins the advance.
         var definition = await definitions.GetAsync("EXPENSE", cancellationToken);
 
         var expense = new ExpenseRequest
