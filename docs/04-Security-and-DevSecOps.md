@@ -10,7 +10,7 @@ Microsoft Entra ID, OIDC authorization-code flow with PKCE. SPA uses MSAL.js; AP
 
 Conditional Access policies to apply (these are tenant-side, not application-side, and need your Entra administrator):
 
-- MFA required for `FinanceOfficer`, `FinanceManager`, `ProcurementOfficer`, `Administrator`
+- MFA required for `CostControlOfficer`, `TreasuryOfficer`, `FinanceManager`, `DirectorOfFinance`, `ProcurementOfficer`, `Administrator`
 - Sign-in risk-based MFA for all users
 - Device compliance required for `Administrator`
 - Session lifetime 8 hours for approvers; 1 hour for Administrator
@@ -19,7 +19,7 @@ Conditional Access policies to apply (these are tenant-side, not application-sid
 
 Roles are Entra app roles, surfaced as `roles` claims; the API authorises on claims, never on a database role lookup that could drift.
 
-> **Implementation status, as of the completion-path work.** Two of the seven rows below exist in the directory: `FinanceOfficer` and `FinanceManager`, created by `scripts/bootstrap-app-roles.ps1`. They are the only values any code reads — the `"actor": { "role": ... }` specs in `modules/*.workflow.json`.
+> **Implementation status, as of the completion-path work.** Four roles exist in the directory — `CostControlOfficer`, `TreasuryOfficer`, `FinanceManager` and `DirectorOfFinance` — created by `scripts/bootstrap-app-roles.ps1`, plus `FinanceOfficer`, which is superseded and retained only until no request raised under workflow version 2 is still open. They are the only values any code reads — the `"actor": { "role": ... }` specs in `modules/*.workflow.json`.
 >
 > `LineManager` and `DepartmentHead` are **not** claims and should not be. That authority comes from the org chart (`Employees.LineManagerId`, `Departments.DepartmentHeadId`) resolved by `EmployeeActorResolver`, so holding a claim would grant nothing and having one would imply otherwise. The table below reads as though they are claims; they are not.
 >
@@ -32,8 +32,10 @@ Roles are Entra app roles, surfaced as `roles` claims; the API authorises on cla
 | `Employee` | Raise requests, view own, acknowledge receipt, retire own advances | See anyone else's request |
 | `LineManager` | Everything Employee, plus verify/return/reject for direct reports | Approve own request; act on requests outside their reporting line |
 | `DepartmentHead` | Verify/return/reject for the department; department dashboards | Post to GL; release cash |
-| `FinanceOfficer` | Verify receipts, capture TREAS. No., prepare GL lines (inputer), execute payment | Authorise their own posting |
-| `FinanceManager` | Final approval, authorise postings (checker), all finance dashboards | Authorise a posting they input |
+| `CostControlOfficer` | Verify receipts, confirm the cost centre or project, capture TREAS. No. | Post to Business Central; release cash; execute payment |
+| `TreasuryOfficer` | Post the approved request in Business Central and record the BC document number, execute payment, release cash | Verify the costing they will go on to post |
+| `FinanceManager` | Approve on behalf of Accounts, confirm refunds, write off advances, all finance dashboards | Release money — that is the Director of Finance's alone |
+| `DirectorOfFinance` | Final approval before any payment or cash release | Approve their own claim |
 | `ProcurementOfficer` | Requisition sourcing, vendor management, PO issue | Approve budget; approve payment |
 | `Administrator` | Workflow definitions, reference data, delegations, user role assignment | **Act on any request, or read request line detail** |
 

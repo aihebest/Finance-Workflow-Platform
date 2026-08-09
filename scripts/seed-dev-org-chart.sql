@@ -15,7 +15,8 @@
 --
 -- WHAT THIS DOES NOT DO
 -- ---------------------
--- Roles. FinanceOfficer and FinanceManager are Entra app roles read from the
+-- Roles. CostControlOfficer, TreasuryOfficer, FinanceManager and
+-- DirectorOfFinance are Entra app roles read from the
 -- token's "roles" claim (CurrentUserAccessor.GetRoles), never from this
 -- database -- docs/04 is explicit that the API authorises on claims rather
 -- than a database lookup that could drift. Seeding a person here does not
@@ -37,6 +38,7 @@
 --   "ManagerOid=...","ManagerName=...","ManagerEmail=...",
 --   "HeadOid=...","HeadName=...","HeadEmail=...",
 --   "OfficerOid=...","OfficerName=...","OfficerEmail=...",
+--   "TreasuryOid=...","TreasuryName=...","TreasuryEmail=...",
 --   "FinManagerOid=...","FinManagerName=...","FinManagerEmail=...")
 
 SET NOCOUNT ON;
@@ -66,6 +68,7 @@ VALUES
     (N'manager',    N'$(ManagerOid)',    N'$(ManagerName)',    N'$(ManagerEmail)'),
     (N'head',       N'$(HeadOid)',       N'$(HeadName)',       N'$(HeadEmail)'),
     (N'officer',    N'$(OfficerOid)',    N'$(OfficerName)',    N'$(OfficerEmail)'),
+    (N'treasury',   N'$(TreasuryOid)',   N'$(TreasuryName)',   N'$(TreasuryEmail)'),
     (N'finmanager', N'$(FinManagerOid)', N'$(FinManagerName)', N'$(FinManagerEmail)');
 
 -- ── People, no reporting lines yet ───────────────────────────────────────
@@ -119,6 +122,7 @@ DECLARE @RequesterId  UNIQUEIDENTIFIER = (SELECT e.Id FROM Employees e JOIN @Inc
 DECLARE @ManagerId    UNIQUEIDENTIFIER = (SELECT e.Id FROM Employees e JOIN @Incoming i ON i.EntraObjectId = e.EntraObjectId WHERE i.Slot = N'manager');
 DECLARE @HeadId       UNIQUEIDENTIFIER = (SELECT e.Id FROM Employees e JOIN @Incoming i ON i.EntraObjectId = e.EntraObjectId WHERE i.Slot = N'head');
 DECLARE @OfficerId    UNIQUEIDENTIFIER = (SELECT e.Id FROM Employees e JOIN @Incoming i ON i.EntraObjectId = e.EntraObjectId WHERE i.Slot = N'officer');
+DECLARE @TreasuryId   UNIQUEIDENTIFIER = (SELECT e.Id FROM Employees e JOIN @Incoming i ON i.EntraObjectId = e.EntraObjectId WHERE i.Slot = N'treasury');
 DECLARE @FinManagerId UNIQUEIDENTIFIER = (SELECT e.Id FROM Employees e JOIN @Incoming i ON i.EntraObjectId = e.EntraObjectId WHERE i.Slot = N'finmanager');
 
 -- ── Reporting lines ──────────────────────────────────────────────────────
@@ -135,11 +139,15 @@ DECLARE @FinManagerId UNIQUEIDENTIFIER = (SELECT e.Id FROM Employees e JOIN @Inc
 UPDATE Employees SET LineManagerId = @ManagerId WHERE Id = @RequesterId AND Id <> @ManagerId;
 UPDATE Employees SET LineManagerId = @HeadId    WHERE Id = @ManagerId   AND Id <> @HeadId;
 
--- Finance sit outside the requester's reporting line deliberately. If the
--- Finance Officer reported to the same manager, a claim could be verified and
--- posted within one chain of command, which is the separation the two
--- signature blocks on DEL-AC-FRM-002 exist to create.
-UPDATE Employees SET LineManagerId = @HeadId WHERE Id IN (@OfficerId, @FinManagerId) AND Id <> @HeadId;
+-- Finance sit outside the requester's reporting line deliberately. If Cost
+-- Control reported to the same manager, a claim could be verified and posted
+-- within one chain of command, which is the separation the two signature
+-- blocks on DEL-AC-FRM-002 exist to create.
+--
+-- Cost Control and Treasury are two rows, not one. Workflow version 3 made
+-- them separate roles; seeding a single Accounts person would let a dev
+-- walkthrough hold both and never notice they are supposed to differ.
+UPDATE Employees SET LineManagerId = @HeadId WHERE Id IN (@OfficerId, @TreasuryId, @FinManagerId) AND Id <> @HeadId;
 
 UPDATE Departments SET DepartmentHeadId = @HeadId WHERE Id = @DepartmentId;
 
@@ -161,5 +169,7 @@ ORDER BY e.StaffNumber;
 
 PRINT '';
 PRINT 'Reporting lines seeded. Finance roles are NOT granted by this script --';
-PRINT 'run scripts/bootstrap-app-roles.ps1 and assign FinanceOfficer and';
-PRINT 'FinanceManager to two DIFFERENT people, or AUTHORISE will refuse.';
+PRINT 'run scripts/bootstrap-app-roles.ps1 and assign CostControlOfficer,';
+PRINT 'TreasuryOfficer, FinanceManager and DirectorOfFinance to FOUR DIFFERENT';
+PRINT 'people. One person holding two of them satisfies every guard while';
+PRINT 'providing no separation at all.';

@@ -119,11 +119,11 @@ public sealed class AvailableActionsTests : IntegrationTestBase
         await WorkflowSteps.DriveExpenseToFinanceApproveAsync(Fixture, org, id, "TN-ACT-C");
         await WorkflowSteps.DriveExpenseToAwaitingPaymentAsync(Fixture, org, id, "BC-ACT-C");
 
-        var financeOfficerClient = Fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer");
+        var treasuryClient = Fixture.CreateClient(org.TreasuryOfficer, "TreasuryOfficer");
 
         // CreateEmployeeBeneficiaryAsync leaves bank details empty, so
         // HasBankDetails is false and a bank transfer cannot be paid.
-        var withoutBankDetails = await (await financeOfficerClient
+        var withoutBankDetails = await (await treasuryClient
             .GetAsync($"/api/v1/requests/{id}")).ShouldSucceedAsync();
 
         withoutBankDetails.GetProperty("currentState").GetString().Should().Be("AWAITING_PAYMENT");
@@ -147,13 +147,13 @@ public sealed class AvailableActionsTests : IntegrationTestBase
             await db.SaveChangesAsync();
         });
 
-        var withBankDetails = await (await financeOfficerClient
+        var withBankDetails = await (await treasuryClient
             .GetAsync($"/api/v1/requests/{id}")).ShouldSucceedAsync();
 
         EnabledActionsOf(withBankDetails).Should().Contain("EXECUTE_PAYMENT");
 
         // And the offer is honest: taking it succeeds.
-        await (await WorkflowSteps.ExecutePaymentAsync(financeOfficerClient, id, "PMT-ACT-C"))
+        await (await WorkflowSteps.ExecutePaymentAsync(treasuryClient, id, "PMT-ACT-C"))
             .ShouldSucceedAsync();
     }
 
@@ -181,7 +181,8 @@ public sealed class AvailableActionsTests : IntegrationTestBase
         await WorkflowSteps.DriveExpenseToFinanceApproveAsync(Fixture, org, id, "TN-ACT-D");
 
         // Every Finance role except the one that matters.
-        var accountsManager = Fixture.CreateClient(org.FinanceManager, "FinanceManager", "FinanceOfficer");
+        var accountsManager = Fixture.CreateClient(
+            org.FinanceManager, "FinanceManager", "CostControlOfficer", "TreasuryOfficer");
         await (await WorkflowSteps.ActionAsync(accountsManager, id, "APPROVE")).ShouldSucceedAsync();
 
         var forAccountsManager = await (await accountsManager

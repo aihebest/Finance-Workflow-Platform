@@ -35,7 +35,11 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         var requesterClient = Fixture.CreateClient(org.Requester);
         var lineManagerClient = Fixture.CreateClient(org.LineManager);
         var deptHeadClient = Fixture.CreateClient(org.DeptHead);
-        var financeOfficerClient = Fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer");
+        // Two desks, two people. Until workflow version 3 these were one
+        // client, so this test walked every transition in both modules
+        // without ever showing that Cost Control and Treasury are separable.
+        var costControlClient = Fixture.CreateClient(org.CostControlOfficer, "CostControlOfficer");
+        var treasuryClient = Fixture.CreateClient(org.TreasuryOfficer, "TreasuryOfficer");
         var financeManagerClient = Fixture.CreateClient(org.FinanceManager, "FinanceManager");
 
         async Task StepAsync(Func<Task<HttpResponseMessage>> call, string from, string action, string to)
@@ -85,7 +89,7 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
             await WorkflowSteps.AttachReceiptAsync(Fixture, id, org.Requester.Id);
 
             await StepAsync(
-                () => WorkflowSteps.ActionAsync(financeOfficerClient, id, "VERIFY", payload: TreasuryNumber(treasuryNumber)),
+                () => WorkflowSteps.ActionAsync(costControlClient, id, "VERIFY", payload: TreasuryNumber(treasuryNumber)),
                 "COST_CONTROL_VERIFY", "VERIFY", "FINANCE_APPROVE");
             return id;
         }
@@ -110,7 +114,7 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         {
             var id = await DriveToPostingAsync(amount, treasuryNumber);
             await StepAsync(
-                () => WorkflowSteps.MarkPostedExpenseAsync(financeOfficerClient, id, bcDocumentNumber),
+                () => WorkflowSteps.MarkPostedExpenseAsync(treasuryClient, id, bcDocumentNumber),
                 "AWAITING_POSTING", "MARK_POSTED", "AWAITING_PAYMENT");
             return id;
         }
@@ -120,7 +124,7 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
             var id = await DriveToAwaitingPaymentAsync(amount, treasuryNumber, journalVoucherNumber);
             await StepAsync(
                 () => WorkflowSteps.ExecutePaymentAsync(
-                    financeOfficerClient, id, paymentReference, Fixture.TimeProvider.GetUtcNow()),
+                    treasuryClient, id, paymentReference, Fixture.TimeProvider.GetUtcNow()),
                 "AWAITING_PAYMENT", "EXECUTE_PAYMENT", "AWAITING_ACK");
             return id;
         }
@@ -146,7 +150,7 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
 
         // FINANCE_VERIFY RETURN (Incomplete receipts).
         var claim5 = await DriveToCostControlVerifyAsync("Incomplete", 500m);
-        await StepAsync(() => WorkflowSteps.ActionAsync(financeOfficerClient, claim5, "RETURN", comment: "Receipts incomplete."), "COST_CONTROL_VERIFY", "RETURN", "RETURNED");
+        await StepAsync(() => WorkflowSteps.ActionAsync(costControlClient, claim5, "RETURN", comment: "Receipts incomplete."), "COST_CONTROL_VERIFY", "RETURN", "RETURNED");
 
         // FINANCE_APPROVE RETURN.
         var claim6 = await DriveToFinanceApproveAsync(500m, "TN-06");
@@ -166,7 +170,7 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         });
         await StepAsync(() => WorkflowSteps.ActionAsync(financeManagerClient, claim8, "APPROVE"), "FINANCE_APPROVE", "APPROVE", "REFUND_DUE");
         await StepAsync(() => WorkflowSteps.ConfirmRefundAsync(financeManagerClient, claim8, 500m), "REFUND_DUE", "CONFIRM_REFUND", "AWAITING_POSTING");
-        await StepAsync(() => WorkflowSteps.ActionAsync(financeOfficerClient, claim8, "RETURN", comment: "Wrong cost centre."), "AWAITING_POSTING", "RETURN", "RETURNED");
+        await StepAsync(() => WorkflowSteps.ActionAsync(treasuryClient, claim8, "RETURN", comment: "Wrong cost centre."), "AWAITING_POSTING", "RETURN", "RETURNED");
 
         // FINANCE_APPROVE -> AWAITING_POSTING and AWAITING_POSTING -> CLOSED:
         // the zero-net-payable branch. A retirement where the employee spent
@@ -181,7 +185,7 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
             await db.SaveChangesAsync();
         });
         await StepAsync(() => WorkflowSteps.ActionAsync(financeManagerClient, claim8c, "APPROVE"), "FINANCE_APPROVE", "APPROVE", "AWAITING_POSTING");
-        await StepAsync(() => WorkflowSteps.MarkPostedExpenseAsync(financeOfficerClient, claim8c, "BC-08C"), "AWAITING_POSTING", "MARK_POSTED", "CLOSED");
+        await StepAsync(() => WorkflowSteps.MarkPostedExpenseAsync(treasuryClient, claim8c, "BC-08C"), "AWAITING_POSTING", "MARK_POSTED", "CLOSED");
 
         // REFUND_DUE RETURN -- the exit that did not exist until version 2. An
         // employee who never pays back an over-drawn advance previously left
@@ -205,7 +209,7 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
 
         // AWAITING_PAYMENT RETURN.
         var claim10 = await DriveToAwaitingPaymentAsync(500m, "TN-10", "JV-10");
-        await StepAsync(() => WorkflowSteps.ActionAsync(financeOfficerClient, claim10, "RETURN", comment: "Cannot pay this beneficiary."), "AWAITING_PAYMENT", "RETURN", "RETURNED");
+        await StepAsync(() => WorkflowSteps.ActionAsync(treasuryClient, claim10, "RETURN", comment: "Cannot pay this beneficiary."), "AWAITING_PAYMENT", "RETURN", "RETURNED");
 
         // AWAITING_ACK REJECT (beneficiary disputes receipt) -> AWAITING_PAYMENT.
         var claim11 = await DriveToAwaitingAckAsync(500m, "TN-11", "JV-11", "PMT-11");
@@ -230,7 +234,11 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         var requesterClient = Fixture.CreateClient(org.Requester);
         var lineManagerClient = Fixture.CreateClient(org.LineManager);
         var deptHeadClient = Fixture.CreateClient(org.DeptHead);
-        var financeOfficerClient = Fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer");
+        // Two desks, two people. Until workflow version 3 these were one
+        // client, so this test walked every transition in both modules
+        // without ever showing that Cost Control and Treasury are separable.
+        var costControlClient = Fixture.CreateClient(org.CostControlOfficer, "CostControlOfficer");
+        var treasuryClient = Fixture.CreateClient(org.TreasuryOfficer, "TreasuryOfficer");
         var financeManagerClient = Fixture.CreateClient(org.FinanceManager, "FinanceManager");
 
         async Task StepAsync(Func<Task<HttpResponseMessage>> call, string from, string action, string to)
@@ -277,7 +285,7 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
             await WorkflowSteps.AttachReceiptAsync(Fixture, id, org.Requester.Id);
 
             await StepAsync(
-                () => WorkflowSteps.ActionAsync(financeOfficerClient, id, "VERIFY", payload: TreasuryNumber(treasuryNumber)),
+                () => WorkflowSteps.ActionAsync(costControlClient, id, "VERIFY", payload: TreasuryNumber(treasuryNumber)),
                 "COST_CONTROL_VERIFY", "VERIFY", "FINANCE_APPROVE");
             return id;
         }
@@ -302,7 +310,7 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         {
             var id = await DriveToPostingAsync(purpose, amount, treasuryNumber);
             await StepAsync(
-                () => WorkflowSteps.MarkPostedAdvanceAsync(financeOfficerClient, id, bcDocumentNumber),
+                () => WorkflowSteps.MarkPostedAdvanceAsync(treasuryClient, id, bcDocumentNumber),
                 "AWAITING_POSTING", "MARK_POSTED", "CASH_RELEASE");
             return id;
         }
@@ -311,7 +319,7 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         {
             var id = await DriveToCashReleaseAsync(purpose, amount, treasuryNumber, journalVoucherNumber);
             await StepAsync(
-                () => WorkflowSteps.ReleaseCashAsync(financeOfficerClient, id, Fixture.TimeProvider.GetUtcNow()),
+                () => WorkflowSteps.ReleaseCashAsync(treasuryClient, id, Fixture.TimeProvider.GetUtcNow()),
                 "CASH_RELEASE", "RELEASE_CASH", "AWAITING_ACK");
             return id;
         }
@@ -373,11 +381,11 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
 
         // FINANCE_VERIFY RETURN.
         var advI = await DriveToCostControlVerifyAsync("FV return advance", 1_000m);
-        await StepAsync(() => WorkflowSteps.ActionAsync(financeOfficerClient, advI, "RETURN", comment: "Missing supporting documents."), "COST_CONTROL_VERIFY", "RETURN", "RETURNED");
+        await StepAsync(() => WorkflowSteps.ActionAsync(costControlClient, advI, "RETURN", comment: "Missing supporting documents."), "COST_CONTROL_VERIFY", "RETURN", "RETURNED");
 
         // FINANCE_VERIFY REJECT.
         var advJ = await DriveToCostControlVerifyAsync("FV reject advance", 1_000m);
-        await StepAsync(() => WorkflowSteps.ActionAsync(financeOfficerClient, advJ, "REJECT", comment: "Not approved."), "COST_CONTROL_VERIFY", "REJECT", "REJECTED");
+        await StepAsync(() => WorkflowSteps.ActionAsync(costControlClient, advJ, "REJECT", comment: "Not approved."), "COST_CONTROL_VERIFY", "REJECT", "REJECTED");
 
         // FINANCE_APPROVE RETURN.
         var advK = await DriveToFinanceApproveAsync("FA return advance", 1_000m, "TN-K-01");
@@ -389,7 +397,7 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
 
         // AWAITING_POSTING RETURN.
         var advM = await DriveToPostingAsync("Posting return advance", 1_000m, "TN-M-01");
-        await StepAsync(() => WorkflowSteps.ActionAsync(financeOfficerClient, advM, "RETURN", comment: "Wrong cost centre."), "AWAITING_POSTING", "RETURN", "RETURNED");
+        await StepAsync(() => WorkflowSteps.ActionAsync(treasuryClient, advM, "RETURN", comment: "Wrong cost centre."), "AWAITING_POSTING", "RETURN", "RETURNED");
 
         // DMD_APPROVAL RETURN and REJECT.
         var advN = await DriveToDmdApprovalAsync("DMD return advance", 1_000m, "TN-N-01");
@@ -400,11 +408,11 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
 
         // CASH_RELEASE RETURN.
         var advO = await DriveToCashReleaseAsync("Release return advance", 1_000m, "TN-O-01", "JV-O-01");
-        await StepAsync(() => WorkflowSteps.ActionAsync(financeOfficerClient, advO, "RETURN", comment: "Cannot release cash right now."), "CASH_RELEASE", "RETURN", "RETURNED");
+        await StepAsync(() => WorkflowSteps.ActionAsync(treasuryClient, advO, "RETURN", comment: "Cannot release cash right now."), "CASH_RELEASE", "RETURN", "RETURNED");
 
         // AWAITING_ACK RETURN.
         var advP = await DriveToAwaitingAckAsync("Ack return advance", 1_000m, "TN-P-01", "JV-P-01");
-        await StepAsync(() => WorkflowSteps.ActionAsync(financeOfficerClient, advP, "RETURN", comment: "Recipient unreachable."), "AWAITING_ACK", "RETURN", "RETURNED");
+        await StepAsync(() => WorkflowSteps.ActionAsync(treasuryClient, advP, "RETURN", comment: "Recipient unreachable."), "AWAITING_ACK", "RETURN", "RETURNED");
 
         covered.Should().BeEquivalentTo(expected, "every declared CASH_ADVANCE transition should be exercised by at least one test");
 

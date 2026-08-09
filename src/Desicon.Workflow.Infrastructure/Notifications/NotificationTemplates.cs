@@ -22,7 +22,8 @@ public sealed class NotificationOptions
 
     /// <summary>
     /// Where to write when a workflow definition names a role rather than a
-    /// person: role key (FinanceOfficer, FinanceManager, DirectorOfFinance) to
+    /// person: role key (CostControlOfficer, TreasuryOfficer, FinanceManager,
+    /// DirectorOfFinance) to
     /// mailbox address.
     /// </summary>
     /// <remarks>
@@ -39,7 +40,7 @@ public sealed class NotificationOptions
     /// It also keeps this out of Graph, so no extra application permission is
     /// needed to send a notification.
     ///
-    /// Configured as Notifications:RoleMailboxes:FinanceOfficer and so on. A
+    /// Configured as Notifications:RoleMailboxes:TreasuryOfficer and so on. A
     /// role with no entry stays unresolved and is reported by name, exactly as
     /// before -- silence is never the answer here.
     /// </remarks>

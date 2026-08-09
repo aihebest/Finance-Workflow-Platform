@@ -99,7 +99,7 @@ internal static class FunctionsHost
                     ApplicationBaseUrl = context.Configuration["Notifications:ApplicationBaseUrl"] ?? string.Empty,
                     SenderMailbox = context.Configuration["Notifications:SenderMailbox"] ?? string.Empty,
 
-                    // Notifications__RoleMailboxes__FinanceOfficer and friends.
+                    // Notifications__RoleMailboxes__TreasuryOfficer and friends.
                     // Read by enumerating children rather than binding, so this
                     // needs no configuration-binder package and so a blank value
                     // is dropped rather than becoming an empty recipient -- an

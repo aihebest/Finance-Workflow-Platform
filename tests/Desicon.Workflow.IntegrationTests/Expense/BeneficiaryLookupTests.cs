@@ -42,7 +42,7 @@ public sealed class BeneficiaryLookupTests : IntegrationTestBase
                 // account number, so a fixture that sets the columns without
                 // the stamp would report a payee with bank details as
                 // unpayable -- and the real write path always sets both.
-                BankDetailsSetByUserId = org.FinanceOfficer.Id,
+                BankDetailsSetByUserId = org.CostControlOfficer.Id,
                 BankDetailsSetAt = Fixture.TimeProvider.GetUtcNow(),
             });
 

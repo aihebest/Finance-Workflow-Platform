@@ -80,15 +80,16 @@ public sealed class DelegationAuthorizationTests : IntegrationTestBase
     [Fact]
     public async Task A_delegate_cannot_approve_a_request_raised_by_the_person_they_are_delegating_for()
     {
-        // FINANCE_VERIFY's VERIFY transition is a role-only spec (FinanceOfficer,
-        // no identity resolver), so any FinanceOfficer -- including one acting
-        // OnBehalfOf someone else -- clears WorkflowEngine's own authorisation
-        // layer. RequestActionService.EvaluatePolicyViolation is what actually
+        // COST_CONTROL_VERIFY's VERIFY transition is a role-only spec
+        // (CostControlOfficer, no identity resolver), so any holder of that
+        // role -- including one acting OnBehalfOf someone else -- clears
+        // WorkflowEngine's own authorisation layer.
+        // RequestActionService.EvaluatePolicyViolation is what actually
         // blocks self-approval, and it must key off effectiveActorId
         // (OnBehalfOf ?? UserId), not actingUser.UserId: here the nominal
-        // caller is org.FinanceOfficer (not the requester, so a nominal-only
-        // check would wrongly allow this), but OnBehalfOf points at
-        // org.Requester -- the request's own requester -- so it must be
+        // caller is org.CostControlOfficer (not the requester, so a
+        // nominal-only check would wrongly allow this), but OnBehalfOf points
+        // at org.Requester -- the request's own requester -- so it must be
         // blocked.
         var org = await WithDbAsync(db => WorkflowSteps.CreateOrgChartAsync(db, "DEL-SELF"));
         var beneficiary = await WithDbAsync(db => TestData.CreateEmployeeBeneficiaryAsync(db, org.Requester));
@@ -127,8 +128,8 @@ public sealed class DelegationAuthorizationTests : IntegrationTestBase
         var actionService = scope.ServiceProvider.GetRequiredService<RequestActionService>();
 
         var actingUser = new ActingUser(
-            UserId: org.FinanceOfficer.Id,
-            Roles: new HashSet<string> { "FinanceOfficer" },
+            UserId: org.CostControlOfficer.Id,
+            Roles: new HashSet<string> { "CostControlOfficer" },
             OnBehalfOf: org.Requester.Id);
 
         var result = await actionService.ExecuteAsync(
@@ -137,6 +138,6 @@ public sealed class DelegationAuthorizationTests : IntegrationTestBase
 
         result.Outcome.Should().Be(TransitionOutcome.PolicyViolation,
             "effectiveActorId (OnBehalfOf) equals this request's RequesterId, so self-approval must be " +
-            "blocked even though the nominal caller (org.FinanceOfficer) is not the requester");
+            "blocked even though the nominal caller (org.CostControlOfficer) is not the requester");
     }
 }

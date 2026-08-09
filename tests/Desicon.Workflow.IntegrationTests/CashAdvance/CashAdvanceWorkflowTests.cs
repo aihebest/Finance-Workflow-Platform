@@ -20,7 +20,7 @@ public sealed class CashAdvanceWorkflowTests : IntegrationTestBase
 
         var releasedAt = Fixture.TimeProvider.GetUtcNow();
         var release = await (await WorkflowSteps.ReleaseCashAsync(
-                Fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer"), id, releasedAt))
+                Fixture.CreateClient(org.TreasuryOfficer, "TreasuryOfficer"), id, releasedAt))
             .ShouldSucceedAsync();
         release.GetString("toState").Should().Be("AWAITING_ACK");
 
@@ -98,7 +98,7 @@ public sealed class CashAdvanceWorkflowTests : IntegrationTestBase
         // there is nothing to pay, the claim closes here rather than joining a
         // payment queue it could never leave.
         var posted = await (await WorkflowSteps.MarkPostedExpenseAsync(
-                Fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer"), expenseId, "BC-EXP-RETIRE"))
+                Fixture.CreateClient(org.TreasuryOfficer, "TreasuryOfficer"), expenseId, "BC-EXP-RETIRE"))
             .ShouldSucceedAsync();
         posted.GetString("toState").Should().Be("CLOSED");
 

@@ -545,7 +545,7 @@ public sealed class RequestActionService
     /// re-running actor resolution per request. Only resolver-based actor
     /// specs (Requester, Beneficiary, LineManagerOf, DepartmentHeadOf,
     /// CurrentActor) ever collapse to a single person in this model; a
-    /// role-only spec (e.g. FinanceOfficer) cannot, and is left null here --
+    /// role-only spec (e.g. TreasuryOfficer) cannot, and is left null here --
     /// InboxStateIndex covers that case by state membership instead. A
     /// resolver whose set spans more than one person (delegation active on a
     /// resolver step) is also left null rather than guessing which one is

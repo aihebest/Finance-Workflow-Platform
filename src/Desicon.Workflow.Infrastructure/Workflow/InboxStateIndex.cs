@@ -10,7 +10,7 @@ namespace Desicon.Workflow.Infrastructure.Workflow;
 ///
 /// Exists to make GET /my/inbox a single indexed query rather than a guard
 /// evaluation over every open request: a transition whose actor is a bare
-/// role (no resolver, e.g. FinanceOfficer) never collapses to one person, so
+/// role (no resolver, e.g. TreasuryOfficer) never collapses to one person, so
 /// unlike a resolver-based transition it cannot be captured by
 /// Request.CurrentActorId (see RequestActionService). Membership of a role's
 /// queue is instead "the request's CurrentState has an outbound transition

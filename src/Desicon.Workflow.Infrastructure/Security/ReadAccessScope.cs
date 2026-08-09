@@ -22,17 +22,35 @@ namespace Desicon.Workflow.Infrastructure.Security;
 ///  - they are the requester's line manager or department head (direct
 ///    reporting line, one level -- the same convention EmployeeActorResolver
 ///    applies to LineManagerOf/DepartmentHeadOf);
-///  - they hold a role with cross-cutting visibility (FinanceOfficer,
-///    FinanceManager, ProcurementOfficer): these roles process every
-///    request that reaches their stage regardless of department, so
-///    scoping them to "their queue only" would hide history they are
-///    expected to review. Administrator is deliberately excluded -- doc 04
-///    is explicit that Administrator cannot read request line detail.
+///  - they hold a role with cross-cutting visibility (CostControlOfficer,
+///    TreasuryOfficer, FinanceManager, ProcurementOfficer): these roles
+///    process every request that reaches their stage regardless of
+///    department, so scoping them to "their queue only" would hide history
+///    they are expected to review. Administrator is deliberately excluded --
+///    doc 04 is explicit that Administrator cannot read request line detail.
 /// </summary>
 public sealed class ReadAccessScope
 {
+    /// <remarks>
+    /// Read access, not write. Splitting FinanceOfficer into a Cost Control
+    /// and a Treasury role at workflow version 3 separates who may *act* at
+    /// each stage; it deliberately does not narrow who may *look*. Both desks
+    /// handle the same claims in sequence, and a Treasury officer who cannot
+    /// see what Cost Control queried is being asked to post blind.
+    ///
+    /// FinanceOfficer stays in this set while version-2 requests are open --
+    /// removing it would leave their holders unable to read the very requests
+    /// they are still the only ones authorised to action.
+    /// </remarks>
     private static readonly HashSet<string> CrossCuttingRoles =
-        new(StringComparer.Ordinal) { "FinanceOfficer", "FinanceManager", "ProcurementOfficer" };
+        new(StringComparer.Ordinal)
+        {
+            "CostControlOfficer",
+            "TreasuryOfficer",
+            "FinanceOfficer",
+            "FinanceManager",
+            "ProcurementOfficer"
+        };
 
     private readonly WorkflowDbContext _db;
     private readonly IWorkflowClock _clock;
