@@ -114,6 +114,14 @@ public static class TestData
             ModuleKey = "LEAVE_REQUEST",
             FormCode = "DEL-HR-FRM-010",
             FormRevision = "01",
+
+            // Seeding a row directly means taking on what CreateDraftAsync
+            // would have done, and this is one of those things: the request is
+            // evaluated against this version for the rest of its life. It must
+            // match modules/leave-request.workflow.json, which is at version 1
+            // -- EXPENSE and CASH_ADVANCE being at 2 says nothing about this
+            // module.
+            DefinitionVersion = 1,
             RequestNumber = $"LVE-{now:yyyy}-{Random.Shared.Next(100000, 999999)}",
             CurrentState = "DRAFT",
             StateEnteredAt = now,

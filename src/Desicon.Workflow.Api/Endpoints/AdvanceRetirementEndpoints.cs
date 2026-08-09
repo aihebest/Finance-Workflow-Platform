@@ -70,6 +70,12 @@ public static class AdvanceRetirementEndpoints
         {
             RequestNumber = await numberGenerator.GenerateAsync(definition, now, cancellationToken),
             FormRevision = definition.FormRevision,
+
+            // The version of EXPENSE in force now, which is why `definition`
+            // above is resolved unpinned: this is a new claim, raised today,
+            // under today's process. The advance being retired keeps its own
+            // version, which may be older.
+            DefinitionVersion = definition.Version,
             CurrentState = definition.InitialState.Key,
             StateEnteredAt = now,
             RequesterId = advance.RequesterId,
