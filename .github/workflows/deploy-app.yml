@@ -465,7 +465,12 @@ jobs:
             for fn in RetirementSweep ReminderSweep EscalationSweep \
                       OutboxDispatchSweep AuditChainVerification \
                       PaymentApprovalDigestSweep; do
-              echo "$names" | grep -q "^${fn}$" || missing="${missing} ${fn}"
+              # Anchored on the segment, not the whole line: `az functionapp
+              # function list` returns names as <app-name>/<function-name>, so
+              # a "^name$" match finds nothing at all. An earlier version of
+              # this step used a bare substring grep for one function and
+              # worked for exactly that reason.
+              echo "$names" | grep -qE "(^|/)${fn}[[:space:]]*$" || missing="${missing} ${fn}"
             done
 
             if [ -z "$missing" ] && [ -n "$names" ]; then
