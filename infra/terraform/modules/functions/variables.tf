@@ -160,3 +160,18 @@ variable "notifications_application_base_url" {
   type        = string
   default     = ""
 }
+
+variable "notifications_role_mailboxes" {
+  description = <<-EOT
+    Role key to mailbox address, for workflow definitions that name a role
+    rather than a person as a notification recipient.
+
+    Keys must match the role values in modules/*.workflow.json exactly --
+    FinanceOfficer, FinanceManager, DirectorOfFinance. A role absent from this
+    map resolves to nobody and its notifications are parked with the role named
+    in LastError, which is deliberate: silence is the one answer a finance
+    approval notification must never give.
+  EOT
+  type        = map(string)
+  default     = {}
+}

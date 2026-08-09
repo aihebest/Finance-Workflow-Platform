@@ -281,6 +281,22 @@ module "functions" {
   # scoping Mail.Send to that one mailbox -- see docs/12-Decision-Log.md.
   notifications_use_graph            = false
   notifications_sender_mailbox       = ""
+
+  # Who gets told when a workflow definition names a role rather than a person.
+  # Real addresses, and safe to hold here only because notifications_use_graph
+  # is false: LoggingNotificationSender writes the message to Application
+  # Insights instead of sending it, so these show who WOULD be mailed without
+  # anything leaving the building. Flipping use_graph to true is therefore a
+  # decision about real people's inboxes, not a technical toggle.
+  #
+  # Keys must match the role values in modules/*.workflow.json exactly. A
+  # mismatch does not fail the plan -- it resolves to nobody at dispatch time
+  # and parks the message with the role named, which is loud but late.
+  notifications_role_mailboxes = {
+    FinanceOfficer    = "costcontrol@desicongroup.com"
+    FinanceManager    = "chima.onyealilachi@desicongroup.com"
+    DirectorOfFinance = "tomy.john@desicongroup.com"
+  }
   notifications_application_base_url = "https://${module.frontdoor.endpoint_hostname}"
 
   key_vault_id       = module.keyvault.id
