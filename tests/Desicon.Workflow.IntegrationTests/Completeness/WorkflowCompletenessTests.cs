@@ -80,6 +80,10 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         async Task<Guid> DriveToFinanceApproveAsync(decimal amount, string treasuryNumber)
         {
             var id = await DriveToCostControlVerifyAsync("Yes", amount);
+
+            // Cost Control will not pass a claim with no evidence attached.
+            await WorkflowSteps.AttachReceiptAsync(Fixture, id, org.Requester.Id);
+
             await StepAsync(
                 () => WorkflowSteps.ActionAsync(financeOfficerClient, id, "VERIFY", payload: TreasuryNumber(treasuryNumber)),
                 "COST_CONTROL_VERIFY", "VERIFY", "FINANCE_APPROVE");
@@ -268,6 +272,10 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         async Task<Guid> DriveToFinanceApproveAsync(string purpose, decimal amount, string treasuryNumber)
         {
             var id = await DriveToCostControlVerifyAsync(purpose, amount);
+
+            // Cost Control will not pass a claim with no evidence attached.
+            await WorkflowSteps.AttachReceiptAsync(Fixture, id, org.Requester.Id);
+
             await StepAsync(
                 () => WorkflowSteps.ActionAsync(financeOfficerClient, id, "VERIFY", payload: TreasuryNumber(treasuryNumber)),
                 "COST_CONTROL_VERIFY", "VERIFY", "FINANCE_APPROVE");

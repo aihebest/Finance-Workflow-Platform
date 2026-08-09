@@ -5,6 +5,7 @@ using Desicon.Workflow.Domain.Requests;
 using Desicon.Workflow.Infrastructure.Attachments;
 using Desicon.Workflow.Infrastructure.Persistence;
 using Desicon.Workflow.Infrastructure.Security;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace Desicon.Workflow.Api.Endpoints;
@@ -67,13 +68,33 @@ public static class AttachmentEndpoints
         Guid id,
         IFormFile file,
         HttpRequest httpRequest,
-        WorkflowDbContext db,
-        IAttachmentStore store,
-        ReadAccessScope readAccess,
-        ICurrentUserAccessor currentUser,
-        IWorkflowClock clock,
+        // [FromServices] on every one of these, explicitly.
+        //
+        // Minimal APIs infer an unregistered interface as the JSON body, and an
+        // endpoint with both a body and an IFormFile is rejected at startup --
+        // not at request time. IAttachmentStore is unregistered whenever no
+        // blob endpoint is configured, which is every test run, so a missing
+        // setting took the entire application down and 50 tests failed on an
+        // endpoint none of them called.
+        [FromServices] WorkflowDbContext db,
+        [FromServices] IAttachmentStore? store,
+        [FromServices] ReadAccessScope readAccess,
+        [FromServices] ICurrentUserAccessor currentUser,
+        [FromServices] IWorkflowClock clock,
         CancellationToken cancellationToken)
     {
+        // Nullable, and refused here rather than absent from the container in a
+        // way that breaks routing. This is the 503 AddAttachments' own remarks
+        // promised and did not deliver: an upload that refuses tells the person
+        // standing in front of it immediately.
+        if (store is null)
+        {
+            return Results.Problem(
+                detail: "Attachment storage is not configured. Set Storage__BlobEndpoint.",
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                instance: httpRequest.Path);
+        }
+
         if (file is null || file.Length == 0)
         {
             return ProblemResults.BadRequest("A file is required.", httpRequest.Path);
@@ -147,9 +168,9 @@ public static class AttachmentEndpoints
     private static async Task<IResult> ListAsync(
         Guid id,
         HttpRequest httpRequest,
-        WorkflowDbContext db,
-        ReadAccessScope readAccess,
-        ICurrentUserAccessor currentUser,
+        [FromServices] WorkflowDbContext db,
+        [FromServices] ReadAccessScope readAccess,
+        [FromServices] ICurrentUserAccessor currentUser,
         CancellationToken cancellationToken)
     {
         var request = await db.Requests.AsNoTracking()
@@ -180,12 +201,20 @@ public static class AttachmentEndpoints
         Guid id,
         Guid attachmentId,
         HttpRequest httpRequest,
-        WorkflowDbContext db,
-        IAttachmentStore store,
-        ReadAccessScope readAccess,
-        ICurrentUserAccessor currentUser,
+        [FromServices] WorkflowDbContext db,
+        [FromServices] IAttachmentStore? store,
+        [FromServices] ReadAccessScope readAccess,
+        [FromServices] ICurrentUserAccessor currentUser,
         CancellationToken cancellationToken)
     {
+        if (store is null)
+        {
+            return Results.Problem(
+                detail: "Attachment storage is not configured. Set Storage__BlobEndpoint.",
+                statusCode: StatusCodes.Status503ServiceUnavailable,
+                instance: httpRequest.Path);
+        }
+
         var attachment = await db.Attachments.AsNoTracking()
             .FirstOrDefaultAsync(a => a.AttachmentId == attachmentId && a.RequestId == id, cancellationToken);
 

@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Desicon.Workflow.Domain.People;
 using Desicon.Workflow.Infrastructure.Persistence;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Desicon.Workflow.IntegrationTests.Infrastructure;
 
@@ -163,10 +164,30 @@ public static class WorkflowSteps
     {
         await (await ActionAsync(fixture.CreateClient(org.LineManager), id, "VERIFY")).ShouldSucceedAsync();
         await (await ActionAsync(fixture.CreateClient(org.DeptHead), id, "VERIFY")).ShouldSucceedAsync();
+
+        // Evidence, because COST_CONTROL_VERIFY will not pass a claim without
+        // it: the Accounts Officer has to be able to see what was purchased.
+        // Seeded straight into the table rather than uploaded, so the suite
+        // needs no blob storage -- the guard counts rows, which is what this
+        // creates.
+        await AttachReceiptAsync(fixture, id, org.Requester.Id);
+
         await (await ActionAsync(
                 fixture.CreateClient(org.FinanceOfficer, "FinanceOfficer"), id, "VERIFY",
                 payload: new Dictionary<string, object?> { ["TreasuryNumber"] = treasuryNumber }))
             .ShouldSucceedAsync();
+    }
+
+    /// <summary>
+    /// Attaches a receipt to a request, bypassing upload.
+    /// </summary>
+    public static async Task AttachReceiptAsync(
+        WorkflowApiFixture fixture, Guid requestId, Guid uploadedBy)
+    {
+        using var scope = fixture.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WorkflowDbContext>();
+
+        await TestData.AttachReceiptAsync(db, requestId, uploadedBy, fixture.TimeProvider.GetUtcNow());
     }
 
     /// <summary>
