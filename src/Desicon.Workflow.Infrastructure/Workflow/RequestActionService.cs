@@ -699,11 +699,21 @@ public sealed class RequestActionService
                 continue;
             }
 
+            var recipients = WithoutUnaddressableCurrentActor(definition, result.ToState, rule.To);
+
+            // Nothing left to address. A message with no possible recipient is
+            // not a failure to record, it is a message that should never have
+            // been created.
+            if (recipients.Count == 0)
+            {
+                continue;
+            }
+
             yield return new OutboxMessage
             {
                 RequestId = request.RequestId,
                 Template = rule.Template,
-                RecipientRolesJson = JsonSerializer.Serialize(rule.To),
+                RecipientRolesJson = JsonSerializer.Serialize(recipients),
                 PayloadJson = JsonSerializer.Serialize(new
                 {
                     request.RequestId,
@@ -716,6 +726,64 @@ public sealed class RequestActionService
                 CreatedAt = now
             };
         }
+    }
+
+    /// <summary>
+    /// Drops "CurrentActor" from a notification's recipients when the state
+    /// being entered legitimately has no single current actor.
+    /// </summary>
+    /// <remarks>
+    /// Both definitions carry a blanket <c>{ "on": "STATE_ENTERED", "to":
+    /// "CurrentActor" }</c>. For a state whose outbound transitions are gated
+    /// on a role rather than resolved to a person -- COST_CONTROL_VERIFY,
+    /// AWAITING_POSTING, AWAITING_PAYMENT, CASH_RELEASE -- Request.CurrentActorId
+    /// is null by design: a role queue never collapses to one person, which is
+    /// the whole reason InboxStateIndex exists. Terminal states have no
+    /// outbound transitions at all.
+    ///
+    /// Those messages were being enqueued anyway, failing at dispatch, and
+    /// parking a row reading "No recipients: could not resolve CurrentActor."
+    /// The right person had already been told by the state's own role-specific
+    /// rule; the blanket one simply had nobody to address.
+    ///
+    /// WHY NOT JUST SUPPRESS EVERY UNRESOLVED CurrentActor
+    /// ---------------------------------------------------
+    /// Because on a state that IS resolved to a person, a null CurrentActorId
+    /// is a genuine defect and one this project has already been bitten by:
+    /// EXP-2026-000004 was stranded when an employee's line manager changed
+    /// and the stamped actor no longer matched the live resolver. That must
+    /// stay loud. The distinction is not "did it resolve" but "was anyone ever
+    /// going to", and only the definition can answer that.
+    ///
+    /// A failure table with routine noise in it is a failure table nobody
+    /// reads, and the next real failure sits in the middle of it unnoticed --
+    /// the same reason the payment digest is not sent when the queue is empty.
+    /// </remarks>
+    private static IReadOnlyList<string> WithoutUnaddressableCurrentActor(
+        WorkflowDefinition definition, string? toState, IReadOnlyList<string> recipients)
+    {
+        const string CurrentActor = "CurrentActor";
+
+        if (!recipients.Contains(CurrentActor, StringComparer.Ordinal))
+        {
+            return recipients;
+        }
+
+        // Unknown target state, or any resolver-based way out of it, means
+        // somebody should have been stamped -- so keep CurrentActor and let
+        // dispatch complain if nobody was.
+        //
+        // The null case errs towards noise rather than silence deliberately.
+        // This method exists to remove messages that provably cannot be
+        // addressed; a state it cannot reason about is not one of those, and
+        // suppressing on uncertainty is how a real failure disappears.
+        if (toState is null ||
+            definition.TransitionsFrom(toState).Any(t => t.Actor.Resolver is not null))
+        {
+            return recipients;
+        }
+
+        return recipients.Where(r => !string.Equals(r, CurrentActor, StringComparison.Ordinal)).ToList();
     }
 
     private static bool IsIdempotencyKeyConflict(DbUpdateException ex) =>

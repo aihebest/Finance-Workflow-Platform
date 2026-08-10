@@ -130,9 +130,15 @@ who acts on a request, with the shared address kept as a notification mailbox
 only, or an explicit acceptance that Accounts actions are attributed to a desk
 rather than a person.
 
-- [ ] Decide, and record the decision here
-- [ ] If named accounts: assign `TreasuryOfficer` to the individual, and leave
-      `treasury@` in `notifications_role_mailboxes` as the queue's address
+**Decided 9 August 2026: shared desk accounts remain.** `treasury@` and the
+other functional accounts keep their sign-in, and `TreasuryOfficer` stays
+assigned to `treasury@` rather than to a named person.
+
+This is a deliberate acceptance, not an oversight, and the consequence should
+be stated plainly to anyone who later reads an audit trail: **Accounts actions
+are attributed to a desk, not to a person.** `PostedByUserId` naming
+`treasury@` means "somebody at the Treasury desk", and the platform cannot say
+who. If that ever needs to change, it is one role reassignment and no code.
 
 ---
 
@@ -362,15 +368,18 @@ Both halves now carry staff number and email, and
 `A_payee_is_identifiable_when_chosen_and_when_approved` asserts it at both
 points.
 
-**Still open, and a decision for go-live:** the beneficiary is chosen once, at
-capture, and no approval step re-confirms it. A wrong payee is now visible to
-every approver but nothing forces anyone to look. If Desicon wants the payee
-positively affirmed rather than merely displayed, the natural place is the
-Director of Finance's approval — an explicit "paying X, staff number Y"
-confirmation rather than a line of text. That is a process decision, not a
-technical one.
+**Decided 9 August 2026: no payee confirmation step at the DMD.** He approves
+the release of money, not the mechanics of who is named on a claim, and
+retirements do not reach him at all. Adding a confirmation there would put the
+check in the wrong place and slow the one approval that must not become
+routine.
 
-- [ ] Decide whether the DMD's approval should require confirming the payee
+The consequence, stated so it is not discovered later: **the payee is chosen
+once, at capture, and nothing downstream re-affirms it.** It is now visible on
+every approval screen, but visible is not the same as checked. The control
+against a wrong payee is the requester getting it right, and the identifiers
+now shown to them.
+
 - [ ] Check whether any two active employees share a `FullName` before go-live:
 
 ```sql
@@ -389,9 +398,49 @@ DEL-AC-FRM-003.
 Version 2 moved posting to Business Central, and that control went with it.
 This platform no longer sees journals and cannot enforce it.
 
-Somebody thought the separation mattered enough to design into the paper form.
-Confirm BC provides it before assuming it survived the move. If BC does not,
-that is a gap created by this project and it needs an answer.
+**Confirmed 9 August 2026: Business Central does not enforce it.** The control
+that was on the paper form as two signature boxes, and in version 1 of this
+workflow as a maker-checker guard, no longer exists anywhere. This project
+removed it and nothing replaced it.
+
+### What is and is not covered
+
+Five people approve before Treasury posts — line manager, department head,
+Cost Control, the Accounts Manager, the Director of Finance. **What was
+approved is thoroughly checked.**
+
+What nothing checks is **what Treasury actually entered in Business Central**.
+This platform captures a document number and never compares the posted amount,
+account or payee to the approved claim. A posting that differs from what was
+authorised is invisible here, and now also invisible in BC.
+
+Note what this does *not* mean. The payment decision is still dual-controlled —
+the DMD authorises before anything is posted, and he is a different person from
+whoever posts. The gap is narrower than "anyone can pay anyone": it is that the
+ledger entry is not verified against the approval it came from.
+
+### Chosen remedy: periodic reconciliation
+
+**Decided 9 August 2026.** A report listing approved amounts against BC
+document numbers for a period, reconciled in batch by someone other than
+Treasury.
+
+Two things to be honest about:
+
+- It is **detective, not preventive**. A discrepancy is found after the money
+  has moved, not before. That is a real reduction against what the paper form
+  provided, and it is the accepted position rather than an equivalent one.
+- **It does not exist yet.** This platform has no BC data feed, so it cannot
+  compare anything today. Until that feed exists, posting is single-controlled
+  with no detection at all.
+
+- [ ] Establish a BC data feed, or an export Finance can reconcile against
+- [ ] Define the cadence and who performs it — explicitly not Treasury
+- [ ] Until then, record in the risk register that posting is unverified
+
+The last item matters most. A remedy that is decided but not yet built is
+indistinguishable, in practice, from no remedy — and that is the exact failure
+mode this whole document exists to catch.
 
 **Version 3 narrows this but does not close it.** Splitting `FinanceOfficer`
 means the person who verifies the costing is no longer the person who posts, so

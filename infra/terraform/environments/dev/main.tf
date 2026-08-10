@@ -283,19 +283,49 @@ module "functions" {
   # run-from-package blob from the integrated app subnet.
   vnet_rule_subnet_ids = [module.network.app_subnet_id]
 
-  # No shared mailbox exists yet, so the dispatcher logs what it would have
-  # sent rather than sending it. Flipping this to true requires
-  # notifications_sender_mailbox and an Exchange application access policy
-  # scoping Mail.Send to that one mailbox -- see docs/12-Decision-Log.md.
-  notifications_use_graph            = false
-  notifications_sender_mailbox       = ""
+  # ── Live from 10 August 2026 ──────────────────────────────────────────────
+  # Until now the dispatcher wrote each message to Application Insights
+  # instead of sending it, and nothing had ever been emailed to a real person
+  # from this platform. Flipping this changes that: mail now reaches the DMD,
+  # the Accounts Manager, line managers and requesters.
+  #
+  # The prerequisites were done and, more to the point, verified:
+  #
+  #   1. financeworkflow@desicongroup.com provisioned as a shared mailbox --
+  #      it only ever sends. Nobody reads it, and it is deliberately not
+  #      costcontrol@ or treasury@: scoping the app to a working desk would
+  #      mean a compromise could send as that desk, and people act on mail
+  #      from Treasury.
+  #
+  #   2. Mail.Send granted to func-desicon-fw-dev's managed identity.
+  #
+  #   3. An Exchange application access policy restricting that identity to
+  #      the "Finance Workflow Senders" group, which contains only the mailbox
+  #      above. Mail.Send as an APPLICATION permission is otherwise
+  #      tenant-wide -- the app could send as any mailbox in Desicon,
+  #      including the Director of Finance's.
+  #
+  # Point 3 is the one nothing in this repository can enforce or detect, so it
+  # was tested rather than assumed:
+  #
+  #   Test-ApplicationAccessPolicy -Identity financeworkflow@... -> Granted
+  #   Test-ApplicationAccessPolicy -Identity tomy.john@...       -> Denied
+  #
+  # Re-run those two if the identity, the policy or the group ever changes. A
+  # policy that silently stops restricting looks exactly like one that works.
+  notifications_use_graph            = true
+  notifications_sender_mailbox       = "financeworkflow@desicongroup.com"
 
   # Who gets told when a workflow definition names a role rather than a person.
-  # Real addresses, and safe to hold here only because notifications_use_graph
-  # is false: LoggingNotificationSender writes the message to Application
-  # Insights instead of sending it, so these show who WOULD be mailed without
-  # anything leaving the building. Flipping use_graph to true is therefore a
-  # decision about real people's inboxes, not a technical toggle.
+  # These are now live: as of 10 August 2026 a wrong address here sends real
+  # mail to a real person, where previously it only mis-labelled a log line.
+  #
+  # (Superseded note, kept because it explains the shape of what follows: these
+  # were safe to hold here while notifications_use_graph was false, because
+  # LoggingNotificationSender wrote each message to Application
+  # Insights instead of sending it, so they showed who WOULD be mailed without
+  # anything leaving the building. Flipping use_graph to true was therefore a
+  # decision about real people's inboxes, not a technical toggle.)
   #
   # Keys must match the role values in modules/*.workflow.json exactly. A
   # mismatch does not fail the plan -- it resolves to nobody at dispatch time
