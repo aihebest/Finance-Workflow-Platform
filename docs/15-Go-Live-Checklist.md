@@ -341,6 +341,45 @@ time something works locally and not in dev.
 
 ---
 
+## 3e. A name is not an identifier
+
+**Found and fixed 9 August 2026.** A claim was raised against the wrong one of
+two employees who share a display name, ran the entire approval chain, and was
+paid.
+
+Nobody was careless. There was nothing on screen to be careful about:
+
+- The beneficiary picker showed `Name (Type)` and nothing else.
+- The request detail API returned `beneficiaryId` — a bare guid — and the
+  approval screen rendered no payee at all. A line manager, a department head,
+  Cost Control, the Director of Finance and Treasury each approved a payment
+  without the recipient appearing anywhere on the page.
+
+The Director of Finance gate exists to put a second pair of eyes on money
+leaving the company. Those eyes were not being shown the destination.
+
+Both halves now carry staff number and email, and
+`A_payee_is_identifiable_when_chosen_and_when_approved` asserts it at both
+points.
+
+**Still open, and a decision for go-live:** the beneficiary is chosen once, at
+capture, and no approval step re-confirms it. A wrong payee is now visible to
+every approver but nothing forces anyone to look. If Desicon wants the payee
+positively affirmed rather than merely displayed, the natural place is the
+Director of Finance's approval — an explicit "paying X, staff number Y"
+confirmation rather than a line of text. That is a process decision, not a
+technical one.
+
+- [ ] Decide whether the DMD's approval should require confirming the payee
+- [ ] Check whether any two active employees share a `FullName` before go-live:
+
+```sql
+SELECT FullName, COUNT(*) AS Rows FROM Employees WHERE IsActive = 1
+GROUP BY FullName HAVING COUNT(*) > 1;
+```
+
+---
+
 ## 4. Confirm Business Central enforces maker-checker
 
 Version 1 of the workflow enforced that whoever entered a GL journal could not

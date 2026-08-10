@@ -129,6 +129,13 @@ export function RequestDetail() {
   const total = Number(detail.totalAmountNgn ?? 0);
   const netPayable = Number(detail.netPayableNgn ?? total);
   const lines = (detail.lines as ExpenseLine[] | undefined) ?? [];
+
+  // Null for a cash advance, which pays its requester, and on a claim whose
+  // beneficiary the API has not resolved yet.
+  const payee = detail.beneficiary as
+    | { name: string; type: string; staffNumber: string | null; email: string | null }
+    | null
+    | undefined;
   const genericActions = availableActions.filter((a) => !CAPTURE_ACTIONS.has(a.action));
 
   /**
@@ -183,6 +190,32 @@ export function RequestDetail() {
           {currentState.replaceAll("_", " ")}
           {detail.formCode ? ` · ${String(detail.formCode)} ${String(detail.formRevision ?? "")}` : ""}
         </p>
+
+        {/* Who gets the money.
+
+            This screen showed no payee at all until 9 August 2026 — the API
+            returned a beneficiary id and nothing rendered it. Every approver
+            in the chain, up to and including the Director of Finance whose
+            entire function is authorising money to leave, was approving a
+            payment without the recipient appearing anywhere on the page.
+
+            It surfaced when a claim was raised against the wrong one of two
+            employees sharing a display name and was paid. Nobody was careless;
+            there was nothing on screen to be careful about. Staff number and
+            email are here for that reason — a name is not an identifier. */}
+        {payee && (
+          <p className="mt-1 text-sm text-gray-800">
+            Payable to <span className="font-medium">{payee.name}</span>
+            {payee.staffNumber || payee.email ? (
+              <span className="text-gray-600">
+                {payee.staffNumber ? ` · ${payee.staffNumber}` : ""}
+                {payee.email ? ` · ${payee.email}` : ""}
+              </span>
+            ) : (
+              <span className="text-gray-600"> · {payee.type}</span>
+            )}
+          </p>
+        )}
 
         {/* Net payable differs from the total only when an advance was taken
             against this claim, and the difference is the whole point of the

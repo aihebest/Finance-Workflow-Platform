@@ -44,6 +44,26 @@ function emptyLine(): ExpenseLineInput {
   };
 }
 
+/**
+ * How a payee is identified in the picker.
+ *
+ * A name is not an identifier. Two employees can share one — dev holds two
+ * rows reading "Best Aihebholoria" — and on 9 August 2026 a claim was raised
+ * against the wrong one and ran the entire approval chain without a single
+ * screen showing anything that would have distinguished them.
+ *
+ * Staff number first, because it is the shortest unambiguous thing a person
+ * can check; email after it, because it is the one people actually recognise.
+ * Vendors have neither and keep the type instead.
+ */
+function beneficiaryLabel(b: BeneficiarySummary): string {
+  const parts = [b.staffNumber, b.email].filter(Boolean);
+
+  return parts.length > 0
+    ? `${b.name} — ${parts.join(" · ")}`
+    : `${b.name} (${b.type})`;
+}
+
 export function NewExpense() {
   const navigate = useNavigate();
 
@@ -160,11 +180,28 @@ export function NewExpense() {
               <option value="__me__">Myself</option>
               {beneficiaries.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.name} ({b.type})
+                  {beneficiaryLabel(b)}
                 </option>
               ))}
             </select>
           </div>
+
+          {/* Who was actually chosen, spelled out under the field.
+
+              The option text carries the same detail, but a <select> shows
+              only the chosen line once it is closed, and a name alone is not
+              enough to tell two people apart. This is the field that decides
+              who receives money: every screen after it — line manager,
+              department head, Cost Control, the DMD, Treasury — shows a name,
+              so a wrong payee chosen here is never questioned again and gets
+              paid with a complete audit trail behind it. */}
+          {selected && (selected.email || selected.staffNumber) && (
+            <p className="text-xs text-gray-600">
+              Paying <span className="font-medium text-gray-800">{selected.name}</span>
+              {selected.staffNumber && ` · ${selected.staffNumber}`}
+              {selected.email && ` · ${selected.email}`}
+            </p>
+          )}
 
           {selected && !selected.hasBankDetails && (
             <p className="text-sm text-amber-800">
