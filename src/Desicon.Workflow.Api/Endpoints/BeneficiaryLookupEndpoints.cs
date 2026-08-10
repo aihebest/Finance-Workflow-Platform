@@ -81,6 +81,30 @@ public static class BeneficiaryLookupEndpoints
                 // touching the encrypted column at all, which means the
                 // lookup needs no Key Vault round trip to answer.
                 HasBankDetails = b.BankDetailsSetAt != null,
+
+                // Who this actually is, beyond a name.
+                //
+                // Two employees can share a display name -- dev has two rows
+                // reading "Best Aihebholoria" -- and on 9 Aug 2026 a claim was
+                // raised against the wrong one. Nothing downstream could have
+                // caught it: every approval screen shows a name too, so the
+                // Director of Finance would have authorised it and Treasury
+                // would have paid it, with a complete and honest audit trail
+                // behind a payment to the wrong person.
+                //
+                // Null for vendors and one-off payees, which have no employee
+                // row. Correlated subqueries rather than a join so the shape
+                // of the projection stays flat and Beneficiary needs no
+                // navigation property it does not otherwise want.
+                StaffNumber = db.Employees
+                    .Where(e => e.Id == b.EmployeeId)
+                    .Select(e => e.StaffNumber)
+                    .FirstOrDefault(),
+
+                Email = db.Employees
+                    .Where(e => e.Id == b.EmployeeId)
+                    .Select(e => e.Email)
+                    .FirstOrDefault(),
             })
             .ToListAsync(cancellationToken);
 

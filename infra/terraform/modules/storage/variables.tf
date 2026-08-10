@@ -83,3 +83,22 @@ variable "ip_rules" {
   type        = list(string)
   default     = []
 }
+
+variable "vnet_rule_subnet_ids" {
+  description = <<-EOT
+    Subnets admitted to this account by VNet rule -- normally the App Service's
+    integrated app subnet.
+
+    This is how the application reaches storage. ip_rules cannot do it: the
+    App Service's outbound traffic carries a private source address from the
+    integrated subnet, which no public IP allow-list will ever match. Leaving
+    this empty with default_action = Deny produces an account the deployer can
+    read and the application cannot, and the only symptom is
+    AuthorizationFailure on the first write.
+
+    Each subnet must carry the Microsoft.Storage service endpoint. A rule
+    naming a subnet without it is accepted and silently never matches.
+  EOT
+  type        = list(string)
+  default     = []
+}

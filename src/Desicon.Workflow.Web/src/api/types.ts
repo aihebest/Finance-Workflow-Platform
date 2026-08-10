@@ -99,6 +99,16 @@ export interface BeneficiarySummary {
   type: "Employee" | "Vendor" | "Other";
   name: string;
   hasBankDetails: boolean;
+
+  /**
+   * Staff number and email, so a name is never the only thing distinguishing
+   * one payee from another. Null for vendors and one-off payees.
+   *
+   * This is the field that decides who gets paid, and two people sharing a
+   * name is ordinary. See BeneficiaryLookupEndpoints.
+   */
+  staffNumber: string | null;
+  email: string | null;
 }
 
 /**

@@ -179,8 +179,55 @@ public static class RequestEndpoints
 
         httpResponse.SetETag(request.RowVersion);
 
-        return Results.Ok(ToDetailDto(request, availableActions));
+        return Results.Ok(ToDetailDto(request, availableActions,
+            await LoadBeneficiaryRefAsync(db, request, cancellationToken)));
     }
+
+    /// <summary>
+    /// Who this claim pays, for the approval screen.
+    /// </summary>
+    /// <remarks>
+    /// Until 9 August 2026 the detail response carried BeneficiaryId and
+    /// nothing else, so no approval screen showed a payee at all. A line
+    /// manager, a department head, Cost Control, the Director of Finance and
+    /// Treasury could each approve a payment without the person receiving it
+    /// appearing anywhere on the page.
+    ///
+    /// That was found the way these things are found: a claim was raised
+    /// against the wrong one of two employees who share a display name, ran
+    /// the whole chain, and was paid. Every approval was given in good faith
+    /// by someone who could not have seen the mistake.
+    ///
+    /// Staff number and email come with the name for the same reason they do
+    /// in the picker -- a name is not an identifier, and this is the field
+    /// that decides where money goes.
+    ///
+    /// Deliberately a separate read rather than an Include: Beneficiary is not
+    /// a navigation property on ExpenseRequest, and adding one would change the
+    /// EF model for a projection concern.
+    /// </remarks>
+    private static async Task<BeneficiaryRef?> LoadBeneficiaryRefAsync(
+        WorkflowDbContext db, Request request, CancellationToken cancellationToken)
+    {
+        if (request is not ExpenseRequest { BeneficiaryId: var beneficiaryId } ||
+            beneficiaryId == Guid.Empty)
+        {
+            return null;
+        }
+
+        return await db.Beneficiaries
+            .AsNoTracking()
+            .Where(b => b.Id == beneficiaryId)
+            .Select(b => new BeneficiaryRef(
+                b.Name,
+                b.Type.ToString(),
+                db.Employees.Where(e => e.Id == b.EmployeeId).Select(e => e.StaffNumber).FirstOrDefault(),
+                db.Employees.Where(e => e.Id == b.EmployeeId).Select(e => e.Email).FirstOrDefault()))
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    /// <summary>The payee, named rather than referenced by id.</summary>
+    internal sealed record BeneficiaryRef(string Name, string Type, string? StaffNumber, string? Email);
 
     private static async Task<IResult> UpdateDraftAsync(
         Guid id,
@@ -748,7 +795,9 @@ public static class RequestEndpoints
     /// guess which one it was looking at.
     /// </summary>
     internal static object ToDetailDto(
-        Request request, IReadOnlyList<AvailableAction>? availableActions = null) => request switch
+        Request request,
+        IReadOnlyList<AvailableAction>? availableActions = null,
+        BeneficiaryRef? beneficiary = null) => request switch
     {
         ExpenseRequest expense => new
         {
@@ -771,6 +820,12 @@ public static class RequestEndpoints
             expense.SubmittedAt,
             expense.ClosedAt,
             expense.BeneficiaryId,
+
+            // Null on the paths that have no acting user to load it for
+            // (draft creation, list projections). The approval screen is the
+            // one that needs it -- see LoadBeneficiaryRefAsync.
+            Beneficiary = beneficiary,
+
             expense.RetiresAdvanceId,
             expense.AdvanceAmountNgn,
             expense.NetPayableNgn,

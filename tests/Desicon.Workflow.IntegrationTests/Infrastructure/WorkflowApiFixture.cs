@@ -39,6 +39,14 @@ public sealed class WorkflowApiFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        // Parameterless constructor plus WithImage, which is the only form
+        // Testcontainers.MsSql 3.10.0 offers. Newer versions deprecate it in
+        // favour of MsSqlBuilder(image) and, because this project treats
+        // warnings as errors, CS0618 fails the build outright -- which is what
+        // the Dependabot bump of this package is currently failing on.
+        //
+        // The change belongs in that PR, not ahead of it: the replacement
+        // constructor does not exist in the version pinned here.
         _container = new MsSqlBuilder()
             .WithImage("mcr.microsoft.com/mssql/server:2022-latest")
             .Build();
