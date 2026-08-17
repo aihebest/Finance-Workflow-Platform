@@ -17,12 +17,12 @@
       alternative (letting the transitive win silently) is how a
       MissingMethodException arrives at runtime instead of at build.
     -->
-    <PackageReference Include="Azure.Core" Version="1.44.1" />
+    <PackageReference Include="Azure.Core" Version="1.55.0" />
     <!--
       Blob storage for receipt attachments. Same arrangement as Azure.Core
       above: the SDK lives here, the choice of credential stays with the host.
     -->
-    <PackageReference Include="Azure.Storage.Blobs" Version="12.22.2" />
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.29.1" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.2" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.10">
