@@ -38,7 +38,8 @@
         -Head           "uche.obodiwe@desicongroup.com" `
         -CostControlOfficer "anita.ekeke@desicongroup.com" `
         -TreasuryOfficer    "olanrewaju.atanda@desicongroup.com" `
-        -FinanceManager     "wisdom.iheagbam@desicongroup.com"
+        -FinanceManager     "wisdom.iheagbam@desicongroup.com" `
+        -DirectorOfFinance  "tomy.john@desicongroup.com"
 #>
 [CmdletBinding()]
 param(
@@ -51,6 +52,12 @@ param(
     [Parameter(Mandatory = $true)][string]$CostControlOfficer,
     [Parameter(Mandatory = $true)][string]$TreasuryOfficer,
     [Parameter(Mandatory = $true)][string]$FinanceManager,
+
+    # The DMD. He needs an Employees row like everyone else -- holding the
+    # DirectorOfFinance claim gets him the notification, not the ability to
+    # open it. Every payment stops at him, so he is the worst person in the
+    # chain to leave unseeded.
+    [Parameter(Mandatory = $true)][string]$DirectorOfFinance,
 
     [string]$SqlServer = "sql-desicon-fw-dev.database.windows.net",
 
@@ -100,17 +107,19 @@ $people = @(
     Resolve-DirectoryUser -Upn $CostControlOfficer -Slot "Cost Control"
     Resolve-DirectoryUser -Upn $TreasuryOfficer    -Slot "Treasury"
     Resolve-DirectoryUser -Upn $FinanceManager     -Slot "Finance Manager"
+    Resolve-DirectoryUser -Upn $DirectorOfFinance  -Slot "Director of Finance"
 )
 
 $officer  = $people | Where-Object Slot -eq "Cost Control"
 $treasury = $people | Where-Object Slot -eq "Treasury"
 $finMgr   = $people | Where-Object Slot -eq "Finance Manager"
+$dmd      = $people | Where-Object Slot -eq "Director of Finance"
 
 # Checked pairwise rather than one pair at a time. The version-2 script only
 # compared Cost Control against the Accounts Manager, which was the only
 # separation that existed then; a third and fourth approver added later would
 # have slipped past a check written to know about two.
-$accounts = @($officer, $treasury, $finMgr)
+$accounts = @($officer, $treasury, $finMgr, $dmd)
 foreach ($a in $accounts) {
     foreach ($b in $accounts) {
         if ($a.Slot -lt $b.Slot -and $a.Oid -eq $b.Oid) {
@@ -146,6 +155,9 @@ Invoke-Sqlcmd `
         "TreasuryOid=$($treasury.Oid)",
         "TreasuryName=$($treasury.Name)",
         "TreasuryEmail=$($treasury.Email)",
+        "DmdOid=$($dmd.Oid)",
+        "DmdName=$($dmd.Name)",
+        "DmdEmail=$($dmd.Email)",
         "FinManagerOid=$($finMgr.Oid)",
         "FinManagerName=$($finMgr.Name)",
         "FinManagerEmail=$($finMgr.Email)"
@@ -154,7 +166,4 @@ Invoke-Sqlcmd `
 Write-Host ""
 Write-Host "Now grant the Finance roles -- they are Entra claims, not database rows:" -ForegroundColor Yellow
 Write-Host "  .\scripts\bootstrap-app-roles.ps1 -ApiClientId `"8deb5019-590d-4ef3-bb61-f5d450d341b5`" ``" -ForegroundColor Gray
-Write-Host "      -Assign `"$($officer.Email)=CostControlOfficer`",`"$($treasury.Email)=TreasuryOfficer`",`"$($finMgr.Email)=FinanceManager`"" -ForegroundColor Gray
-Write-Host ""
-Write-Host "DirectorOfFinance is not seeded here -- assign it to the DMD separately," -ForegroundColor Yellow
-Write-Host "and to nobody who already holds one of the three above." -ForegroundColor Yellow
+Write-Host "      -Assign `"$($officer.Email)=CostControlOfficer`",`"$($treasury.Email)=TreasuryOfficer`",`"$($finMgr.Email)=FinanceManager`",`"$($dmd.Email)=DirectorOfFinance`"" -ForegroundColor Gray
