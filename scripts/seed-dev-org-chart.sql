@@ -39,6 +39,7 @@
 --   "HeadOid=...","HeadName=...","HeadEmail=...",
 --   "OfficerOid=...","OfficerName=...","OfficerEmail=...",
 --   "TreasuryOid=...","TreasuryName=...","TreasuryEmail=...",
+--   "DmdOid=...","DmdName=...","DmdEmail=...",
 --   "FinManagerOid=...","FinManagerName=...","FinManagerEmail=...")
 
 SET NOCOUNT ON;
@@ -69,6 +70,7 @@ VALUES
     (N'head',       N'$(HeadOid)',       N'$(HeadName)',       N'$(HeadEmail)'),
     (N'officer',    N'$(OfficerOid)',    N'$(OfficerName)',    N'$(OfficerEmail)'),
     (N'treasury',   N'$(TreasuryOid)',   N'$(TreasuryName)',   N'$(TreasuryEmail)'),
+    (N'dmd',        N'$(DmdOid)',        N'$(DmdName)',        N'$(DmdEmail)'),
     (N'finmanager', N'$(FinManagerOid)', N'$(FinManagerName)', N'$(FinManagerEmail)');
 
 -- ── People, no reporting lines yet ───────────────────────────────────────
@@ -123,6 +125,7 @@ DECLARE @ManagerId    UNIQUEIDENTIFIER = (SELECT e.Id FROM Employees e JOIN @Inc
 DECLARE @HeadId       UNIQUEIDENTIFIER = (SELECT e.Id FROM Employees e JOIN @Incoming i ON i.EntraObjectId = e.EntraObjectId WHERE i.Slot = N'head');
 DECLARE @OfficerId    UNIQUEIDENTIFIER = (SELECT e.Id FROM Employees e JOIN @Incoming i ON i.EntraObjectId = e.EntraObjectId WHERE i.Slot = N'officer');
 DECLARE @TreasuryId   UNIQUEIDENTIFIER = (SELECT e.Id FROM Employees e JOIN @Incoming i ON i.EntraObjectId = e.EntraObjectId WHERE i.Slot = N'treasury');
+DECLARE @DmdId        UNIQUEIDENTIFIER = (SELECT e.Id FROM Employees e JOIN @Incoming i ON i.EntraObjectId = e.EntraObjectId WHERE i.Slot = N'dmd');
 DECLARE @FinManagerId UNIQUEIDENTIFIER = (SELECT e.Id FROM Employees e JOIN @Incoming i ON i.EntraObjectId = e.EntraObjectId WHERE i.Slot = N'finmanager');
 
 -- ── Reporting lines ──────────────────────────────────────────────────────
@@ -147,7 +150,12 @@ UPDATE Employees SET LineManagerId = @HeadId    WHERE Id = @ManagerId   AND Id <
 -- Cost Control and Treasury are two rows, not one. Workflow version 3 made
 -- them separate roles; seeding a single Accounts person would let a dev
 -- walkthrough hold both and never notice they are supposed to differ.
-UPDATE Employees SET LineManagerId = @HeadId WHERE Id IN (@OfficerId, @TreasuryId, @FinManagerId) AND Id <> @HeadId;
+-- The DMD is included here for the same reason as the rest of Accounts: he
+-- must be outside the requester's chain. He also needs an Employees row at
+-- all, which is the part that was missed -- he held the DirectorOfFinance
+-- claim, received his notifications, and could not open a single one of them.
+-- Every payment stops at him, so that gap would have halted UAT on day one.
+UPDATE Employees SET LineManagerId = @HeadId WHERE Id IN (@OfficerId, @TreasuryId, @FinManagerId, @DmdId) AND Id <> @HeadId;
 
 UPDATE Departments SET DepartmentHeadId = @HeadId WHERE Id = @DepartmentId;
 
@@ -173,3 +181,7 @@ PRINT 'run scripts/bootstrap-app-roles.ps1 and assign CostControlOfficer,';
 PRINT 'TreasuryOfficer, FinanceManager and DirectorOfFinance to FOUR DIFFERENT';
 PRINT 'people. One person holding two of them satisfies every guard while';
 PRINT 'providing no separation at all.';
+PRINT '';
+PRINT 'A role claim is not enough on its own. Everyone above also needs the';
+PRINT 'Employees row this script creates, or they receive their notifications';
+PRINT 'and cannot open a single one of them.';
