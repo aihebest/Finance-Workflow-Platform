@@ -43,8 +43,6 @@ public sealed class OutboxEnqueueTests : IntegrationTestBase
             Fixture, org, beneficiary.Id, "Yes",
             TestData.ExpenseLine("Cable", new DateOnly(2026, 2, 6), 50_000m));
 
-        await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(org.LineManager), id, "VERIFY"))
-            .ShouldSucceedAsync();
         await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(org.DeptHead), id, "VERIFY"))
             .ShouldSucceedAsync();
 
@@ -71,15 +69,102 @@ public sealed class OutboxEnqueueTests : IntegrationTestBase
             Fixture, org, beneficiary.Id, "Yes",
             TestData.ExpenseLine("Courier", new DateOnly(2026, 2, 6), 9_000m));
 
-        // LINE_MANAGER resolves to one person, so CurrentActor is exactly who
+        // DEPT_HEAD resolves to one person, so CurrentActor is exactly who
         // should be addressed -- and if it ever resolves to nobody, the parked
         // message is the alarm this suppression must not swallow.
         var entering = (await MessagesForAsync(id))
-            .Where(m => m.Payload.Contains("LINE_MANAGER", StringComparison.Ordinal))
+            .Where(m => m.Payload.Contains("DEPT_HEAD", StringComparison.Ordinal))
             .ToList();
 
         entering.Should().Contain(m => m.Recipients.Contains("CurrentActor", StringComparison.Ordinal),
             "a state resolved to a person must keep addressing that person, and must keep failing loudly if it cannot");
+    }
+
+    /// <summary>
+    /// One event, one message.
+    /// </summary>
+    /// <remarks>
+    /// STATE_ENTERED is a catch-all. Where the definition also names a
+    /// recipient for the state being entered, the catch-all produced a second
+    /// message about the same event to the same person -- at RETURNED the
+    /// requester received "action required" alongside "returned for
+    /// correction".
+    ///
+    /// The specific one is always the more useful: it says what to do, where
+    /// the generic one only says something is waiting.
+    /// </remarks>
+    [Fact]
+    public async Task A_state_with_its_own_rule_does_not_also_get_the_catch_all()
+    {
+        var org = await WithDbAsync(db => WorkflowSteps.CreateOrgChartAsync(db, "OBX-DUP"));
+        var beneficiary = await WithDbAsync(db => TestData.CreateEmployeeBeneficiaryAsync(db, org.Requester));
+
+        var id = await WorkflowSteps.CreateAndSubmitExpenseAsync(
+            Fixture, org, beneficiary.Id, "Yes",
+            TestData.ExpenseLine("Fuel", new DateOnly(2026, 2, 7), 20_000m));
+
+        await (await WorkflowSteps.ActionAsync(
+                Fixture.CreateClient(org.DeptHead), id, "RETURN", comment: "Missing cost centre."))
+            .ShouldSucceedAsync();
+
+        var entering = (await MessagesForAsync(id))
+            .Where(m => m.Payload.Contains("RETURNED", StringComparison.Ordinal))
+            .ToList();
+
+        entering.Should().ContainSingle(
+            "one event should produce one message; two mails for the same thing is how people learn to skim");
+
+        entering[0].Recipients.Should().Contain("Requester");
+    }
+
+    /// <summary>
+    /// The only branch where money comes back to Desicon.
+    /// </summary>
+    /// <remarks>
+    /// A retirement showing the employee spent less than the advance lands in
+    /// REFUND_DUE. Until 17 August 2026 that was the one state in either
+    /// module with no notification at all: the employee was never told they
+    /// owed money, and the Accounts Manager was never told to expect it. The
+    /// claim simply sat.
+    /// </remarks>
+    [Fact]
+    public async Task A_refund_due_tells_both_the_employee_who_owes_it_and_accounts()
+    {
+        var org = await WithDbAsync(db => WorkflowSteps.CreateOrgChartAsync(db, "OBX-REFUND"));
+        var beneficiary = await WithDbAsync(db => TestData.CreateEmployeeBeneficiaryAsync(db, org.Requester));
+
+        var id = await WorkflowSteps.CreateAndSubmitExpenseAsync(
+            Fixture, org, beneficiary.Id, "Yes",
+            TestData.ExpenseLine("Site materials", new DateOnly(2026, 2, 7), 30_000m));
+
+        await WorkflowSteps.DriveExpenseToFinanceApproveAsync(Fixture, org, id, "TN-REF-1");
+
+        // Took 50,000, spent 30,000: NetPayableNgn is negative and 20,000 is
+        // owed back. Set on the entity rather than driven through a real
+        // retirement, matching WorkflowCompletenessTests -- the notification
+        // is what is under test, not the arithmetic that produced it.
+        await WithDbAsync(async db =>
+        {
+            var expense = await db.ExpenseRequests.FirstAsync(e => e.RequestId == id);
+            expense.AdvanceAmountNgn = 50_000m;
+            await db.SaveChangesAsync();
+        });
+
+        var approved = await (await WorkflowSteps.ActionAsync(
+            Fixture.CreateClient(org.FinanceManager, "FinanceManager"), id, "APPROVE"))
+            .ShouldSucceedAsync();
+
+        approved.GetString("toState").Should().Be("REFUND_DUE");
+
+        var entering = (await MessagesForAsync(id))
+            .Where(m => m.Payload.Contains("REFUND_DUE", StringComparison.Ordinal))
+            .ToList();
+
+        entering.Should().Contain(m => m.Recipients.Contains("Requester", StringComparison.Ordinal),
+            "the person who owes the money is the one who has to pay it back");
+
+        entering.Should().Contain(m => m.Recipients.Contains("FinanceManager", StringComparison.Ordinal),
+            "Accounts has to know a refund is coming, and is the only role that can confirm it");
     }
 
     [Fact]
@@ -93,7 +178,7 @@ public sealed class OutboxEnqueueTests : IntegrationTestBase
             TestData.ExpenseLine("Router", new DateOnly(2026, 2, 6), 70_000m));
 
         await (await WorkflowSteps.ActionAsync(
-                Fixture.CreateClient(org.LineManager), id, "REJECT", comment: "Not approved."))
+                Fixture.CreateClient(org.DeptHead), id, "REJECT", comment: "Not approved."))
             .ShouldSucceedAsync();
 
         var entering = (await MessagesForAsync(id))

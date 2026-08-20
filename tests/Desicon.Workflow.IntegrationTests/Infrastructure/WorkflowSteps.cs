@@ -174,7 +174,6 @@ public static class WorkflowSteps
     public static async Task DriveExpenseToFinanceApproveAsync(
         WorkflowApiFixture fixture, OrgChart org, Guid id, string treasuryNumber)
     {
-        await (await ActionAsync(fixture.CreateClient(org.LineManager), id, "VERIFY")).ShouldSucceedAsync();
         await (await ActionAsync(fixture.CreateClient(org.DeptHead), id, "VERIFY")).ShouldSucceedAsync();
 
         // Evidence, because COST_CONTROL_VERIFY will not pass a claim without
@@ -253,7 +252,6 @@ public static class WorkflowSteps
     {
         var id = await CreateAndSubmitCashAdvanceAsync(fixture, org, purpose, amount, stationScope);
 
-        await (await ActionAsync(fixture.CreateClient(org.LineManager), id, "VERIFY")).ShouldSucceedAsync();
         await (await ActionAsync(fixture.CreateClient(org.DeptHead), id, "VERIFY")).ShouldSucceedAsync();
         await (await ActionAsync(
                 fixture.CreateClient(org.CostControlOfficer, "CostControlOfficer"), id, "VERIFY",

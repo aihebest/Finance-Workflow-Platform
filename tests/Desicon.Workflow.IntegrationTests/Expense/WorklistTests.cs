@@ -30,9 +30,9 @@ public sealed class WorklistTests : IntegrationTestBase
         var requestId = await WorkflowSteps.CreateAndSubmitCashAdvanceAsync(
             Fixture, org, "Waiting on the line manager", 5_000m);
 
-        // Submitting parks it at LINE_MANAGER with the line manager as the
+        // Submitting parks it at DEPT_HEAD with the head of department as the
         // resolved actor, so it must appear in their inbox and nobody else's.
-        var managerInbox = await (await Fixture.CreateClient(org.LineManager)
+        var managerInbox = await (await Fixture.CreateClient(org.DeptHead)
             .GetAsync("/api/v1/my/inbox")).ShouldSucceedAsync();
 
         managerInbox.EnumerateArray()
@@ -73,7 +73,7 @@ public sealed class WorklistTests : IntegrationTestBase
 
         // The "where is it?" screen: the point is seeing the current holder
         // and state for something no longer in your hands.
-        entry.GetString("currentState").Should().Be("LINE_MANAGER");
+        entry.GetString("currentState").Should().Be("DEPT_HEAD");
         entry.GetProperty("totalAmountNgn").GetDecimal().Should().Be(2_000m);
     }
 }

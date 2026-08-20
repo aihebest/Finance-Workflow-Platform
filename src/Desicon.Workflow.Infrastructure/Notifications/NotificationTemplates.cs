@@ -163,6 +163,25 @@ public sealed class NotificationRenderer
                 ($"Retirement due: {module} {requestNumber}",
                  "This cash advance is due for retirement now."),
 
+            // The one branch where money comes back TO Desicon, and until
+            // 17 Aug 2026 the only step in either module with no notification
+            // at all. A retirement showing the employee spent less than the
+            // advance moved to REFUND_DUE and simply sat there: the employee
+            // was never told they owed money, and the Accounts Manager was
+            // never told to expect it.
+            //
+            // Two templates rather than one, because the two readers need
+            // different things. Sending one message to both would have to be
+            // vague enough to suit either, and a vague message about money
+            // owed is one nobody acts on.
+            "refund-due" =>
+                ($"Refund due from you: {module} {requestNumber}",
+                 "Your retirement shows you spent less than the advance you took, so the balance is owed back to Desicon. Pay it in, then Accounts will confirm receipt and close this. Until that happens the advance stays outstanding against you and you cannot take another."),
+
+            "refund-confirmation-required" =>
+                ($"Refund to confirm: {module} {requestNumber}",
+                 "This retirement shows the employee spent less than the advance and owes the balance back. Once the money is received, confirm it here — the request cannot close until you do."),
+
             "retirement-overdue" =>
                 ($"Overdue retirement: {module} {requestNumber}",
                  "This cash advance is past its retirement deadline. Until it is retired you cannot raise another advance."),

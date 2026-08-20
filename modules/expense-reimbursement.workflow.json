@@ -4,11 +4,13 @@
   "displayName": "Expense Form (Cash / Bank)",
   "formCode": "DEL-AC-FRM-002",
   "formRevision": "05",
-  "version": 3,
-  "effectiveFrom": "2026-08-09T00:00:00Z",
+  "version": 4,
+  "effectiveFrom": "2026-08-19T00:00:00Z",
   "numberFormat": "EXP-{yyyy}-{seq:000000}",
   "workingCalendar": "NG_STANDARD",
   "slaPausesOutsideWorkingHours": true,
+
+  "amendment": "19 Aug 2026: version 4 removes the LINE_MANAGER step. Desicon has ONE approval before Cost Control -- the Head of Department -- confirmed against the list of requesting accounts and their approvers. Version 3 modelled two, a line manager and then a department head, which for Desicon would have meant the same person approving the same request twice. Two clicks for one judgement teaches people that a step is ceremony, and a step people treat as ceremony is not a control. No version 3 file is retained because the database was reset for UAT and nothing was ever pinned to it; the next change after UAT begins must keep its predecessor. See docs/15 section 3.",
 
   "note": "Version 3 splits FinanceOfficer into CostControlOfficer and TreasuryOfficer. Version 2 recorded that Cost Control and the Accounts Officer who posts in Business Central were the same people; they are not. They are separate desks with separate mailboxes (costcontrol@ and treasury@), and one role covering both meant a single person could verify the costing, post it, and execute the payment -- with the posting notification going to the wrong desk, so the person who had to act was never told. Version 2 remains published for requests already open under it; see expense-reimbursement.v2.workflow.json and docs/15-Go-Live-Checklist.md section 3.",
 
@@ -22,8 +24,7 @@
 
   "states": [
     { "key": "DRAFT", "type": "initial", "label": "Draft" },
-    { "key": "LINE_MANAGER", "label": "Awaiting Verification (Line Manager)", "sla": { "hours": 24, "reminderEveryHours": 8, "escalateTo": "DEPT_HEAD" } },
-    { "key": "DEPT_HEAD", "label": "Awaiting Approval (Department Head)", "sla": { "hours": 24, "reminderEveryHours": 8, "escalateTo": "COST_CONTROL_VERIFY" } },
+    { "key": "DEPT_HEAD", "label": "Awaiting Approval (Head of Department)", "sla": { "hours": 24, "reminderEveryHours": 8, "escalateTo": "COST_CONTROL_VERIFY" } },
     { "key": "COST_CONTROL_VERIFY", "label": "Cost Control Verification", "sla": { "hours": 48, "reminderEveryHours": 12 } },
     { "key": "FINANCE_APPROVE", "label": "Awaiting Approval (Accounts Manager)", "sla": { "hours": 48, "reminderEveryHours": 12 } },
     { "key": "DMD_APPROVAL", "label": "Awaiting Payment Approval (Director of Finance)", "sla": { "hours": 48, "reminderEveryHours": 12 } },
@@ -38,20 +39,12 @@
 
   "transitions": [
     {
-      "from": "DRAFT", "to": "LINE_MANAGER", "action": "SUBMIT",
+      "from": "DRAFT", "to": "DEPT_HEAD", "action": "SUBMIT",
       "actor": { "resolver": "Requester" },
       "guard": "LineCount > 0 && TotalAmountNgn > 0 && ReceiptStatus != 'No'",
-      "guardMessage": "Add at least one expense line and attach receipts before submitting."
+      "guardMessage": "Add at least one expense line and attach receipts before submitting.",
+      "note": "Straight to the Head of Department. Version 3 routed through a line manager first; Desicon has one approval on the requesting side, and modelling two meant the same person approving twice."
     },
-    {
-      "from": "LINE_MANAGER", "to": "DEPT_HEAD", "action": "VERIFY",
-      "actor": { "resolver": "LineManagerOf", "arg": "RequesterId" },
-      "guard": "ActorId != RequesterId",
-      "guardMessage": "You cannot verify your own request."
-    },
-    { "from": "LINE_MANAGER", "to": "RETURNED", "action": "RETURN", "actor": { "resolver": "LineManagerOf", "arg": "RequesterId" }, "requiresComment": true },
-    { "from": "LINE_MANAGER", "to": "REJECTED", "action": "REJECT", "actor": { "resolver": "LineManagerOf", "arg": "RequesterId" }, "requiresComment": true },
-
     {
       "from": "DEPT_HEAD", "to": "COST_CONTROL_VERIFY", "action": "VERIFY",
       "actor": { "resolver": "DepartmentHeadOf", "arg": "DepartmentId" },
@@ -174,7 +167,7 @@
       "note": "The beneficiary disputes receipt. Returns the item to Finance with the dispute recorded."
     },
 
-    { "from": "RETURNED", "to": "LINE_MANAGER", "action": "RESUBMIT", "actor": { "resolver": "Requester" }, "effect": "IncrementRevisionNumber" }
+    { "from": "RETURNED", "to": "DEPT_HEAD", "action": "RESUBMIT", "actor": { "resolver": "Requester" }, "effect": "IncrementRevisionNumber" }
   ],
 
   "notifications": [
@@ -187,6 +180,9 @@
     { "on": "DMD_APPROVAL", "to": "DirectorOfFinance", "template": "payment-approval-required" },
     { "on": "AWAITING_POSTING", "to": "TreasuryOfficer", "template": "posting-required" },
     { "on": "AWAITING_PAYMENT", "to": "TreasuryOfficer", "template": "action-required" },
+
+    { "on": "REFUND_DUE", "to": "Requester", "template": "refund-due" },
+    { "on": "REFUND_DUE", "to": "FinanceManager", "template": "refund-confirmation-required" },
 
     { "on": "RETURNED", "to": "Requester", "template": "returned-for-correction" },
     { "on": "REJECTED", "to": "Requester", "template": "rejected" },

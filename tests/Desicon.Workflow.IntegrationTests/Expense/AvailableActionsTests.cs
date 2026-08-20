@@ -54,10 +54,10 @@ public sealed class AvailableActionsTests : IntegrationTestBase
             Fixture, org, beneficiary.Id, "Yes",
             TestData.ExpenseLine("Router", new DateOnly(2026, 8, 8), 40_000m));
 
-        // The claim is at LINE_MANAGER. The definition gives that state three
+        // The claim is at DEPT_HEAD. The definition gives that state three
         // transitions -- VERIFY, RETURN, REJECT -- all resolved to the
         // requester's line manager.
-        var forManager = await (await Fixture.CreateClient(org.LineManager)
+        var forManager = await (await Fixture.CreateClient(org.DeptHead)
             .GetAsync($"/api/v1/requests/{id}")).ShouldSucceedAsync();
 
         ActionsOf(forManager).Should().BeEquivalentTo("VERIFY", "RETURN", "REJECT");

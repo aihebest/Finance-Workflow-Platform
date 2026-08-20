@@ -33,9 +33,9 @@ public sealed class DelegationAuthorizationTests : IntegrationTestBase
         var beneficiary = await WithDbAsync(db => TestData.CreateEmployeeBeneficiaryAsync(db, org.Requester));
         var now = Fixture.TimeProvider.GetUtcNow();
 
-        var delegateEmployee = await WithDbAsync(db => TestData.CreateEmployeeAsync(db, org.Department, "Delegate of Line Manager"));
+        var delegateEmployee = await WithDbAsync(db => TestData.CreateEmployeeAsync(db, org.Department, "Delegate of the head of department"));
         await WithDbAsync(db => TestData.CreateDelegationAsync(
-            db, org.LineManager, delegateEmployee, now.AddDays(-1), now.AddDays(1)));
+            db, org.DeptHead, delegateEmployee, now.AddDays(-1), now.AddDays(1)));
 
         var claimId = await WorkflowSteps.CreateAndSubmitExpenseAsync(
             Fixture, org, beneficiary.Id, "Yes",
@@ -43,7 +43,7 @@ public sealed class DelegationAuthorizationTests : IntegrationTestBase
 
         var verify = await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(delegateEmployee), claimId, "VERIFY"))
             .ShouldSucceedAsync();
-        verify.GetString("toState").Should().Be("DEPT_HEAD");
+        verify.GetString("toState").Should().Be("COST_CONTROL_VERIFY");
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public sealed class DelegationAuthorizationTests : IntegrationTestBase
 
         var delegateB = await WithDbAsync(db => TestData.CreateEmployeeAsync(db, org.Department, "First-level delegate"));
         var delegateC = await WithDbAsync(db => TestData.CreateEmployeeAsync(db, org.Department, "Second-level delegate"));
-        await WithDbAsync(db => TestData.CreateDelegationAsync(db, org.LineManager, delegateB, now.AddDays(-1), now.AddDays(1)));
+        await WithDbAsync(db => TestData.CreateDelegationAsync(db, org.DeptHead, delegateB, now.AddDays(-1), now.AddDays(1)));
         await WithDbAsync(db => TestData.CreateDelegationAsync(db, delegateB, delegateC, now.AddDays(-1), now.AddDays(1)));
 
         var claimForB = await WorkflowSteps.CreateAndSubmitExpenseAsync(
@@ -70,7 +70,7 @@ public sealed class DelegationAuthorizationTests : IntegrationTestBase
 
         var bVerify = await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(delegateB), claimForB, "VERIFY"))
             .ShouldSucceedAsync();
-        bVerify.GetString("toState").Should().Be("DEPT_HEAD");
+        bVerify.GetString("toState").Should().Be("COST_CONTROL_VERIFY");
 
         var cVerify = await WorkflowSteps.ActionAsync(Fixture.CreateClient(delegateC), claimForC, "VERIFY");
         cVerify.StatusCode.Should().Be(System.Net.HttpStatusCode.Forbidden,
@@ -98,7 +98,6 @@ public sealed class DelegationAuthorizationTests : IntegrationTestBase
         var claimId = await WorkflowSteps.CreateAndSubmitExpenseAsync(
             Fixture, org, beneficiary.Id, "Yes",
             TestData.ExpenseLine("Effective-user self-approval test", DateOnly.FromDateTime(now.Date), 1_000m));
-        await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(org.LineManager), claimId, "VERIFY")).ShouldSucceedAsync();
         await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(org.DeptHead), claimId, "VERIFY")).ShouldSucceedAsync();
 
         // COST_CONTROL_VERIFY's VERIFY guard reads straight off the tracked

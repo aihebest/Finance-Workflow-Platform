@@ -693,8 +693,29 @@ public sealed class RequestActionService
         // deliberately not matched here.
         foreach (var rule in definition.Notifications)
         {
-            if (!string.Equals(rule.On, "STATE_ENTERED", StringComparison.Ordinal) &&
-                !string.Equals(rule.On, result.ToState, StringComparison.Ordinal))
+            var isBlanket = string.Equals(rule.On, "STATE_ENTERED", StringComparison.Ordinal);
+
+            if (!isBlanket && !string.Equals(rule.On, result.ToState, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            // Specific beats generic.
+            //
+            // STATE_ENTERED is a catch-all for states the definition says
+            // nothing else about. Where it DOES name a recipient for this
+            // state, the catch-all is a second message about the same event,
+            // usually to the same person: at AWAITING_ACK the beneficiary was
+            // getting both "action required" and "please confirm receipt", and
+            // at RETURNED the requester got "action required" alongside
+            // "returned for correction".
+            //
+            // Harmless individually, and corrosive in aggregate -- two mails
+            // for one event is how people learn to skim, and the specific one
+            // is always the more useful of the pair. It names what to do; the
+            // generic one only says that something is waiting.
+            if (isBlanket && definition.Notifications.Any(
+                    other => string.Equals(other.On, result.ToState, StringComparison.Ordinal)))
             {
                 continue;
             }

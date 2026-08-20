@@ -38,16 +38,16 @@ public sealed class ReadAccessScope
     /// handle the same claims in sequence, and a Treasury officer who cannot
     /// see what Cost Control queried is being asked to post blind.
     ///
-    /// FinanceOfficer stays in this set while version-2 requests are open --
-    /// removing it would leave their holders unable to read the very requests
-    /// they are still the only ones authorised to action.
+    /// FinanceOfficer was removed on 19 August 2026, once no request was
+    /// pinned to version 2 any more. It granted everything both replacement
+    /// roles grant; leaving it here would have kept a way to read every
+    /// request in the system under a role nobody is supposed to hold.
     /// </remarks>
     private static readonly HashSet<string> CrossCuttingRoles =
         new(StringComparer.Ordinal)
         {
             "CostControlOfficer",
             "TreasuryOfficer",
-            "FinanceOfficer",
             "FinanceManager",
             "ProcurementOfficer"
         };

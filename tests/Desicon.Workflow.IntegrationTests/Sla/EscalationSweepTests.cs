@@ -27,18 +27,18 @@ public sealed class EscalationSweepTests : IntegrationTestBase
     public EscalationSweepTests(WorkflowApiFixture fixture) : base(fixture) { }
 
     [Fact]
-    public async Task Breaching_the_line_manager_sla_transfers_authority_and_names_the_non_actor()
+    public async Task Breaching_the_head_of_department_sla_transfers_authority_and_names_the_non_actor()
     {
         var org = await WithDbAsync(db => WorkflowSteps.CreateOrgChartAsync(db, "ESC-A"));
 
         var requestId = await WorkflowSteps.CreateAndSubmitCashAdvanceAsync(
-            Fixture, org, "Awaiting line manager", 3_000m);
+            Fixture, org, "Awaiting head of department", 3_000m);
 
         var before = await WithDbAsync(async db =>
             await db.Requests.AsNoTracking().SingleAsync(r => r.RequestId == requestId));
 
-        before.CurrentState.Should().Be("LINE_MANAGER");
-        before.CurrentActorId.Should().Be(org.LineManager.Id, "the line manager is the one who must act");
+        before.CurrentState.Should().Be("DEPT_HEAD");
+        before.CurrentActorId.Should().Be(org.DeptHead.Id, "the head of department is the one who must act");
         before.SlaDueAt.Should().NotBeNull();
         before.EscalationCount.Should().Be(0);
 
@@ -49,8 +49,13 @@ public sealed class EscalationSweepTests : IntegrationTestBase
         var after = await WithDbAsync(async db =>
             await db.Requests.AsNoTracking().SingleAsync(r => r.RequestId == requestId));
 
-        after.CurrentState.Should().Be("DEPT_HEAD", "sla.escalateTo names the state authority moves to");
-        after.CurrentActorId.Should().Be(org.DeptHead.Id, "the department head can now act, not merely be told");
+        after.CurrentState.Should().Be("COST_CONTROL_VERIFY", "sla.escalateTo names the state authority moves to");
+
+        // Null, and correctly so. Authority moved to a ROLE queue, and a
+        // role never collapses to one person -- see InboxStateIndex. An
+        // assertion that a name appears here would be asserting the
+        // opposite of the design.
+        after.CurrentActorId.Should().BeNull("COST_CONTROL_VERIFY is held by a role, not a person");
         after.EscalationCount.Should().Be(1);
         after.ReminderCount.Should().Be(0, "the new approver starts a fresh reminder cadence");
         after.SlaDueAt.Should().BeAfter(before.SlaDueAt!.Value, "the escalated state has its own deadline");
@@ -63,11 +68,11 @@ public sealed class EscalationSweepTests : IntegrationTestBase
             .Where(e => e.RequestId == requestId && e.EventType == "ESCALATED")
             .SingleAsync());
 
-        escalation.FromState.Should().Be("LINE_MANAGER");
-        escalation.ToState.Should().Be("DEPT_HEAD");
-        escalation.OnBehalfOfUserId.Should().Be(org.LineManager.Id, "the person who did not act is named");
-        escalation.Reason.Should().Contain(org.LineManager.Id.ToString());
-        escalation.ActorId.Should().NotBe(org.LineManager.Id, "escalation has no human actor");
+        escalation.FromState.Should().Be("DEPT_HEAD");
+        escalation.ToState.Should().Be("COST_CONTROL_VERIFY");
+        escalation.OnBehalfOfUserId.Should().Be(org.DeptHead.Id, "the person who did not act is named");
+        escalation.Reason.Should().Contain(org.DeptHead.Id.ToString());
+        escalation.ActorId.Should().NotBe(org.DeptHead.Id, "escalation has no human actor");
     }
 
     /// <summary>
@@ -90,10 +95,11 @@ public sealed class EscalationSweepTests : IntegrationTestBase
         await RunSweepAtAsync(slaDueAt.AddSeconds(1));
 
         var verify = await WorkflowSteps.ActionAsync(
-            Fixture.CreateClient(org.DeptHead), requestId, "VERIFY");
+            Fixture.CreateClient(org.CostControlOfficer, "CostControlOfficer"), requestId, "VERIFY",
+            payload: new Dictionary<string, object?> { ["TreasuryNumber"] = "TN-ESC-B" });
 
         verify.IsSuccessStatusCode.Should().BeTrue(
-            "the department head holds the authority the line manager failed to exercise");
+            "Cost Control holds the authority the head of department failed to exercise");
     }
 
     /// <summary>
