@@ -341,7 +341,6 @@ module "functions" {
     TreasuryOfficer    = "treasury@desicongroup.com"
     FinanceManager     = "chima.onyealilachi@desicongroup.com"
     DirectorOfFinance  = "tomy.john@desicongroup.com"
-    FinanceOfficer     = "costcontrol@desicongroup.com"
   }
   notifications_application_base_url = "https://${module.frontdoor.endpoint_hostname}"
 

@@ -45,7 +45,7 @@ public sealed class OutboxDispatcherTests : IntegrationTestBase
         sender.Sent.Should().NotBeEmpty();
 
         var message = sender.Sent[0];
-        message.To.Should().Contain(org.LineManager.Email);
+        message.To.Should().Contain(org.DeptHead.Email);
         message.Subject.Should().Contain("cash advance");
         message.HtmlBody.Should().Contain(requestId.ToString(), "the deep link addresses the specific request");
 

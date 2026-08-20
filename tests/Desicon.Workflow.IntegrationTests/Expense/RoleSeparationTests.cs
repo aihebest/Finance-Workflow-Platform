@@ -75,8 +75,6 @@ public sealed class RoleSeparationTests : IntegrationTestBase
             Fixture, org, beneficiary.Id, "Yes",
             TestData.ExpenseLine("Courier", new DateOnly(2026, 2, 3), 4_000m));
 
-        await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(org.LineManager), id, "VERIFY"))
-            .ShouldSucceedAsync();
         await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(org.DeptHead), id, "VERIFY"))
             .ShouldSucceedAsync();
         await WorkflowSteps.AttachReceiptAsync(Fixture, id, org.Requester.Id);
@@ -91,24 +89,29 @@ public sealed class RoleSeparationTests : IntegrationTestBase
     }
 
     /// <summary>
-    /// The pinning mechanism, exercised for the first time against a real
-    /// process change rather than a version number that never differed.
+    /// A request pinned to a version nobody publishes any more must fail
+    /// loudly, not fall back to the current one.
     /// </summary>
     /// <remarks>
-    /// A claim raised under version 2 names FinanceOfficer at
-    /// COST_CONTROL_VERIFY. Version 3 renamed that role. If definition
-    /// resolution followed the latest published version rather than the one
-    /// stamped on the request, this claim would become unactionable by
-    /// anybody the moment version 3 shipped -- the failure
-    /// docs/15 section 3 warns about, and the reason version 2 stays
-    /// published.
+    /// This test used to assert the opposite half: that a version-2 request
+    /// still resolved the old FinanceOfficer role while version 3 requests
+    /// got the new ones. Version 2 has since been retired -- the database was
+    /// reset for UAT, nothing was pinned to it, and its definition files were
+    /// deleted along with the role.
     ///
-    /// The version is set directly rather than by raising the request under an
-    /// older definition, because creation always stamps the current version.
-    /// That is the point: this simulates a request that was already in flight.
+    /// What remains is the more important guarantee. Falling back to the
+    /// current definition would evaluate a request against a process it was
+    /// never raised under, silently, and that is precisely the behaviour
+    /// pinning exists to remove. So the failure must name the version asked
+    /// for and the versions that exist, because the fix -- restore the file --
+    /// is only obvious if the message says so.
+    ///
+    /// The generic mechanism is covered by DefinitionVersionPinningTests
+    /// against temporary files. This one runs against the real published
+    /// definitions, which is where a retired version actually bites.
     /// </remarks>
     [Fact]
-    public async Task A_request_pinned_to_version_2_still_resolves_the_version_2_role()
+    public async Task A_request_pinned_to_a_retired_version_fails_loudly()
     {
         var org = await WithDbAsync(db => WorkflowSteps.CreateOrgChartAsync(db, "SEP-PIN"));
         var beneficiary = await WithDbAsync(db => TestData.CreateEmployeeBeneficiaryAsync(db, org.Requester));
@@ -117,8 +120,6 @@ public sealed class RoleSeparationTests : IntegrationTestBase
             Fixture, org, beneficiary.Id, "Yes",
             TestData.ExpenseLine("Stationery", new DateOnly(2026, 2, 4), 6_000m));
 
-        await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(org.LineManager), id, "VERIFY"))
-            .ShouldSucceedAsync();
         await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(org.DeptHead), id, "VERIFY"))
             .ShouldSucceedAsync();
         await WorkflowSteps.AttachReceiptAsync(Fixture, id, org.Requester.Id);
@@ -126,23 +127,30 @@ public sealed class RoleSeparationTests : IntegrationTestBase
         await WithDbAsync(async db =>
         {
             var request = await db.Requests.SingleAsync(r => r.RequestId == id);
-            request.DefinitionVersion.Should().Be(3, "a request raised today is stamped with the current version");
+            request.DefinitionVersion.Should().Be(4, "a request raised today is stamped with the current version");
+
+            // As if it had been raised before version 2 was retired.
             request.DefinitionVersion = 2;
             await db.SaveChangesAsync();
         });
 
-        // Version 3's role must NOT work on a version 2 request.
-        var wrongVersion = await WorkflowSteps.ActionAsync(
+        var act = async () => await WorkflowSteps.ActionAsync(
             Fixture.CreateClient(org.CostControlOfficer, "CostControlOfficer"), id, "VERIFY",
             payload: new Dictionary<string, object?> { ["TreasuryNumber"] = "TN-PIN-1" });
 
-        wrongVersion.IsSuccessStatusCode.Should().BeFalse(
-            "this request is pinned to version 2, which does not know the CostControlOfficer role");
+        // Either an exception naming the versions, or a non-success response --
+        // what must NOT happen is a 200 produced by quietly using version 4.
+        try
+        {
+            var response = await act();
 
-        // Version 2's role must still work, or the request is stranded.
-        await (await WorkflowSteps.ActionAsync(
-                Fixture.CreateClient(org.CostControlOfficer, "FinanceOfficer"), id, "VERIFY",
-                payload: new Dictionary<string, object?> { ["TreasuryNumber"] = "TN-PIN-1" }))
-            .ShouldSucceedAsync();
+            response.IsSuccessStatusCode.Should().BeFalse(
+                "evaluating this request against version 4 would apply a process it was never raised under");
+        }
+        catch (InvalidOperationException ex)
+        {
+            ex.Message.Should().Contain("version 2");
+            ex.Message.Should().Contain("4", "the message must say what IS published, or the fix is guesswork");
+        }
     }
 }

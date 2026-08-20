@@ -18,11 +18,14 @@
     WHAT THIS CREATES, AND WHAT IT DELIBERATELY DOES NOT
     ---------------------------------------------------
     Four roles: CostControlOfficer, TreasuryOfficer, FinanceManager and
-    DirectorOfFinance -- plus FinanceOfficer, which workflow version 3
-    superseded and which exists only so requests pinned to version 2 can still
-    be completed. Those are the values the code actually reads: the
+    DirectorOfFinance. Those are the values the code actually reads -- the
     `"actor": { "role": ... }` specs in modules/*.workflow.json, and the only
     values RequestActionService can act on.
+
+    FinanceOfficer, which covered Cost Control and Treasury as one role until
+    version 3, is no longer created here. See the note beside the definitions
+    below: removing it stops the role being re-created but does not delete it
+    from the directory.
 
     The other five rows in the table (Employee, LineManager, DepartmentHead,
     ProcurementOfficer, Administrator) are NOT created here, and that is
@@ -66,7 +69,8 @@
     one human holding two roles satisfies every one of them while providing no
     separation at all. That is the failure mode -- not a refusal, a silence.
 
-    Do not assign FinanceOfficer to anyone new. See docs/15 section 1b.
+    FinanceOfficer is no longer defined here and must not be assigned to
+    anyone. If it still exists in the directory, delete it -- docs/15 §1b.
 
 .EXAMPLE
     ./scripts/bootstrap-app-roles.ps1 -ApiClientId "<guid>" `
@@ -103,20 +107,18 @@ $RoleDefinitions = @(
         allowedMemberTypes = @("User")
         isEnabled          = $true
     },
-    # Superseded by the two roles above as of workflow version 3, and kept
-    # only because requests raised under version 2 are still pinned to it and
-    # cannot be actioned by anybody without it. Delete it -- and revoke its
-    # assignments -- once the version-2 query in docs/15 section 3 returns
-    # zero open rows. Leaving it assigned indefinitely restores exactly the
-    # collapse version 3 exists to undo: one holder acting at every stage.
-    @{
-        id                 = "3f1b8c2a-6d4e-4a7b-9c15-2e8f0d6a4b31"
-        value              = "FinanceOfficer"
-        displayName        = "Finance Officer (superseded -- version 2 only)"
-        description        = "SUPERSEDED by CostControlOfficer and TreasuryOfficer. Retained solely so requests raised under workflow version 2 can still be completed. Do not assign to anyone new."
-        allowedMemberTypes = @("User")
-        isEnabled          = $true
-    },
+    # FinanceOfficer is deliberately absent. It covered Cost Control and
+    # Treasury as one role until workflow version 3, and was retained only
+    # while requests pinned to version 2 still existed. None do: the database
+    # was reset for UAT on 10 Aug 2026 and the version-2 definition files were
+    # deleted on the 19th.
+    #
+    # This script MERGES rather than replaces, so removing it here stops the
+    # role being re-created but does NOT delete it from the directory. That is
+    # a manual two-step -- a role cannot be deleted while isEnabled is true --
+    # and it is listed in docs/15 section 1b. Until it is done, an
+    # administrator can still assign a role that grants everything both
+    # replacement roles grant.
     @{
         id                 = "b7e94d05-1a83-4c62-8f0d-5a3e71c9b284"
         value              = "FinanceManager"

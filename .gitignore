@@ -56,3 +56,9 @@ local.settings.json
 # belongs in Application Insights, not in version control.
 applogs/
 *.zip
+
+# The real org chart: staff names, addresses and reporting lines. Loaded by
+# scripts/import-org-chart.ps1 and deliberately not versioned -- it is
+# personal data that goes stale, and this repository is shared.
+org-chart.csv
+*-org-chart.csv

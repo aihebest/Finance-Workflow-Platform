@@ -70,7 +70,7 @@ public sealed class ExpenseWorkflowTests : IntegrationTestBase
             TestData.ExpenseLine("Taxi", new DateOnly(2026, 1, 3), 4_000m));
 
         var returned = await (await WorkflowSteps.ActionAsync(
-                Fixture.CreateClient(org.LineManager), id, "RETURN", comment: "Please attach the receipt image."))
+                Fixture.CreateClient(org.DeptHead), id, "RETURN", comment: "Please attach the receipt image."))
             .ShouldSucceedAsync();
         returned.GetProperty("toState").GetString().Should().Be("RETURNED");
 
@@ -81,7 +81,7 @@ public sealed class ExpenseWorkflowTests : IntegrationTestBase
 
         var resubmitted = await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(org.Requester), id, "RESUBMIT"))
             .ShouldSucceedAsync();
-        resubmitted.GetProperty("toState").GetString().Should().Be("LINE_MANAGER");
+        resubmitted.GetProperty("toState").GetString().Should().Be("DEPT_HEAD");
 
         var afterResubmit = await (await Fixture.CreateClient(org.Requester)
             .GetAsync($"/api/v1/requests/{id}")).ShouldSucceedAsync();
@@ -99,7 +99,7 @@ public sealed class ExpenseWorkflowTests : IntegrationTestBase
             TestData.ExpenseLine("Taxi", new DateOnly(2026, 1, 3), 4_000m));
 
         var rejected = await (await WorkflowSteps.ActionAsync(
-                Fixture.CreateClient(org.LineManager), id, "REJECT", comment: "Not a valid business expense."))
+                Fixture.CreateClient(org.DeptHead), id, "REJECT", comment: "Not a valid business expense."))
             .ShouldSucceedAsync();
         rejected.GetProperty("toState").GetString().Should().Be("REJECTED");
 
@@ -130,7 +130,7 @@ public sealed class ExpenseWorkflowTests : IntegrationTestBase
 
         var afterSubmit = await (await Fixture.CreateClient(org.Requester)
             .GetAsync($"/api/v1/requests/{id}")).ShouldSucceedAsync();
-        afterSubmit.GetProperty("currentState").GetString().Should().Be("LINE_MANAGER");
+        afterSubmit.GetProperty("currentState").GetString().Should().Be("DEPT_HEAD");
         afterSubmit.GetProperty("slaDueAt").GetDateTimeOffset().Should().BeCloseTo(expectedDueAt, TimeSpan.FromSeconds(1));
 
         var originalActorId = afterSubmit.GetGuid("currentActorId");
@@ -157,7 +157,7 @@ public sealed class ExpenseWorkflowTests : IntegrationTestBase
 
         var afterSlaBreach = await (await Fixture.CreateClient(org.Requester)
             .GetAsync($"/api/v1/requests/{id}")).ShouldSucceedAsync();
-        afterSlaBreach.GetProperty("currentState").GetString().Should().Be("LINE_MANAGER");
+        afterSlaBreach.GetProperty("currentState").GetString().Should().Be("DEPT_HEAD");
         afterSlaBreach.GetGuid("currentActorId").Should().Be(originalActorId);
     }
 
@@ -221,8 +221,7 @@ public sealed class ExpenseWorkflowTests : IntegrationTestBase
             Fixture, org, beneficiary.Id, "Incomplete",
             TestData.ExpenseLine("Taxi", new DateOnly(2026, 1, 3), 4_000m));
 
-        await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(org.LineManager), id, "VERIFY")).ShouldSucceedAsync();
-        await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(org.DeptHead), id, "VERIFY")).ShouldSucceedAsync();
+                await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(org.DeptHead), id, "VERIFY")).ShouldSucceedAsync();
 
         var returned = await (await WorkflowSteps.ActionAsync(
                 Fixture.CreateClient(org.CostControlOfficer, "CostControlOfficer"), id, "RETURN",

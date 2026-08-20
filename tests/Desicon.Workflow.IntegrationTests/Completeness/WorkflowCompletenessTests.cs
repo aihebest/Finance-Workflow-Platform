@@ -33,7 +33,6 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         var beneficiary = await WithDbAsync(db => TestData.CreateEmployeeBeneficiaryAsync(db, org.Requester));
 
         var requesterClient = Fixture.CreateClient(org.Requester);
-        var lineManagerClient = Fixture.CreateClient(org.LineManager);
         var deptHeadClient = Fixture.CreateClient(org.DeptHead);
         // Two desks, two people. Until workflow version 3 these were one
         // client, so this test walked every transition in both modules
@@ -60,17 +59,14 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
             return created.GetGuid("requestId");
         }
 
-        async Task<Guid> DriveToLineManagerAsync(string receiptStatus, decimal amount)
-        {
-            var id = await CreateDraftAsync(receiptStatus, amount);
-            await StepAsync(() => WorkflowSteps.SubmitAsync(requesterClient, id), "DRAFT", "SUBMIT", "LINE_MANAGER");
-            return id;
-        }
-
+        // One approval on the requesting side, not two. Version 4 removed the
+        // line-manager step: Desicon's requester reports straight to a Head of
+        // Department, and modelling an extra tier meant the same person
+        // approving the same request twice.
         async Task<Guid> DriveToDeptHeadAsync(string receiptStatus, decimal amount)
         {
-            var id = await DriveToLineManagerAsync(receiptStatus, amount);
-            await StepAsync(() => WorkflowSteps.ActionAsync(lineManagerClient, id, "VERIFY"), "LINE_MANAGER", "VERIFY", "DEPT_HEAD");
+            var id = await CreateDraftAsync(receiptStatus, amount);
+            await StepAsync(() => WorkflowSteps.SubmitAsync(requesterClient, id), "DRAFT", "SUBMIT", "DEPT_HEAD");
             return id;
         }
 
@@ -133,20 +129,17 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         var claim1 = await DriveToAwaitingAckAsync(1_000m, "TN-01", "JV-01", "PMT-01");
         await StepAsync(() => WorkflowSteps.ActionAsync(requesterClient, claim1, "ACKNOWLEDGE"), "AWAITING_ACK", "ACKNOWLEDGE", "CLOSED");
 
-        // LINE_MANAGER RETURN -> RESUBMIT -> DEPT_HEAD RETURN.
-        var claim2 = await DriveToLineManagerAsync("Yes", 500m);
-        await StepAsync(() => WorkflowSteps.ActionAsync(lineManagerClient, claim2, "RETURN", comment: "Attach receipts."), "LINE_MANAGER", "RETURN", "RETURNED");
-        await StepAsync(() => WorkflowSteps.ActionAsync(requesterClient, claim2, "RESUBMIT"), "RETURNED", "RESUBMIT", "LINE_MANAGER");
-        await StepAsync(() => WorkflowSteps.ActionAsync(lineManagerClient, claim2, "VERIFY"), "LINE_MANAGER", "VERIFY", "DEPT_HEAD");
+        // DEPT_HEAD RETURN -> RESUBMIT -> DEPT_HEAD RETURN. RESUBMIT returns to
+        // the same approver who sent it back, which is the point: they asked
+        // for the correction and they are the one who checks it was made.
+        var claim2 = await DriveToDeptHeadAsync("Yes", 500m);
+        await StepAsync(() => WorkflowSteps.ActionAsync(deptHeadClient, claim2, "RETURN", comment: "Attach receipts."), "DEPT_HEAD", "RETURN", "RETURNED");
+        await StepAsync(() => WorkflowSteps.ActionAsync(requesterClient, claim2, "RESUBMIT"), "RETURNED", "RESUBMIT", "DEPT_HEAD");
         await StepAsync(() => WorkflowSteps.ActionAsync(deptHeadClient, claim2, "RETURN", comment: "Not my cost centre."), "DEPT_HEAD", "RETURN", "RETURNED");
 
-        // LINE_MANAGER REJECT.
-        var claim3 = await DriveToLineManagerAsync("Yes", 500m);
-        await StepAsync(() => WorkflowSteps.ActionAsync(lineManagerClient, claim3, "REJECT", comment: "Not a valid claim."), "LINE_MANAGER", "REJECT", "REJECTED");
-
         // DEPT_HEAD REJECT.
-        var claim4 = await DriveToDeptHeadAsync("Yes", 500m);
-        await StepAsync(() => WorkflowSteps.ActionAsync(deptHeadClient, claim4, "REJECT", comment: "Not a valid claim."), "DEPT_HEAD", "REJECT", "REJECTED");
+        var claim3 = await DriveToDeptHeadAsync("Yes", 500m);
+        await StepAsync(() => WorkflowSteps.ActionAsync(deptHeadClient, claim3, "REJECT", comment: "Not a valid claim."), "DEPT_HEAD", "REJECT", "REJECTED");
 
         // FINANCE_VERIFY RETURN (Incomplete receipts).
         var claim5 = await DriveToCostControlVerifyAsync("Incomplete", 500m);
@@ -232,7 +225,6 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         var org = await WithDbAsync(db => WorkflowSteps.CreateOrgChartAsync(db, "ADV-COVER"));
 
         var requesterClient = Fixture.CreateClient(org.Requester);
-        var lineManagerClient = Fixture.CreateClient(org.LineManager);
         var deptHeadClient = Fixture.CreateClient(org.DeptHead);
         // Two desks, two people. Until workflow version 3 these were one
         // client, so this test walked every transition in both modules
@@ -256,17 +248,12 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
             return created.GetGuid("requestId");
         }
 
-        async Task<Guid> DriveToLineManagerAsync(string purpose, decimal amount)
-        {
-            var id = await CreateDraftAsync(purpose, amount);
-            await StepAsync(() => WorkflowSteps.SubmitAsync(requesterClient, id), "DRAFT", "SUBMIT", "LINE_MANAGER");
-            return id;
-        }
-
+        // Version 4: one approval on the requesting side. See the expense
+        // walk above for why.
         async Task<Guid> DriveToDeptHeadAsync(string purpose, decimal amount)
         {
-            var id = await DriveToLineManagerAsync(purpose, amount);
-            await StepAsync(() => WorkflowSteps.ActionAsync(lineManagerClient, id, "VERIFY"), "LINE_MANAGER", "VERIFY", "DEPT_HEAD");
+            var id = await CreateDraftAsync(purpose, amount);
+            await StepAsync(() => WorkflowSteps.SubmitAsync(requesterClient, id), "DRAFT", "SUBMIT", "DEPT_HEAD");
             return id;
         }
 
@@ -362,14 +349,14 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         await StepAsync(() => WorkflowSteps.ActionAsync(requesterClient, advD, "RETIRE"), "OUTSTANDING", "RETIRE", "PARTIALLY_RETIRED");
         await StepAsync(() => WorkflowSteps.ActionAsync(financeManagerClient, advD, "WRITE_OFF", comment: "Remaining balance unrecoverable."), "PARTIALLY_RETIRED", "WRITE_OFF", "REJECTED");
 
-        // LINE_MANAGER RETURN -> RESUBMIT.
-        var advE = await DriveToLineManagerAsync("Resubmit advance", 1_000m);
-        await StepAsync(() => WorkflowSteps.ActionAsync(lineManagerClient, advE, "RETURN", comment: "Add a cost centre."), "LINE_MANAGER", "RETURN", "RETURNED");
-        await StepAsync(() => WorkflowSteps.ActionAsync(requesterClient, advE, "RESUBMIT"), "RETURNED", "RESUBMIT", "LINE_MANAGER");
+        // DEPT_HEAD RETURN -> RESUBMIT.
+        var advE = await DriveToDeptHeadAsync("Resubmit advance", 1_000m);
+        await StepAsync(() => WorkflowSteps.ActionAsync(deptHeadClient, advE, "RETURN", comment: "Add a cost centre."), "DEPT_HEAD", "RETURN", "RETURNED");
+        await StepAsync(() => WorkflowSteps.ActionAsync(requesterClient, advE, "RESUBMIT"), "RETURNED", "RESUBMIT", "DEPT_HEAD");
 
-        // LINE_MANAGER REJECT.
-        var advF = await DriveToLineManagerAsync("LM reject advance", 1_000m);
-        await StepAsync(() => WorkflowSteps.ActionAsync(lineManagerClient, advF, "REJECT", comment: "Not approved."), "LINE_MANAGER", "REJECT", "REJECTED");
+        // DEPT_HEAD REJECT (second advance, so the first stays available).
+        var advF = await DriveToDeptHeadAsync("HOD reject advance", 1_000m);
+        await StepAsync(() => WorkflowSteps.ActionAsync(deptHeadClient, advF, "REJECT", comment: "Not approved."), "DEPT_HEAD", "REJECT", "REJECTED");
 
         // DEPT_HEAD RETURN.
         var advG = await DriveToDeptHeadAsync("DH return advance", 1_000m);
