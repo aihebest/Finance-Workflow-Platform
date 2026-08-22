@@ -1,10 +1,12 @@
 import { AuthenticatedTemplate, UnauthenticatedTemplate, useMsal } from "@azure/msal-react";
 import { NavLink, Route, Routes } from "react-router-dom";
 import { apiScopes } from "./auth/msal";
+import { useIsFinance } from "./auth/roles";
 import { Inbox } from "./pages/Inbox";
 import { MyAdvances } from "./pages/MyAdvances";
 import { NewCashAdvance } from "./pages/NewCashAdvance";
 import { NewExpense } from "./pages/NewExpense";
+import { Reports } from "./pages/Reports";
 import { RequestDetail } from "./pages/RequestDetail";
 
 function SignIn() {
@@ -26,6 +28,12 @@ function SignIn() {
 }
 
 export function App() {
+  // Presentation only. The refusal that matters is the 403 in
+  // ReportEndpoints -- hiding a tab hides nothing from anyone who types the
+  // URL, and the route below is deliberately registered either way so that
+  // someone who does gets the API's reason rather than a blank page.
+  const isFinance = useIsFinance();
+
   return (
     <>
       <UnauthenticatedTemplate>
@@ -78,6 +86,19 @@ export function App() {
             >
               My Inbox
             </NavLink>
+
+            {isFinance && (
+              <NavLink
+                to="/reports"
+                className={({ isActive }) =>
+                  isActive
+                    ? "border-b-2 border-blue-700 pb-2 font-medium text-blue-700"
+                    : "pb-2 text-gray-600 hover:text-gray-900"
+                }
+              >
+                Reports
+              </NavLink>
+            )}
           </nav>
 
           <Routes>
@@ -86,6 +107,7 @@ export function App() {
             <Route path="/expenses/new" element={<NewExpense />} />
             <Route path="/advances/new" element={<NewCashAdvance />} />
             <Route path="/advances" element={<MyAdvances />} />
+            <Route path="/reports" element={<Reports />} />
           </Routes>
         </div>
       </AuthenticatedTemplate>

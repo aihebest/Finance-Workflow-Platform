@@ -34,7 +34,16 @@ appsettings.Local.json
 !.env.example
 
 # Security scan artefacts
-reports/
+#
+# Root-anchored. Unanchored, "reports/" matches a directory of that name at
+# ANY depth -- and Git on Windows compares case-insensitively, so it also
+# matched tests/Desicon.Workflow.IntegrationTests/Reports/, silently excluding
+# a whole test class from the commit on 22 Aug 2026.
+#
+# That failure is invisible from both ends: the build passes locally because
+# the file is on disk, and CI passes because the file is absent and tests that
+# do not exist cannot fail. The test count simply drops, and nobody counts.
+/reports/
 *.sarif
 
 # IDE
