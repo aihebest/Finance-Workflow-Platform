@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { getInbox } from "../api/requests";
 import { MODULE_LABELS, type RequestSummary } from "../api/types";
 import { Money } from "../components/Money";

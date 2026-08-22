@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { createCashAdvanceDraft, submitRequest } from "../api/requests";
 import { ApiError, type AdvanceLineInput } from "../api/types";
 

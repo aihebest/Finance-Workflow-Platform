@@ -469,9 +469,37 @@ A step 10 concern, but it is an authority source, not reference data.
 
 - [ ] Move the repository from the personal GitHub account to a Desicon
       organisation
-- [ ] `EX-2026-002` in `security-exceptions.yml` expires 2026-09-04 and will
+- [x] ~~`EX-2026-002` in `security-exceptions.yml` expires 2026-09-04 and will
       fail CI on that date — resolve or renew deliberately, not by extending the
-      date under time pressure
+      date under time pressure~~ — **retired 22 Aug 2026, and not for the
+      reason expected.**
+
+      The advisory was re-published as two ranges after the exception was
+      written. The 7.x half is `>=7.12.0 <7.18.2`, and this project already
+      held 7.18.2 — the patched version. The finding had stopped being
+      reported some time ago; `npm audit` on `main` today does not raise it.
+      The exception was suppressing nothing.
+
+      An expiry date makes you look again. It does not make you look at the
+      right thing: what was needed was re-reading the advisory at source, not
+      re-reading our own justification of it.
+
+- [ ] **Nothing in CI runs `npm audit`.** `ci.yml` runs
+      `scripts/check-exceptions.mjs`, which enforces that entries in
+      `security-exceptions.yml` have not expired — but no step produces the
+      npm-audit findings those entries are exceptions *to*. The register has
+      a `tool: npm-audit` field, an owner, an expiry and a checker, and the
+      scan itself has never run in the pipeline.
+
+      This is the same shape as every other item on this list: a control
+      built, documented, provisioned, and never once executed.
+
+      Cheap to close right now, and this is the moment: the regenerated
+      lockfile audits at **zero vulnerabilities, all severities**, so adding
+      a gate would pass today rather than arriving pre-broken. Deferred only
+      because turning on a blocking gate is a policy decision, not a
+      refactor — once added, the next published advisory stops the pipeline,
+      which is the point and should be a choice made deliberately.
 - [ ] `npm run lint` has never been runnable: there is no ESLint config in the
       web project and no CI step invoking it. The script exists in
       `package.json` and always has

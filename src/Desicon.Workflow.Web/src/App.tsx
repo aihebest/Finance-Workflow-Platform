@@ -1,5 +1,5 @@
 import { AuthenticatedTemplate, UnauthenticatedTemplate, useMsal } from "@azure/msal-react";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { NavLink, Route, Routes } from "react-router";
 import { apiScopes } from "./auth/msal";
 import { useIsFinance } from "./auth/roles";
 import { Inbox } from "./pages/Inbox";

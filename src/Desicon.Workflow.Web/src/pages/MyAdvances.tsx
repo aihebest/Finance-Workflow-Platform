@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { getOutstandingAdvances, retireAdvance } from "../api/requests";
 import { ApiError, type OutstandingAdvance } from "../api/types";
 import { Money } from "../components/Money";
