@@ -480,8 +480,32 @@ A step 10 concern, but it is an authority source, not reference data.
       fail on the first write to `Beneficiary.BankAccountNumber`
 - [ ] Reduce `Microsoft.EntityFrameworkCore.Database.Command` logging to Warning
       in the API — a single readiness probe produced 27,000 log lines
-- [ ] Finish the `ILogger` → Application Insights provider wiring; exceptions
-      are still not arriving
+- [x] ~~Finish the `ILogger` → Application Insights provider wiring; exceptions
+      are still not arriving~~ — **this entry was wrong.** Corrected
+      22 Aug 2026: telemetry has been arriving since the API was first
+      deployed. In a six-hour window: 7,178 `AppRequests`, 29,322
+      `AppDependencies`, plus traces and exceptions.
+
+      The entry existed because every query run against it returned nothing.
+      Application Insights here is **workspace-based** (`workspace_id` is set
+      on the resource), so the data lands in the Log Analytics workspace as
+      `AppRequests`, `AppTraces`, `AppExceptions`, `AppDependencies` — not the
+      classic `requests` / `traces` names that were being asked for.
+
+      Empty result, wrong question. It cost real time twice: a WAF block and a
+      500 were both diagnosed the slow way because the instrument was believed
+      to be dark. **Query the App\* tables on the workspace, not the legacy
+      names:**
+
+      ```powershell
+      $ws = az monitor log-analytics workspace list -g rg-desicon-fw-dev --query "[0].customerId" -o tsv
+      az monitor log-analytics query --workspace $ws --analytics-query "AppExceptions | where TimeGenerated > ago(1h) | project TimeGenerated, ProblemId, OuterMessage, Method" -o table
+      ```
+
+      Worth keeping as a written finding rather than a silent correction: a
+      monitoring gap that does not exist is as expensive as one that does. It
+      sends people to build an instrument they already have, and — worse —
+      teaches them to distrust the one reading they should have believed.
 
 ---
 

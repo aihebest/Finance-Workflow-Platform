@@ -1,11 +1,11 @@
-import { useMsal } from "@azure/msal-react";
+import { useEffect, useState } from "react";
+import { api } from "../api/client";
 
 /**
  * The four roles allowed to see figures spanning departments.
  *
- * Must match ReportEndpoints.ReportingRoles. Two lists that have to agree is
- * not ideal, but the alternative — the browser asking the API what it is
- * allowed to see — is a round trip to decide whether to draw a link.
+ * Kept in step with ReportEndpoints.ReportingRoles. The API is still the
+ * authority -- this only decides whether a link is drawn.
  */
 export const FINANCE_ROLES = [
   "CostControlOfficer",
@@ -14,30 +14,64 @@ export const FINANCE_ROLES = [
   "DirectorOfFinance",
 ] as const;
 
-/**
- * Roles from the signed-in account's token.
- *
- * Entra puts app role assignments in the `roles` claim. An unassigned user has
- * no claim at all rather than an empty array, hence the fallback.
- */
-export function useRoles(): string[] {
-  const { instance } = useMsal();
-  const account = instance.getActiveAccount() ?? instance.getAllAccounts()[0];
+export interface Me {
+  roles: string[];
+  hasEmployeeRecord: boolean;
+  employee: {
+    id: string;
+    staffNumber: string;
+    fullName: string;
+    email: string;
+    departmentId: number;
+  } | null;
+}
 
-  const claims = account?.idTokenClaims as { roles?: string[] } | undefined;
-  return claims?.roles ?? [];
+/**
+ * Who the API thinks you are.
+ *
+ * This used to read `roles` off the MSAL account's idTokenClaims, which is a
+ * different token from the one the API is sent. For the Cost Control desk that
+ * claim was absent, so the Reports tab never appeared for somebody the API
+ * would have admitted without hesitation — the browser and the server
+ * disagreeing about the same person.
+ *
+ * Asking removes the disagreement rather than papering over it. One round trip
+ * on load, and the two can no longer drift.
+ */
+export function useMe(): Me | null {
+  const [me, setMe] = useState<Me | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    api
+      .get<Me>("/api/v1/me")
+      .then((result) => {
+        if (!cancelled) setMe(result);
+      })
+      .catch(() => {
+        // Unreachable or refused. Treated as "no roles" rather than surfaced:
+        // this only decides whether a nav link renders, and every page behind
+        // it reports its own failure properly.
+        if (!cancelled) setMe({ roles: [], hasEmployeeRecord: false, employee: null });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return me;
 }
 
 /**
  * Whether to draw the Reports link.
  *
- * This is presentation, not security, and the distinction matters: hiding a
- * link hides nothing from anyone willing to type the URL. The refusal that
- * counts is the 403 in ReportEndpoints, which is asserted by a test against a
- * requester and a Head of Department. This only keeps a tab off the screen of
- * people it would do nothing for.
+ * Presentation, not security. Hiding a link hides nothing from anyone willing
+ * to type the URL; the refusal that counts is the 403 in ReportEndpoints,
+ * asserted against a requester and a Head of Department.
  */
 export function useIsFinance(): boolean {
-  const roles = useRoles();
-  return FINANCE_ROLES.some((role) => roles.includes(role));
+  const me = useMe();
+  return me !== null && FINANCE_ROLES.some((role) => me.roles.includes(role));
 }
