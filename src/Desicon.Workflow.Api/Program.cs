@@ -285,6 +285,7 @@ app.MapCashAdvanceEndpoints();
 app.MapBeneficiaryEndpoints();
 app.MapBeneficiaryLookupEndpoints();
 app.MapAttachmentEndpoints();
+app.MapReportEndpoints();
 
 app.Run();
 

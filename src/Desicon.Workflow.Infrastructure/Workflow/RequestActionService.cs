@@ -339,6 +339,32 @@ public sealed class RequestActionService
         request.EscalationCount = 0;
         request.ReminderCount = 0;
 
+        // When it stopped being a draft.
+        //
+        // Request.SubmittedAt has existed since the first migration. It is
+        // declared on the entity, configured in EF, registered as a guard
+        // field, returned on three DTOs, and carries a composite database
+        // index -- (ModuleKey, CurrentState, SubmittedAt). Nothing anywhere
+        // ever wrote to it. Every request ever raised has had a null there,
+        // every screen showing it has shown a blank, and the index has been
+        // optimising queries against a column with one value in it.
+        //
+        // Found 22 Aug 2026 by a report that filtered on SubmittedAt != null
+        // and returned nothing at all.
+        //
+        // Set on leaving the initial state rather than on the SUBMIT action by
+        // name, because "submitted" means "no longer a draft" and a module is
+        // free to call that transition something else. Guarded on null so a
+        // RETURNED request that is resubmitted keeps the date it was first
+        // sent -- that is the date people mean when they ask how long a claim
+        // has been in the system, and overwriting it would reset the clock
+        // every time somebody corrected a cost centre.
+        if (request.SubmittedAt is null &&
+            string.Equals(result.FromState, definition.InitialState.Key, StringComparison.Ordinal))
+        {
+            request.SubmittedAt = now;
+        }
+
         if (definition.FindState(result.ToState!)?.Type == StateType.Terminal)
         {
             request.ClosedAt = now;
