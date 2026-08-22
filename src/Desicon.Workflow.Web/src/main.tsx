@@ -1,7 +1,7 @@
 import { MsalProvider } from "@azure/msal-react";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter } from "react-router";
 import { App } from "./App";
 import { msalInstance } from "./auth/msal";
 import "./index.css";
@@ -16,8 +16,9 @@ import "./index.css";
  * approving from a phone on a site is the case this whole platform is trying
  * to make fast.
  *
- * Order matters. initialize() must complete before any other MSAL call in v3,
- * and handleRedirectPromise() must resolve before the app reads accounts --
+ * Order matters. initialize() must complete before any other MSAL call --
+ * true in v3, still true in v5 -- and handleRedirectPromise() must resolve
+ * before the app reads accounts --
  * otherwise the first render after a sign-in redirect sees no account and
  * sends the person straight back to the sign-in they just completed.
  */

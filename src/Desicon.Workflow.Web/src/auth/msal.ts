@@ -28,11 +28,19 @@ const configuration: Configuration = {
     redirectUri: window.location.origin,
     postLogoutRedirectUri: window.location.origin,
 
-    // Authorisation code flow with PKCE is what msal-browser v3 does by
-    // default and the only flow that should be used here. Implicit flow would
-    // put a token in the URL fragment, where it lands in browser history and
-    // in any referrer.
-    navigateToLoginRequestUrl: true,
+    // Authorisation code flow with PKCE is the only flow msal-browser
+    // performs, and the only one that should be used here. Implicit flow
+    // would put a token in the URL fragment, where it lands in browser
+    // history and in any referrer.
+    //
+    // navigateToLoginRequestUrl was set here, to true. It is no longer a
+    // configuration option in msal-browser v5 -- it moved to an argument of
+    // handleRedirectPromise(), where it still defaults to true. The
+    // behaviour is unchanged, which matters more than the diff suggests:
+    // it is what returns a department head to /requests/{id} after signing
+    // in, instead of landing them on the inbox to find the claim again.
+    // Every approval notification this platform sends is a deep link, so
+    // this setting is the difference between one click and a hunt.
   },
   cache: {
     // sessionStorage, not localStorage. A token in localStorage outlives the
@@ -42,7 +50,11 @@ const configuration: Configuration = {
     // the last one. The cost is re-authenticating on a new tab, which is
     // silent when the Entra session is still live.
     cacheLocation: "sessionStorage",
-    storeAuthStateInCookie: false,
+
+    // storeAuthStateInCookie was set here, to false. Removed in msal-browser
+    // v5: it existed to carry auth state through IE11 and legacy Edge, which
+    // the library no longer supports. False was already the default, so
+    // nothing about this application changes.
   },
 };
 
