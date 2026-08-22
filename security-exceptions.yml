@@ -21,35 +21,35 @@ exceptions:
     accepted_on: 2026-07-31
     expires_on: 2027-01-27
 
-  - id: EX-2026-002
-    tool: npm-audit
-    rule: GHSA-qwww-vcr4-c8h2
-    scope: src/Desicon.Workflow.Web
-    severity: high
-    justification: >
-      React Router RSC Mode CSRF bypass, affecting react-router 7.12.0-8.2.0.
-      Not reachable in this application: the advisory concerns React Server
-      Components request handling, and this is a client-only SPA using
-      BrowserRouter with no server-rendered routes, no RSC and no router
-      actions. There is no code path that executes a router action, which is
-      what the advisory allows to run early.
-
-      The reason this is an exception rather than an upgrade is that no
-      version satisfies every advisory at once. npm's suggested fix is
-      react-router-dom@7.11.0, which sits inside the range of GHSA-2w69-qvjg
-      (open redirect via Link/useNavigate) and GHSA-337j-9hxr (SSR hydration),
-      both fixed in 7.18.2. Taking the suggested fix would reintroduce two
-      advisories to silence one -- optimising for a clean audit report rather
-      than for risk. We hold 7.18.2, which resolves both of those.
-
-      Compensating control: every route in this application is built from a
-      system-generated GUID, never from user input, so the open-redirect class
-      of issue has no entry point either way. Revisit when a react-router
-      release exists above 8.2.0, at which point this becomes a routine bump.
-    owner: "@aihebest"
-    issue: https://github.com/aihebest/Finance-Workflow-Platform/issues/25
-    accepted_on: 2026-08-05
-    expires_on: 2026-09-04
+  # RETIRED 2026-08-22 -- EX-2026-002, npm-audit, GHSA-qwww-vcr4-c8h2
+  # (React Router RSC Mode CSRF bypass). Accepted 2026-08-05, due to expire
+  # 2026-09-04.
+  #
+  # Retired because the finding no longer exists, not because it was waived
+  # again. Worth stating plainly, because the reason is not the one we
+  # expected:
+  #
+  # When the exception was written the advisory read as a single range,
+  # 7.12.0-8.2.0, which included the 7.18.2 this project holds. It has since
+  # been split into two, and the 7.x half is ">=7.12.0 <7.18.2" -- so 7.18.2
+  # is the patched version for that line. The upgrade on this branch was not
+  # what closed it. It had already closed itself, quietly, and the exception
+  # sat here suppressing a finding that was no longer being reported.
+  #
+  # The lesson is the familiar one on this project: an accepted risk needs
+  # re-reading against the source, not just re-dating. An expiry date makes
+  # you look again; it does not make you look at the right thing.
+  #
+  # Both halves are now clear regardless -- this branch moves to
+  # react-router 8.3.0, above the ">=8.0.0 <8.3.0" range -- and npm audit
+  # against the regenerated lockfile reports zero vulnerabilities at any
+  # severity.
+  #
+  # NOTE, and this is the part that still needs a decision: nothing in CI
+  # runs `npm audit`. ci.yml runs check-exceptions.mjs, which enforces that
+  # entries in this file have not expired, but no step produces npm-audit
+  # findings for them to be exceptions to. The input to this process is
+  # never generated. See docs/15 §6.
 
   # Template — copy, do not edit the entry above.
   #

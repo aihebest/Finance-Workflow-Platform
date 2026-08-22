@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { createExpenseDraft, getBeneficiaries, submitRequest } from "../api/requests";
 import { ApiError, type BeneficiarySummary, type ExpenseLineInput } from "../api/types";
 
