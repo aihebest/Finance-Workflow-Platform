@@ -465,6 +465,44 @@ A step 10 concern, but it is an authority source, not reference data.
 
 ---
 
+## 5b. Requests submitted before 22 Aug 2026 are invisible in the pipeline report
+
+`Request.SubmittedAt` existed from the first migration — entity, EF
+configuration, guard field, three DTOs and a composite index — and nothing ever
+wrote to it. `RequestActionService` was fixed on 22 Aug 2026, so everything
+submitted from that date forward carries the value.
+
+Everything submitted *before* it still has `NULL`, and the pipeline report
+filters on exactly that:
+
+```csharp
+.Where(r => r.ClosedAt == null && r.SubmittedAt != null)
+```
+
+So an open request raised before 22 August does not appear in "What's waiting on
+whom" at all. Not late, not queued — absent. The report reads zero and looks
+calm while work sits in somebody's queue.
+
+That is the same failure this report was built to end, wearing the report's own
+uniform. A zero because nothing is there is fine. A zero because the rows were
+filtered out is worse than no number, because it is believed.
+
+- [ ] Run `scripts/backfill-submitted-at.sql` against **each** environment
+      before trusting the pipeline report there — dev, then uat, then prd
+
+It reports by default and writes nothing until `-v Apply=1`. The value is
+reconstructed from `AuditEvents` — the earliest departure from `DRAFT`, which is
+append-only and hash-chained, so it is recovered from evidence rather than
+estimated. `RESUBMIT` is deliberately not matched, so a returned-and-resubmitted
+claim keeps its original submission date, which is what an SLA should measure
+from.
+
+**This is why an empty report is not yet evidence of an empty queue.** Confirm
+the count is zero because the count is zero: raise one request and watch it
+appear.
+
+---
+
 ## 6. Repository and pipeline
 
 - [ ] Move the repository from the personal GitHub account to a Desicon
