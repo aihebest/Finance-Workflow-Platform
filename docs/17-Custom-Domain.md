@@ -230,6 +230,48 @@ curl.exe -I https://finance.desiconapp.com/healthz      # SPA origin
 curl.exe -I https://finance.desiconapp.com/health/ready # API through /api routing
 ```
 
+#### If this fails with a certificate error
+
+```
+curl: (60) schannel: SNI or certificate check failed:
+SEC_E_WRONG_PRINCIPAL (0x80090322) - The target principal name is incorrect.
+```
+
+**This is normally not a fault, and it is not a DNS problem.** Read what it
+proves: the name resolved, a connection was made, and an edge server answered.
+DNS and routing are both working. What is missing is only the certificate —
+Front Door is presenting its default `*.azurefd.net` certificate because the
+managed certificate for this domain has not yet been deployed across the edge.
+
+`domainValidationState: Approved` is the *issuing* step. Deploying that
+certificate to the points of presence is a separate, slower process — usually
+minutes, occasionally an hour or more.
+
+Confirm that is all it is:
+
+```powershell
+# Is anything still deploying?
+az afd custom-domain show `
+  --resource-group rg-desicon-fw-dev `
+  --profile-name afd-desicon-fw-dev `
+  --custom-domain-name finance-desiconapp-com `
+  --query "{validation:domainValidationState, provisioning:provisioningState, deployment:deploymentStatus}" -o table
+
+# Does the CNAME point where it should?
+Resolve-DnsName finance.desiconapp.com -Type CNAME
+
+# Does the site answer when the certificate is not checked?
+curl.exe -I -k https://finance.desiconapp.com/healthz
+```
+
+If the last one returns `200`, everything except the certificate is correct and
+the only action is to wait. `-k` is a diagnostic here and nothing else: never
+put it in a script, and do not tell anyone to click through the browser warning
+in the meantime, because that is a habit worth far more than the hour saved.
+
+Re-run the plain `curl.exe -I` periodically. When it succeeds, the domain is
+fully live.
+
 Then confirm the WAF actually covers the new domain — see the section below for
 why this is not a formality:
 
