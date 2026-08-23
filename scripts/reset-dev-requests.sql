@@ -26,25 +26,60 @@
 -- orphaned in storage. Harmless, and a demonstration that WORM is doing what
 -- it was provisioned to do rather than merely being configured.
 --
--- SAFETY
--- ------
--- Refuses to run anywhere but a server whose name contains '-dev'. dev, uat
--- and prd share the database NAME (DesiconFinanceWorkflow), so the database
--- name is not a safe discriminator and the server name is.
+-- SAFETY -- REWRITTEN 22 Aug 2026, AND WHY IT HAD TO BE
+-- ----------------------------------------------------
+-- This guard used to read:
+--
+--     IF @@SERVERNAME NOT LIKE '%-dev%'
+--
+-- on the reasoning that dev, uat and prd share the database name
+-- (DesiconFinanceWorkflow), so the server name was the safe discriminator.
+-- That reasoning was sound while "dev" meant a throwaway environment.
+--
+-- It stopped being true on 22 Aug 2026, when Desicon decided there would be
+-- no separate production environment: this platform runs on
+-- finance.desiconapp.com, served by sql-desicon-fw-dev. The server name still
+-- contains '-dev'. The guard still passes. It now permits the deletion of
+-- every expense claim and cash advance Desicon holds, and reports that it is
+-- doing so safely.
+--
+-- Nothing changed in this file to cause that. A control that was correct was
+-- made wrong by a decision taken somewhere else, and it would have announced
+-- nothing -- which is the precise failure mode this whole project keeps
+-- finding, arriving here through the one door nobody was watching.
+--
+-- The replacement does not try to infer whether an environment is precious.
+-- It cannot know, and the old one only appeared to. Instead it requires the
+-- operator to name the server they intend to destroy data on, and refuses
+-- unless that name matches exactly. There is no environment in which this
+-- runs by accident, and no future rename that can quietly re-arm it.
+--
+--   sqlcmd -S sql-desicon-fw-dev.database.windows.net -d DesiconFinanceWorkflow \
+--          -i scripts/reset-dev-requests.sql -v ConfirmServer="SQL-DESICON-FW-DEV"
+--
+-- Run it without the variable and it tells you the exact value to pass.
 -- ============================================================================
 
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
 
-IF @@SERVERNAME NOT LIKE '%-dev%'
+:setvar ConfirmServer "<unset>"
+
+DECLARE @Confirm sysname = N'$(ConfirmServer)';
+
+IF @Confirm <> @@SERVERNAME
 BEGIN
     RAISERROR (
-        'Refusing to run: this script deletes every request and is intended for dev only. Server is %s.',
+        'Refusing to run. This deletes EVERY request on this server. Re-run with -v ConfirmServer="%s" if that is genuinely what you intend.',
         16, 1, @@SERVERNAME);
     RETURN;
 END;
 
 DECLARE @Requests INT = (SELECT COUNT(*) FROM Requests);
+
+-- Say it out loud before doing it. An operator who typed the server name from
+-- muscle memory still gets one line telling them how much they are about to
+-- destroy.
 PRINT CONCAT('Server: ', @@SERVERNAME, ' -- deleting ', @Requests, ' request(s).');
 
 BEGIN TRANSACTION;

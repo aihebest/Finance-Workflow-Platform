@@ -547,6 +547,73 @@ appear.
 
 ---
 
+## 7. "dev" is production now, and several things still assume it is not
+
+**Decided 22 August 2026.** There is no separate production environment. The
+environment named `dev` — resource group `rg-desicon-fw-dev`, server
+`sql-desicon-fw-dev` — is the one Desicon will run on, served at
+`finance.desiconapp.com`.
+
+That is a reasonable decision at this scale. It is recorded here because it
+silently changed the meaning of things written when it was not true, and none
+of them will announce it.
+
+### The one that could have destroyed data
+
+`scripts/reset-dev-requests.sql` deletes every request, every expense line,
+every retirement link. Its guard was:
+
+```sql
+IF @@SERVERNAME NOT LIKE '%-dev%'
+```
+
+The server is `sql-desicon-fw-dev`. **The guard passes.** It would have deleted
+every claim and advance Desicon holds and printed a line saying it was doing so
+safely.
+
+Nothing in that file changed. A control that was correct was made wrong by a
+decision taken somewhere else — which is this project's recurring finding
+arriving through the one door nobody was watching: not a control that was never
+executed, but one whose premise expired.
+
+Rewritten. It no longer tries to infer whether an environment is precious,
+because it cannot and only appeared to. It now requires the operator to name the
+server explicitly:
+
+```
+-v ConfirmServer="SQL-DESICON-FW-DEV"
+```
+
+There is no environment where that runs by accident, and no future rename that
+can quietly re-arm it.
+
+### Still carrying dev assumptions
+
+These were deliberate choices for a throwaway environment. Each is now a
+production setting and needs a decision rather than a default:
+
+- [ ] `use_private_endpoints = false` — Key Vault, SQL and Storage are reached
+      over the public internet through the `deployer_ip_addresses` allow-list.
+      Fine for an environment holding test data; it is now the data plane for
+      real bank details
+- [ ] `deployer_ip_addresses` contains a personal ISP address that rotates. A
+      production data plane should not have a home connection in its allow-list
+- [ ] `notifications_use_graph = false` — nothing has ever been emailed to a
+      real person (§2). This is now the blocker it always was, on the
+      environment that matters
+- [ ] Temporary role assignments (§1) are no longer "revoke before go-live".
+      They are live production authority, held by accounts assigned because
+      somebody was unavailable in August
+- [ ] SKUs were chosen as "scaled down relative to uat/prd" — `P1v3`,
+      `GP_Gen5_2`, `EP1`. Re-examine against real load rather than inheriting a
+      dev sizing decision
+- [ ] Naming: the resources keep `-dev` throughout. Renaming them means
+      rebuilding, which is not worth it — but every future reader will assume
+      this is a test environment, so the assumption must be contradicted
+      wherever it could cause harm, not just here
+
+---
+
 ## A note on how this list was built
 
 Every item is something that was found by running the system rather than by
