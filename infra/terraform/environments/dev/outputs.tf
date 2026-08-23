@@ -18,6 +18,16 @@ output "frontdoor_endpoint_hostname" {
   value       = module.frontdoor.endpoint_hostname
 }
 
+output "custom_domain_host_name" {
+  description = "Custom FQDN for this environment, or null when only the azurefd.net hostname is served."
+  value       = module.frontdoor.custom_domain_host_name
+}
+
+output "custom_domain_dns_records" {
+  description = "The TXT and CNAME to publish in the Microsoft 365 admin center. Run `terraform output -json custom_domain_dns_records` after apply."
+  value       = module.frontdoor.custom_domain_dns_records
+}
+
 output "container_registry_name" {
   description = "ACR name, for `az acr login` and the CI push step."
   value       = module.acr.name

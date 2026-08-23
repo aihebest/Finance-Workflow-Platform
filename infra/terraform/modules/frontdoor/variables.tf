@@ -58,3 +58,49 @@ variable "web_health_probe_path" {
   type        = string
   default     = "/healthz"
 }
+
+variable "custom_domain_host_name" {
+  description = <<-EOT
+    FQDN to serve this environment on, e.g. finance-dev.desiconapp.com. Null
+    keeps only the generated *.azurefd.net hostname.
+
+    Additive: link_to_default_domain stays true on both routes, so the
+    azurefd.net address keeps working after this is set. Nothing that already
+    points at the old hostname breaks.
+
+    Must be 64 characters or fewer -- Front Door will not issue a managed
+    certificate for a longer name.
+  EOT
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.custom_domain_host_name == null || length(coalesce(var.custom_domain_host_name, "")) <= 64
+    error_message = "custom_domain_host_name must be 64 characters or fewer; Front Door managed certificates are not issued above that."
+  }
+
+  validation {
+    condition     = var.custom_domain_host_name == null || can(regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?\\.[a-z0-9.-]+\\.[a-z]{2,}$", coalesce(var.custom_domain_host_name, "")))
+    error_message = "custom_domain_host_name must be a lowercase subdomain FQDN such as finance-dev.desiconapp.com. An apex domain is rejected deliberately: apex managed certificates need revalidation on rotation."
+  }
+}
+
+variable "custom_domain_dns_zone_id" {
+  description = <<-EOT
+    Azure DNS zone id for custom_domain_host_name, when the zone is reachable
+    by the credentials running this Terraform. Setting it lets Front Door
+    validate ownership automatically.
+
+    Left null for Desicon, and it must stay null: desiconapp.com is
+    "Managed at Microsoft 365", not hosted in an Azure DNS zone. There is no
+    zone resource id to give this, and pointing it at one would be wrong
+    rather than merely unhelpful.
+
+    Ownership is proved instead by publishing the _dnsauth TXT record in the
+    Microsoft 365 admin center (Settings -> Domains -> desiconapp.com -> DNS
+    records -> Add record). The custom_domain_dns_records output prints
+    exactly what to create.
+  EOT
+  type        = string
+  default     = null
+}

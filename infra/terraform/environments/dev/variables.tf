@@ -109,3 +109,22 @@ variable "functions_sku_name" {
   type        = string
   default     = "EP1"
 }
+
+variable "custom_domain_host_name" {
+  description = <<-EOT
+    FQDN this environment is served on, in addition to the generated
+    *.azurefd.net hostname. Null serves only the generated one.
+
+    The scheme across environments:
+
+      dev  finance-dev.desiconapp.com
+      uat  finance-uat.desiconapp.com
+      prd  finance.desiconapp.com
+
+    "finance" rather than "fw": this address goes in every approval email a
+    Head of Department receives, and it should read as something Desicon
+    operates rather than as an internal resource name.
+  EOT
+  type        = string
+  default     = null
+}
