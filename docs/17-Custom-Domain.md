@@ -79,12 +79,12 @@ site rather than an error.
 
 ### 1. Apply
 
-Run the IP sync from the **repository root**, not from the environment
-directory. It takes `-Environment` (default `dev`) and finds the tfvars itself,
-so there is no relative path to get wrong:
+Every `./scripts/...` line below is written relative to the repository root.
+Start each one by jumping there, so it does not matter which directory you are
+standing in:
 
 ```powershell
-# from the repo root
+Set-Location (git rev-parse --show-toplevel)
 ./scripts/sync-deployer-ip.ps1
 
 cd infra/terraform/environments/dev
@@ -197,10 +197,18 @@ The existing bootstrap script adds it, idempotently and without disturbing the
 URI already there:
 
 ```powershell
+Set-Location (git rev-parse --show-toplevel)
+
 ./scripts/bootstrap-spa-registration.ps1 `
   -ApiClientId 8deb5019-590d-4ef3-bb61-f5d450d341b5 `
   -RedirectUri "https://finance.desiconapp.com"
 ```
+
+`Set-Location (git rev-parse --show-toplevel)` is not decoration. Four commands
+in this runbook were first written as `./scripts/...` or `../../../scripts/...`
+and handed over while the reader was standing in
+`infra/terraform/environments/dev`, where none of them resolve. Anchoring to the
+repository root removes the assumption rather than restating it.
 
 It prints `Redirect URI already registered under the SPA platform` if it has
 already been done, so it is safe to run twice.
