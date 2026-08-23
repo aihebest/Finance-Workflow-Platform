@@ -4,8 +4,8 @@
   "displayName": "Cash Advance - To Be Justified",
   "formCode": "DEL-AC-FRM-003",
   "formRevision": "05",
-  "version": 4,
-  "effectiveFrom": "2026-08-19T00:00:00Z",
+  "version": 5,
+  "effectiveFrom": "2026-08-23T00:00:00Z",
   "numberFormat": "ADV-{yyyy}-{seq:000000}",
   "workingCalendar": "NG_STANDARD",
   "slaPausesOutsideWorkingHours": true,
@@ -121,6 +121,12 @@
       "label": "Rejected"
     },
     {
+      "key": "WITHDRAWN",
+      "type": "terminal",
+      "label": "Withdrawn by Requester",
+      "note": "Deliberately not REJECTED. A rejection is an approver's decision and belongs to that approver; a withdrawal is the requester changing their own mind before anyone acted. Collapsing the two would put a refusal in the trail against somebody who never made one."
+    },
+    {
       "key": "CLOSED",
       "type": "terminal",
       "label": "Closed - Fully Retired"
@@ -168,6 +174,18 @@
         "arg": "DepartmentId"
       },
       "requiresComment": true
+    },
+    {
+      "from": "DEPT_HEAD",
+      "to": "WITHDRAWN",
+      "action": "WITHDRAW",
+      "actor": {
+        "resolver": "Requester"
+      },
+      "guard": "ActorId == RequesterId",
+      "guardMessage": "Only the person who raised a request may withdraw it.",
+      "requiresComment": true,
+      "note": "Available only before the Head of Department has acted. Once it has moved to Cost Control somebody else has spent time on it, and withdrawing would discard that silently."
     },
     {
       "from": "COST_CONTROL_VERIFY",
@@ -393,6 +411,18 @@
         "resolver": "Requester"
       },
       "effect": "IncrementRevisionNumber"
+    },
+    {
+      "from": "RETURNED",
+      "to": "WITHDRAWN",
+      "action": "WITHDRAW",
+      "actor": {
+        "resolver": "Requester"
+      },
+      "guard": "ActorId == RequesterId",
+      "guardMessage": "Only the person who raised a request may withdraw it.",
+      "requiresComment": true,
+      "note": "A returned request is already sitting with the requester. Abandoning it should not require asking an approver to reject something they handed back."
     }
   ],
   "notifications": [
@@ -486,5 +516,5 @@
     "note": "Per Finance direction 31 Jul 2026. On a 9-hour working day this makes 24h = 2.67 working days and 72h = 8 working days. Change 'unit' to CalendarHours if that proves not to be the intent."
   },
   "note": "Version 3 splits FinanceOfficer into CostControlOfficer and TreasuryOfficer. Version 2 recorded that Cost Control and the Accounts Officer who posts in Business Central were the same people; they are not. They are separate desks with separate mailboxes (costcontrol@ and treasury@), and one role covering both meant a single person could verify the costing, post it, and release the cash -- with the posting notification going to the wrong desk, so the person who had to act was never told. Version 2 remains published for requests already open under it; see cash-advance.v2.workflow.json and docs/15-Go-Live-Checklist.md section 3.",
-  "amendment": "19 Aug 2026: version 4 removes the LINE_MANAGER step. Desicon has ONE approval before Cost Control -- the Head of Department. Version 3 modelled two, which for Desicon would have meant the same person approving the same request twice. No version 3 file is retained because the database was reset for UAT and nothing was ever pinned to it. See docs/15 section 3."
+  "amendment": "23 Aug 2026: version 5 adds WITHDRAW. A requester may take back their own request while it is still at the first approval step, or after it has been returned to them. Until now nothing could be withdrawn: ADV-2026-000001 was raised in error and the only way out was to ask the Head of Department to reject it, which records an approver's refusal for a decision no approver made. WITHDRAWN is a separate terminal state for exactly that reason -- 'the requester took this back' and 'an approver refused this' are different facts about different people. Guarded on ActorId == RequesterId, so it is only ever self-service; DEPT_HEAD and RETURNED only, so no work anyone else has done is ever discarded. See docs/15 section 5c. PREVIOUS: 19 Aug 2026: version 4 removes the LINE_MANAGER step. Desicon has ONE approval before Cost Control -- the Head of Department. Version 3 modelled two, which for Desicon would have meant the same person approving the same request twice. No version 3 file is retained because the database was reset for UAT and nothing was ever pinned to it. See docs/15 section 3."
 }

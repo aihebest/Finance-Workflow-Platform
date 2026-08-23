@@ -85,6 +85,13 @@ export const ACTION_LABELS: Record<string, string> = {
   ACKNOWLEDGE: "Acknowledge receipt",
   CONFIRM_REFUND: "Confirm refund",
   RESUBMIT: "Resubmit",
+
+  // Not "Cancel" and not "Delete". Withdrawing takes the request out of the
+  // queue and leaves it in the record with its number, its history and the
+  // reason -- which is what actually happened. "Delete" would promise
+  // something this platform will not do to an audit trail, and "Cancel" is
+  // the word people use for stopping something already in progress.
+  WITHDRAW: "Withdraw",
 };
 
 export const MODULE_LABELS: Record<string, string> = {
