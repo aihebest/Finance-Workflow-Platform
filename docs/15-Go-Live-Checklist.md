@@ -512,6 +512,43 @@ appear.
 
 ---
 
+## 5c. A request raised by mistake cannot be withdrawn
+
+Found 23 August 2026, by raising one by mistake.
+
+`ADV-2026-000001` (₦330,000) was raised in error. There is no `CANCEL`,
+`WITHDRAW`, `ABANDON` or `VOID` action anywhere in either module. Checked, not
+assumed. The only exits from `DEPT_HEAD` are `VERIFY`, `RETURN` and `REJECT`,
+all performed by the department head — never by the person who raised it.
+
+So a requester who mistypes an amount, picks the wrong beneficiary, or submits
+twice cannot undo it. They must ask an approver to reject their own mistake,
+which means the error becomes a conversation and lands in the audit trail as a
+rejection by somebody else. For an ordinary member of staff that is a call to
+their Head of Department to say "please throw that away".
+
+In this case it was recoverable only because the requester happened to *be* the
+department head: `REJECT` carries no `ActorId != RequesterId` guard, while
+`VERIFY` does. That asymmetry is correct and deliberate — you may not approve
+your own request, but declining it harms nobody. It just does not help anyone
+who is not their own approver.
+
+There is a second consequence that is easy to miss: a mistaken request does not
+sit still. `DEPT_HEAD` has a 24-hour SLA with `escalateTo: COST_CONTROL_VERIFY`,
+so an abandoned error escalates itself into the next desk's queue rather than
+ageing quietly.
+
+- [ ] Decide whether requesters should be able to withdraw a request while it
+      is still at the first approval step. A `WITHDRAW` transition from
+      `DEPT_HEAD` to a terminal state, guarded on `ActorId == RequesterId`, is
+      a small change and would remove a class of avoidable interruption
+
+Worth noting this is not a deviation from DEL-AC-FRM-003. The paper form has no
+concept of withdrawal either — but on paper you simply do not hand the form in,
+and the platform has no equivalent of not handing it in.
+
+---
+
 ## 6. Repository and pipeline
 
 - [ ] Move the repository from the personal GitHub account to a Desicon
