@@ -115,11 +115,14 @@ variable "custom_domain_host_name" {
     FQDN this environment is served on, in addition to the generated
     *.azurefd.net hostname. Null serves only the generated one.
 
-    The scheme across environments:
+    finance.desiconapp.com -- no environment suffix. Decided 22 Aug 2026:
+    there is no separate production environment planned, so this environment
+    is the one Desicon runs on and it takes the permanent address from the
+    start. A later migration would drag every bookmark, every notification
+    link already sent, and the Entra redirect URI with it.
 
-      dev  finance-dev.desiconapp.com
-      uat  finance-uat.desiconapp.com
-      prd  finance.desiconapp.com
+    A second environment, if one is ever added, takes the suffix
+    (finance-uat.desiconapp.com) and leaves this one alone.
 
     "finance" rather than "fw": this address goes in every approval email a
     Head of Department receives, and it should read as something Desicon

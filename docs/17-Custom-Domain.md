@@ -1,4 +1,4 @@
-# Custom domain — `finance-dev.desiconapp.com`
+# Custom domain — `finance.desiconapp.com`
 
 Replacing `fde-desicon-fw-dev-e5deetfbdxfvfsfq.z01.azurefd.net` with an address
 that reads like Desicon.
@@ -9,22 +9,33 @@ Accounts Manager, to the DMD, most of them on a phone. An address nobody can
 read is an address nobody trusts, and a link people hesitate over is a link
 that does not get clicked.
 
-## The scheme
+## The address
 
-| Environment | Hostname |
-|---|---|
-| dev | `finance-dev.desiconapp.com` |
-| uat | `finance-uat.desiconapp.com` |
-| prd | `finance.desiconapp.com` |
+**`finance.desiconapp.com`** — one address, no environment suffix.
+
+Decided 22 August 2026. There is no separate production environment planned:
+the environment currently named `dev` is the one Desicon will run on. Giving it
+`finance-dev` now and migrating later would drag every bookmark, every
+notification link already sent, and the Entra redirect URI along with it — so
+the permanent address is used from the start.
 
 `finance` rather than `fw`: the Azure resources are named `desicon-fw-*` and
 should stay that way, but the address a Head of Department sees is not the
 place to expose an internal abbreviation.
 
+If a second environment is ever added, it takes the suffix — `finance-uat` —
+and this one keeps the clean name it already has.
+
+> **The directory is still called `dev`, and so are the resources.** That is
+> now a hazard rather than an untidiness: guards that decide what is safe by
+> looking for "dev" in a name are looking at the environment that holds real
+> records. See docs/15 §7. One such guard existed, in
+> `scripts/reset-dev-requests.sql`, and has been rewritten.
+
 Set per environment in `<env>.auto.tfvars`:
 
 ```hcl
-custom_domain_host_name = "finance-dev.desiconapp.com"
+custom_domain_host_name = "finance.desiconapp.com"
 ```
 
 Leave it unset and only the generated hostname is served, which is the shape
@@ -114,7 +125,7 @@ In the Microsoft 365 admin center:
 | Field | Value |
 |---|---|
 | Type | `TXT` |
-| Name | `_dnsauth.finance-dev` |
+| Name | `_dnsauth.finance` |
 | Value | the `validation_token` from the output |
 | TTL | 1 Hour |
 
@@ -126,7 +137,7 @@ Typically about fifteen minutes, sometimes longer. Check with:
 az afd custom-domain show `
   --resource-group rg-desicon-fw-dev `
   --profile-name afd-desicon-fw-dev `
-  --custom-domain-name finance-dev-desiconapp-com `
+  --custom-domain-name finance-desiconapp-com `
   --query "{domain:hostName, validation:domainValidationState, cert:tlsSettings.certificateType}" -o table
 ```
 
@@ -139,7 +150,7 @@ diarise for renewal.
 | Field | Value |
 |---|---|
 | Type | `CNAME` |
-| Name | `finance-dev` |
+| Name | `finance` |
 | Value | `fde-desicon-fw-dev-e5deetfbdxfvfsfq.z01.azurefd.net` |
 | TTL | 1 Hour |
 
@@ -160,7 +171,7 @@ URI already there:
 ```powershell
 ./scripts/bootstrap-spa-registration.ps1 `
   -ApiClientId 8deb5019-590d-4ef3-bb61-f5d450d341b5 `
-  -RedirectUri "https://finance-dev.desiconapp.com"
+  -RedirectUri "https://finance.desiconapp.com"
 ```
 
 It prints `Redirect URI already registered under the SPA platform` if it has
@@ -179,8 +190,8 @@ platform logs anything, because the request never reached it.
 ### 7. Confirm
 
 ```powershell
-curl.exe -I https://finance-dev.desiconapp.com/healthz      # SPA origin
-curl.exe -I https://finance-dev.desiconapp.com/health/ready # API through /api routing
+curl.exe -I https://finance.desiconapp.com/healthz      # SPA origin
+curl.exe -I https://finance.desiconapp.com/health/ready # API through /api routing
 ```
 
 Then confirm the WAF actually covers the new domain — see the section below for
