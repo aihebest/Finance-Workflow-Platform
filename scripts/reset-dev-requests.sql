@@ -54,16 +54,19 @@
 -- unless that name matches exactly. There is no environment in which this
 -- runs by accident, and no future rename that can quietly re-arm it.
 --
---   sqlcmd -S sql-desicon-fw-dev.database.windows.net -d DesiconFinanceWorkflow \
---          -i scripts/reset-dev-requests.sql -v ConfirmServer="SQL-DESICON-FW-DEV"
+--   . .\scripts\dev-db-connect.ps1
 --
--- Run it without the variable and it tells you the exact value to pass.
+--   Invoke-Sqlcmd -ServerInstance "sql-desicon-fw-dev.database.windows.net" `
+--     -Database "DesiconFinanceWorkflow" -AccessToken $token `
+--     -InputFile "scripts/reset-dev-requests.sql" `
+--     -Variable @("ConfirmServer=SQL-DESICON-FW-DEV")
+--
+-- Omit the variable and Invoke-Sqlcmd refuses to run the batch at all, which
+-- is the correct outcome: the guard cannot be bypassed by forgetting it.
 -- ============================================================================
 
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
-
-:setvar ConfirmServer "<unset>"
 
 DECLARE @Confirm sysname = N'$(ConfirmServer)';
 
