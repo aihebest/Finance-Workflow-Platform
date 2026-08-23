@@ -112,6 +112,34 @@ This creates the custom domain in Front Door, attaches it to both routes, and
 adds it to the WAF security policy. The domain will sit in **Pending**. It is
 not live yet and the address will not resolve.
 
+### Renaming an existing custom domain
+
+Changing `custom_domain_host_name` after it has been applied is a *replacement*,
+and Azure will refuse a naive one:
+
+```
+BadRequest: This resource is still associated with a route.
+Please delete the association with the route first.
+```
+
+The module now carries `create_before_destroy = true` on the custom domain, so
+the new one is created and the routes repointed before the old is removed. If
+an apply has already failed halfway and left the old domain in place, the
+deterministic recovery is two applies rather than fighting the ordering:
+
+```powershell
+# 1. detach and remove the old domain
+#    set custom_domain_host_name = null in dev.auto.tfvars
+terraform apply
+
+# 2. create the new one
+#    set custom_domain_host_name = "finance.desiconapp.com"
+terraform apply
+```
+
+Safe to do whenever nothing has been published to DNS yet, because the domain
+being destroyed was never serving traffic.
+
 ### 2. Read the records Terraform produced
 
 ```powershell

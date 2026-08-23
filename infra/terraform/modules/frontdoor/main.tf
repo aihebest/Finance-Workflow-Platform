@@ -99,6 +99,28 @@ resource "azurerm_cdn_frontdoor_custom_domain" "this" {
     minimum_version  = "TLS12"
   }
 
+  # RENAMING THIS DOMAIN IS A REPLACEMENT, AND THE ORDER MATTERS
+  # ------------------------------------------------------------
+  # host_name and name both force replacement. Without create_before_destroy,
+  # Terraform destroys the old domain first and Azure refuses:
+  #
+  #   BadRequest: This resource is still associated with a route.
+  #   Please delete the association with the route first.
+  #
+  # -- because the routes below still carry its id at that point. The plan
+  # cannot show this. It reports "1 to destroy" and looks ordinary; the
+  # ordering only exists at apply time. Found the expensive way renaming
+  # finance-dev -> finance on 22 Aug 2026, which failed halfway.
+  #
+  # create_before_destroy inverts it: the new domain is created, the routes
+  # and the security policy are updated to point at it, and only then is the
+  # old one destroyed -- by which time nothing references it. The two names
+  # differ (derived from host_name), so both can exist for the few seconds
+  # in between.
+  lifecycle {
+    create_before_destroy = true
+  }
+
   # Azure serialises custom-domain writes behind an internal validation and
   # synchronisation process, and rejects otherwise-valid follow-up operations
   # while it runs. The provider defaults are already generous; these are here
