@@ -68,11 +68,25 @@ DECLARE @Apply bit = CASE WHEN '$(Apply)' = '1' THEN 1 ELSE 0 END;
 -- 1. What is actually missing
 -------------------------------------------------------------------------------
 
+-- Drafts are separated from the rest, deliberately.
+--
+-- A request still in DRAFT has no SubmittedAt because it has not been
+-- submitted, and it is correctly absent from a report about what is waiting on
+-- whom -- a draft waits on nobody but its author. Counting drafts alongside
+-- genuinely stranded requests inflates the finding and would send somebody
+-- chasing a defect that is not there.
+--
+-- The number that matters is GenuinelyHidden: submitted, still open, and
+-- filtered out of the pipeline report because the column was never written.
 SELECT
     'Requests with no SubmittedAt' AS Finding,
-    COUNT(*)                                                   AS Total,
-    SUM(CASE WHEN r.ClosedAt IS NULL THEN 1 ELSE 0 END)        AS StillOpen,
-    SUM(CASE WHEN r.ClosedAt IS NULL THEN 1 ELSE 0 END)        AS InvisibleInPipelineReport
+    COUNT(*) AS Total,
+    SUM(CASE WHEN r.ClosedAt IS NULL AND r.CurrentState =  'DRAFT'
+             THEN 1 ELSE 0 END) AS OpenDrafts_CorrectlyAbsent,
+    SUM(CASE WHEN r.ClosedAt IS NULL AND r.CurrentState <> 'DRAFT'
+             THEN 1 ELSE 0 END) AS GenuinelyHidden,
+    SUM(CASE WHEN r.ClosedAt IS NOT NULL
+             THEN 1 ELSE 0 END) AS AlreadyClosed
 FROM dbo.Requests AS r
 WHERE r.SubmittedAt IS NULL;
 
