@@ -264,13 +264,49 @@ Resolve-DnsName finance.desiconapp.com -Type CNAME
 curl.exe -I -k https://finance.desiconapp.com/healthz
 ```
 
-If the last one returns `200`, everything except the certificate is correct and
-the only action is to wait. `-k` is a diagnostic here and nothing else: never
-put it in a script, and do not tell anyone to click through the browser warning
-in the meantime, because that is a habit worth far more than the hour saved.
+`-k` is a diagnostic here and nothing else: never put it in a script, and do not
+tell anyone to click through the browser warning in the meantime, because that
+habit is worth far more than the hour it saves.
 
-Re-run the plain `curl.exe -I` periodically. When it succeeds, the domain is
-fully live.
+**`404 Not Found` with `X-Cache: CONFIG_NOCACHE` is the same story, not a second
+problem.** That header is Front Door reporting that no route configuration
+matched the host — not that the path is missing. While `deploymentStatus` reads
+`InProgress`, the edge has neither the certificate nor the routing for this
+hostname, so the wrong certificate and the 404 arrive together and clear
+together.
+
+Before settling in to wait, confirm the association exists in Azure rather than
+only in Terraform's state — that distinguishes "propagating" from "the apply
+did not do what the plan said":
+
+```powershell
+az afd route show `
+  --resource-group rg-desicon-fw-dev `
+  --profile-name afd-desicon-fw-dev `
+  --endpoint-name fde-desicon-fw-dev `
+  --route-name route-web-desicon-fw-dev `
+  --query "customDomains[].id" -o tsv
+```
+
+If that prints the custom domain's id, the configuration is correct and only
+distribution remains. If it prints nothing, the domain is genuinely unattached
+and waiting will not help.
+
+Then poll until it settles, rather than guessing:
+
+```powershell
+do {
+  $s = az afd custom-domain show -g rg-desicon-fw-dev `
+        --profile-name afd-desicon-fw-dev `
+        --custom-domain-name finance-desiconapp-com `
+        --query deploymentStatus -o tsv
+  "$(Get-Date -Format HH:mm:ss)  $s"
+  if ($s -eq "InProgress") { Start-Sleep -Seconds 60 }
+} while ($s -eq "InProgress")
+```
+
+When it stops reading `InProgress`, re-run the plain `curl.exe -I`. Certificate
+and routing come good in the same moment.
 
 Then confirm the WAF actually covers the new domain — see the section below for
 why this is not a formality:
