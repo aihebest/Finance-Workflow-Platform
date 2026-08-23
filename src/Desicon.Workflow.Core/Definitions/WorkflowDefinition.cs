@@ -170,6 +170,38 @@ public sealed class WorkflowTransition
     /// <summary>Named side effect, e.g. IncrementRevisionNumber.</summary>
     public string? Effect { get; init; }
 
+    /// <summary>
+    /// Whether performing this transition means you own the state's queue.
+    /// True for almost everything; false for an escape hatch available to
+    /// somebody other than the person the request is waiting on.
+    /// </summary>
+    /// <remarks>
+    /// ResolveNextActorAsync stamps Request.CurrentActorId by resolving every
+    /// transition out of the state just entered and keeping the answer only if
+    /// they all agree on one person. That is right while every way out of a
+    /// state belongs to the same someone.
+    ///
+    /// Version 5 broke that assumption. WITHDRAW leaves DEPT_HEAD with actor
+    /// Requester while VERIFY, RETURN and REJECT leave it with actor
+    /// DepartmentHeadOf, so the set held two people and resolution fell back to
+    /// null — correct by its own rule, and wrong in effect. A null
+    /// CurrentActorId emptied the approver's inbox, blanked the holder column
+    /// in the pipeline report, and left the SLA sweep unable to name who had
+    /// failed to act. Three failures, one cause, none of them near the code
+    /// that changed.
+    ///
+    /// The distinction the engine was missing: the current actor is whoever
+    /// must act to move a request FORWARD, not everyone permitted to touch it.
+    /// A requester abandoning their own claim never owned the Head of
+    /// Department's queue.
+    ///
+    /// Declared in the definition rather than inferred from the actor spec,
+    /// because "Requester transitions do not count" would be a rule that
+    /// happens to be true today — DRAFT's SUBMIT and RETURNED's RESUBMIT are
+    /// both Requester transitions that genuinely DO own their queue.
+    /// </remarks>
+    public bool OwnsQueue { get; init; } = true;
+
     public string? Note { get; init; }
 }
 

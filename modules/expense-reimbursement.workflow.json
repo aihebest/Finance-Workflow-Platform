@@ -55,7 +55,7 @@
     },
     { "from": "DEPT_HEAD", "to": "RETURNED", "action": "RETURN", "actor": { "resolver": "DepartmentHeadOf", "arg": "DepartmentId" }, "requiresComment": true },
     { "from": "DEPT_HEAD", "to": "REJECTED", "action": "REJECT", "actor": { "resolver": "DepartmentHeadOf", "arg": "DepartmentId" }, "requiresComment": true },
-    { "from": "DEPT_HEAD", "to": "WITHDRAWN", "action": "WITHDRAW", "actor": { "resolver": "Requester" }, "guard": "ActorId == RequesterId", "guardMessage": "Only the person who raised a request may withdraw it.", "requiresComment": true },
+    { "from": "DEPT_HEAD", "to": "WITHDRAWN", "action": "WITHDRAW", "actor": { "resolver": "Requester" }, "guard": "ActorId == RequesterId", "guardMessage": "Only the person who raised a request may withdraw it.", "requiresComment": true, "ownsQueue": false },
 
     {
       "from": "COST_CONTROL_VERIFY", "to": "FINANCE_APPROVE", "action": "VERIFY",
@@ -170,7 +170,7 @@
     },
 
     { "from": "RETURNED", "to": "DEPT_HEAD", "action": "RESUBMIT", "actor": { "resolver": "Requester" }, "effect": "IncrementRevisionNumber" },
-    { "from": "RETURNED", "to": "WITHDRAWN", "action": "WITHDRAW", "actor": { "resolver": "Requester" }, "guard": "ActorId == RequesterId", "guardMessage": "Only the person who raised a request may withdraw it.", "requiresComment": true }
+    { "from": "RETURNED", "to": "WITHDRAWN", "action": "WITHDRAW", "actor": { "resolver": "Requester" }, "guard": "ActorId == RequesterId", "guardMessage": "Only the person who raised a request may withdraw it.", "requiresComment": true, "ownsQueue": false }
   ],
 
   "notifications": [

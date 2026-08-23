@@ -141,6 +141,14 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         var claim3 = await DriveToDeptHeadAsync("Yes", 500m);
         await StepAsync(() => WorkflowSteps.ActionAsync(deptHeadClient, claim3, "REJECT", comment: "Not a valid claim."), "DEPT_HEAD", "REJECT", "REJECTED");
 
+        // WITHDRAW, from both points it is offered (version 5). claim2 is
+        // already sitting at RETURNED from the sequence above, which is exactly
+        // the case: handed back, and the requester decides not to bother.
+        await StepAsync(() => WorkflowSteps.ActionAsync(requesterClient, claim2, "WITHDRAW", comment: "Not worth reclaiming."), "RETURNED", "WITHDRAW", "WITHDRAWN");
+
+        var claim4 = await DriveToDeptHeadAsync("Yes", 500m);
+        await StepAsync(() => WorkflowSteps.ActionAsync(requesterClient, claim4, "WITHDRAW", comment: "Raised in error."), "DEPT_HEAD", "WITHDRAW", "WITHDRAWN");
+
         // FINANCE_VERIFY RETURN (Incomplete receipts).
         var claim5 = await DriveToCostControlVerifyAsync("Incomplete", 500m);
         await StepAsync(() => WorkflowSteps.ActionAsync(costControlClient, claim5, "RETURN", comment: "Receipts incomplete."), "COST_CONTROL_VERIFY", "RETURN", "RETURNED");
@@ -365,6 +373,15 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         // DEPT_HEAD REJECT.
         var advH = await DriveToDeptHeadAsync("DH reject advance", 1_000m);
         await StepAsync(() => WorkflowSteps.ActionAsync(deptHeadClient, advH, "REJECT", comment: "Not approved."), "DEPT_HEAD", "REJECT", "REJECTED");
+
+        // WITHDRAW (version 5). advG is already at RETURNED from above.
+        // This is the module and the step where the mistake that prompted
+        // version 5 was actually made: ADV-2026-000001, raised in error, with
+        // no way out that did not involve asking an approver to reject it.
+        await StepAsync(() => WorkflowSteps.ActionAsync(requesterClient, advG, "WITHDRAW", comment: "Abandoning this advance."), "RETURNED", "WITHDRAW", "WITHDRAWN");
+
+        var advH2 = await DriveToDeptHeadAsync("Withdraw advance", 1_000m);
+        await StepAsync(() => WorkflowSteps.ActionAsync(requesterClient, advH2, "WITHDRAW", comment: "Raised in error."), "DEPT_HEAD", "WITHDRAW", "WITHDRAWN");
 
         // FINANCE_VERIFY RETURN.
         var advI = await DriveToCostControlVerifyAsync("FV return advance", 1_000m);
