@@ -207,4 +207,81 @@ public sealed class WithdrawTests : IntegrationTestBase
                 "approver who never made it");
         });
     }
+
+    /// <summary>
+    /// The same two paths on CASH_ADVANCE — the module where the mistake that
+    /// prompted all this was actually made.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_cash_advance_can_be_withdrawn_from_the_first_approval_and_after_return(bool viaReturn)
+    {
+        var org = await WithDbAsync(db => WorkflowSteps.CreateOrgChartAsync(
+            db, viaReturn ? "WD-ADV-RET" : "WD-ADV-HEAD"));
+
+        var id = await WorkflowSteps.CreateAndSubmitCashAdvanceAsync(
+            Fixture, org, "Raised in error", 330_000m);
+
+        if (viaReturn)
+        {
+            await (await WorkflowSteps.ActionAsync(
+                Fixture.CreateClient(org.DeptHead), id, "RETURN",
+                comment: "Please correct the purpose.")).ShouldSucceedAsync();
+        }
+
+        await (await WorkflowSteps.ActionAsync(
+            Fixture.CreateClient(org.Requester), id, "WITHDRAW",
+            comment: "Raised in error.")).ShouldSucceedAsync();
+
+        await WithDbAsync(async db =>
+        {
+            var request = await db.Requests.AsNoTracking().SingleAsync(r => r.RequestId == id);
+
+            request.CurrentState.Should().Be("WITHDRAWN");
+            request.ClosedAt.Should().NotBeNull();
+        });
+    }
+
+    /// <summary>
+    /// That adding an escape hatch did not quietly cost the approver their
+    /// queue.
+    /// </summary>
+    /// <remarks>
+    /// This is the regression the five tests above did not catch and the rest
+    /// of the suite did — loudly, in three places at once.
+    ///
+    /// `ResolveNextActorAsync` stamps `CurrentActorId` by resolving every
+    /// transition out of the state just entered and keeping the answer only if
+    /// they all agree on one person. WITHDRAW leaves DEPT_HEAD with actor
+    /// `Requester` while VERIFY, RETURN and REJECT leave it with
+    /// `DepartmentHeadOf`, so the set held two people and the answer collapsed
+    /// to null. The Head of Department's inbox emptied, the pipeline report's
+    /// holder column went blank, and the SLA sweep could no longer name who
+    /// had failed to act. None of those failures was anywhere near the change
+    /// that caused them.
+    ///
+    /// Fixed by `WorkflowTransition.OwnsQueue`. Asserted here so the next
+    /// escape hatch cannot repeat it silently.
+    /// </remarks>
+    [Fact]
+    public async Task Offering_withdrawal_does_not_take_the_state_out_of_its_approvers_queue()
+    {
+        var org = await WithDbAsync(db => WorkflowSteps.CreateOrgChartAsync(db, "WD-QUEUE"));
+        var beneficiary = await WithDbAsync(db => TestData.CreateEmployeeBeneficiaryAsync(db, org.Requester));
+
+        var id = await WorkflowSteps.CreateAndSubmitExpenseAsync(
+            Fixture, org, beneficiary.Id, "Yes",
+            TestData.ExpenseLine("Still the head's to approve", new DateOnly(2026, 3, 9), 14_000m));
+
+        await WithDbAsync(async db =>
+        {
+            var request = await db.Requests.AsNoTracking().SingleAsync(r => r.RequestId == id);
+
+            request.CurrentState.Should().Be("DEPT_HEAD");
+            request.CurrentActorId.Should().Be(org.DeptHead.Id,
+                "WITHDRAW is available to the requester here, but the request is still waiting on " +
+                "the Head of Department — an escape hatch does not transfer ownership of the queue");
+        });
+    }
 }

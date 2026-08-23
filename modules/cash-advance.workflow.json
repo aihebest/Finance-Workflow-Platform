@@ -185,6 +185,7 @@
       "guard": "ActorId == RequesterId",
       "guardMessage": "Only the person who raised a request may withdraw it.",
       "requiresComment": true,
+      "ownsQueue": false,
       "note": "Available only before the Head of Department has acted. Once it has moved to Cost Control somebody else has spent time on it, and withdrawing would discard that silently."
     },
     {
@@ -422,6 +423,7 @@
       "guard": "ActorId == RequesterId",
       "guardMessage": "Only the person who raised a request may withdraw it.",
       "requiresComment": true,
+      "ownsQueue": false,
       "note": "A returned request is already sitting with the requester. Abandoning it should not require asking an approver to reject something they handed back."
     }
   ],

@@ -586,6 +586,17 @@ public sealed class RequestActionService
 
         foreach (var transition in definition.TransitionsFrom(request.CurrentState))
         {
+            // An escape hatch does not make its user the queue holder. WITHDRAW
+            // leaves DEPT_HEAD with actor Requester while every other way out
+            // belongs to the Head of Department; counting it here put two
+            // people in the set and collapsed the answer to null, which emptied
+            // the approver's inbox and blanked the pipeline report's holder
+            // column. See WorkflowTransition.OwnsQueue.
+            if (!transition.OwnsQueue)
+            {
+                continue;
+            }
+
             if (transition.Actor.Resolver is null)
             {
                 return null;
