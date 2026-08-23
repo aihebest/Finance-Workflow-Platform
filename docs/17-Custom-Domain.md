@@ -68,13 +68,34 @@ site rather than an error.
 
 ### 1. Apply
 
+Run the IP sync from the **repository root**, not from the environment
+directory. It takes `-Environment` (default `dev`) and finds the tfvars itself,
+so there is no relative path to get wrong:
+
 ```powershell
+# from the repo root
+./scripts/sync-deployer-ip.ps1
+
 cd infra/terraform/environments/dev
-./../../../scripts/sync-deployer-ip.ps1     # your IP rotates on this ISP
-terraform apply
+terraform plan     # read it
+terraform apply    # then type: yes
 ```
 
+**Do not skip the IP sync, and do not skip the plan.**
+
+`deployer_ip_addresses` in `dev.auto.tfvars` is an allow-list containing the
+address Terraform itself calls from. Dev has no private endpoints, so Key Vault,
+SQL and Storage are reached over the public internet through that list. If the
+value is stale — and it rotates on this ISP, and changes whenever the network
+changes — Terraform rewrites the Key Vault ACL early in the graph without its
+own address in it, and then locks itself out. The failure surfaces several steps
+later as `403 ForbiddenByFirewall ... caller is not a trusted service`, which
+reads like a permissions problem and is not one.
+
 At the `Enter a value:` prompt, type `yes` — the word `yes`, not the command.
+
+Avoid `-auto-approve` here. This apply changes both Front Door routes and the
+WAF security policy; the plan is worth twenty seconds of reading.
 
 This creates the custom domain in Front Door, attaches it to both routes, and
 adds it to the WAF security policy. The domain will sit in **Pending**. It is
