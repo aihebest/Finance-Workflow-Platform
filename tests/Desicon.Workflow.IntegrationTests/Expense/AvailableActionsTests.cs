@@ -54,17 +54,38 @@ public sealed class AvailableActionsTests : IntegrationTestBase
             Fixture, org, beneficiary.Id, "Yes",
             TestData.ExpenseLine("Router", new DateOnly(2026, 8, 8), 40_000m));
 
-        // The claim is at DEPT_HEAD. The definition gives that state three
-        // transitions -- VERIFY, RETURN, REJECT -- all resolved to the
-        // requester's line manager.
+        // The claim is at DEPT_HEAD. The definition gives that state four
+        // transitions, but only three belong to this approver -- VERIFY,
+        // RETURN and REJECT, all resolved to the requester's Head of
+        // Department. The fourth is WITHDRAW, which is the requester's own and
+        // is correctly absent here.
         var forManager = await (await Fixture.CreateClient(org.DeptHead)
             .GetAsync($"/api/v1/requests/{id}")).ShouldSucceedAsync();
 
         ActionsOf(forManager).Should().BeEquivalentTo("VERIFY", "RETURN", "REJECT");
     }
 
+    /// <summary>
+    /// The requester may take their claim back. They may not move it forward.
+    /// </summary>
+    /// <remarks>
+    /// This asserted an empty list until 23 Aug 2026, and the empty list was
+    /// the substance of the separation of duties the paper form achieved with
+    /// two signature boxes.
+    ///
+    /// Workflow version 5 offers WITHDRAW here, so "nothing" is no longer the
+    /// right expectation — but the control it was protecting is unchanged, and
+    /// deleting the assertion would have thrown it away along with the stale
+    /// part. Withdrawing is not approving: it disposes of your own request and
+    /// advances nothing.
+    ///
+    /// So the test now names what must be absent rather than requiring absence
+    /// of everything. An empty list would have caught a future VERIFY leaking
+    /// to the requester; so does this, and it survives the next legitimate
+    /// self-service action being added.
+    /// </remarks>
     [Fact]
-    public async Task The_requester_waiting_on_someone_else_is_offered_nothing()
+    public async Task The_requester_waiting_on_someone_else_may_withdraw_but_not_approve()
     {
         var org = await WithDbAsync(db => WorkflowSteps.CreateOrgChartAsync(db, "ACTIONS-B"));
         var beneficiary = await WithDbAsync(db => TestData.CreateEmployeeBeneficiaryAsync(db, org.Requester));
@@ -73,14 +94,18 @@ public sealed class AvailableActionsTests : IntegrationTestBase
             Fixture, org, beneficiary.Id, "Yes",
             TestData.ExpenseLine("Router", new DateOnly(2026, 8, 8), 40_000m));
 
-        // The requester can read their own claim -- and must not be offered a
-        // way to verify it. An empty list here is the substance of the
-        // separation of duties the paper form achieved with two signature
-        // boxes.
         var forRequester = await (await Fixture.CreateClient(org.Requester)
             .GetAsync($"/api/v1/requests/{id}")).ShouldSucceedAsync();
 
-        ActionsOf(forRequester).Should().BeEmpty();
+        var actions = ActionsOf(forRequester);
+
+        actions.Should().BeEquivalentTo(new[] { "WITHDRAW" },
+            "the only thing a requester may do to a claim waiting on their Head of Department is " +
+            "take it back");
+
+        actions.Should().NotContain(new[] { "VERIFY", "RETURN", "REJECT" },
+            "those are the Head of Department's decisions; offering any of them to the requester " +
+            "would collapse the two signature boxes DEL-AC-FRM-002 keeps apart");
     }
 
     /// <summary>
