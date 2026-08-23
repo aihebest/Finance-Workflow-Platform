@@ -4,13 +4,13 @@
   "displayName": "Expense Form (Cash / Bank)",
   "formCode": "DEL-AC-FRM-002",
   "formRevision": "05",
-  "version": 4,
-  "effectiveFrom": "2026-08-19T00:00:00Z",
+  "version": 5,
+  "effectiveFrom": "2026-08-23T00:00:00Z",
   "numberFormat": "EXP-{yyyy}-{seq:000000}",
   "workingCalendar": "NG_STANDARD",
   "slaPausesOutsideWorkingHours": true,
 
-  "amendment": "19 Aug 2026: version 4 removes the LINE_MANAGER step. Desicon has ONE approval before Cost Control -- the Head of Department -- confirmed against the list of requesting accounts and their approvers. Version 3 modelled two, a line manager and then a department head, which for Desicon would have meant the same person approving the same request twice. Two clicks for one judgement teaches people that a step is ceremony, and a step people treat as ceremony is not a control. No version 3 file is retained because the database was reset for UAT and nothing was ever pinned to it; the next change after UAT begins must keep its predecessor. See docs/15 section 3.",
+  "amendment": "23 Aug 2026: version 5 adds WITHDRAW. A requester may take back their own request while it is still at the first approval step, or after it has been returned to them. Until now nothing could be withdrawn: ADV-2026-000001 was raised in error and the only way out was to ask the Head of Department to reject it, which records an approver's refusal for a decision no approver made. WITHDRAWN is a separate terminal state for exactly that reason -- 'the requester took this back' and 'an approver refused this' are different facts about different people. Guarded on ActorId == RequesterId, so it is only ever self-service; DEPT_HEAD and RETURNED only, so no work anyone else has done is ever discarded. See docs/15 section 5c. PREVIOUS: 19 Aug 2026: version 4 removes the LINE_MANAGER step. Desicon has ONE approval before Cost Control -- the Head of Department -- confirmed against the list of requesting accounts and their approvers. Version 3 modelled two, a line manager and then a department head, which for Desicon would have meant the same person approving the same request twice. Two clicks for one judgement teaches people that a step is ceremony, and a step people treat as ceremony is not a control. No version 3 file is retained because the database was reset for UAT and nothing was ever pinned to it; the next change after UAT begins must keep its predecessor. See docs/15 section 3.",
 
   "note": "Version 3 splits FinanceOfficer into CostControlOfficer and TreasuryOfficer. Version 2 recorded that Cost Control and the Accounts Officer who posts in Business Central were the same people; they are not. They are separate desks with separate mailboxes (costcontrol@ and treasury@), and one role covering both meant a single person could verify the costing, post it, and execute the payment -- with the posting notification going to the wrong desk, so the person who had to act was never told. Version 2 remains published for requests already open under it; see expense-reimbursement.v2.workflow.json and docs/15-Go-Live-Checklist.md section 3.",
 
@@ -34,6 +34,7 @@
     { "key": "AWAITING_ACK", "label": "Awaiting Recipient Acknowledgement", "sla": { "hours": 48, "reminderEveryHours": 24 } },
     { "key": "RETURNED", "type": "rework", "label": "Returned for Correction" },
     { "key": "REJECTED", "type": "terminal", "label": "Rejected" },
+    { "key": "WITHDRAWN", "type": "terminal", "label": "Withdrawn by Requester", "note": "Deliberately not REJECTED. A rejection is an approver's decision; a withdrawal is the requester changing their own mind before anyone acted." },
     { "key": "CLOSED", "type": "terminal", "label": "Closed" }
   ],
 
@@ -54,6 +55,7 @@
     },
     { "from": "DEPT_HEAD", "to": "RETURNED", "action": "RETURN", "actor": { "resolver": "DepartmentHeadOf", "arg": "DepartmentId" }, "requiresComment": true },
     { "from": "DEPT_HEAD", "to": "REJECTED", "action": "REJECT", "actor": { "resolver": "DepartmentHeadOf", "arg": "DepartmentId" }, "requiresComment": true },
+    { "from": "DEPT_HEAD", "to": "WITHDRAWN", "action": "WITHDRAW", "actor": { "resolver": "Requester" }, "guard": "ActorId == RequesterId", "guardMessage": "Only the person who raised a request may withdraw it.", "requiresComment": true },
 
     {
       "from": "COST_CONTROL_VERIFY", "to": "FINANCE_APPROVE", "action": "VERIFY",
@@ -167,7 +169,8 @@
       "note": "The beneficiary disputes receipt. Returns the item to Finance with the dispute recorded."
     },
 
-    { "from": "RETURNED", "to": "DEPT_HEAD", "action": "RESUBMIT", "actor": { "resolver": "Requester" }, "effect": "IncrementRevisionNumber" }
+    { "from": "RETURNED", "to": "DEPT_HEAD", "action": "RESUBMIT", "actor": { "resolver": "Requester" }, "effect": "IncrementRevisionNumber" },
+    { "from": "RETURNED", "to": "WITHDRAWN", "action": "WITHDRAW", "actor": { "resolver": "Requester" }, "guard": "ActorId == RequesterId", "guardMessage": "Only the person who raised a request may withdraw it.", "requiresComment": true }
   ],
 
   "notifications": [

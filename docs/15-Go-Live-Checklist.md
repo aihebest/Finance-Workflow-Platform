@@ -538,10 +538,28 @@ sit still. `DEPT_HEAD` has a 24-hour SLA with `escalateTo: COST_CONTROL_VERIFY`,
 so an abandoned error escalates itself into the next desk's queue rather than
 ageing quietly.
 
-- [ ] Decide whether requesters should be able to withdraw a request while it
-      is still at the first approval step. A `WITHDRAW` transition from
-      `DEPT_HEAD` to a terminal state, guarded on `ActorId == RequesterId`, is
-      a small change and would remove a class of avoidable interruption
+- [x] ~~Decide whether requesters should be able to withdraw a request while it
+      is still at the first approval step~~ — **decided 23 Aug 2026: yes.**
+      Built as workflow **version 5** on branch `feat/withdraw-own-request`,
+      **not yet merged.**
+
+      `WITHDRAW` from `DEPT_HEAD` and from `RETURNED`, actor `Requester`,
+      guarded `ActorId == RequesterId`, comment required, landing in a new
+      terminal state `WITHDRAWN`.
+
+      `WITHDRAWN` rather than reusing `REJECTED`, deliberately: a rejection is
+      an approver's decision and belongs to that approver. Recording a
+      withdrawal as one would put a refusal in a tamper-evident trail against
+      somebody who never made it — the same attribution problem as §1c, from
+      the other direction.
+
+      Not available past `DEPT_HEAD`. Once Cost Control holds it, someone else
+      has spent time on it, and the way out is a rejection somebody signs.
+
+      Held back from `main` until after the Monday walkthrough. Version pinning
+      means requests raised under v4 — including `ADV-2026-000002` — keep the
+      process they were raised under, so merging changes nothing already in
+      flight.
 
 Worth noting this is not a deviation from DEL-AC-FRM-003. The paper form has no
 concept of withdrawal either — but on paper you simply do not hand the form in,
