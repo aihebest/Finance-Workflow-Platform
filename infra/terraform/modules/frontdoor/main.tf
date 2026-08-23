@@ -52,6 +52,65 @@ resource "azurerm_cdn_frontdoor_endpoint" "this" {
   tags = var.tags
 }
 
+# ── Custom domain ─────────────────────────────────────────────────────────
+# The generated hostname (fde-desicon-fw-dev-e5deetfbdxfvfsfq.z01.azurefd.net)
+# is unreadable, unmemorable, and about to appear in every approval email this
+# platform sends. A Head of Department on a phone should see an address that
+# looks like Desicon.
+#
+# Additive by design. Both routes keep link_to_default_domain = true, so the
+# azurefd.net hostname continues to answer -- anyone holding an old link, and
+# any notification already sent, keeps working.
+#
+# ORDER OF OPERATIONS, WHICH IS THE PART THAT CATCHES PEOPLE
+# ----------------------------------------------------------
+# Creating this resource does not make the domain live. It returns a
+# validation_token and sits in Pending until ownership is proved:
+#
+#   1. apply           -> domain created, validation_token produced
+#   2. publish TXT     -> _dnsauth.finance-dev in desiconapp.com
+#   3. Azure validates -> asynchronous, typically ~15 minutes
+#   4. publish CNAME   -> finance-dev -> the azurefd.net hostname
+#
+# The CNAME is deliberately last. Pointed at Front Door before the domain is
+# associated with a route, it resolves and then serves an error, which looks
+# exactly like a broken deployment to anyone who tries it.
+#
+# dns_zone_id is not set, and should not be: desiconapp.com is managed at
+# Microsoft 365, not in an Azure DNS zone, so there is no zone id to give it.
+# Records are published in the Microsoft 365 admin center and emitted here as
+# an output so nobody has to hunt for the token.
+#
+# Note that Front Door's TXT record is named _dnsauth.<label>. The existing
+# records on this domain use asuid.<label>, which is App Service and Static
+# Web Apps domain verification -- a different mechanism for a different
+# service. Copying the asuid pattern here produces a domain that never
+# validates and gives no reason why.
+resource "azurerm_cdn_frontdoor_custom_domain" "this" {
+  count = var.custom_domain_host_name == null ? 0 : 1
+
+  name                     = replace(var.custom_domain_host_name, ".", "-")
+  cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.this.id
+  host_name                = var.custom_domain_host_name
+  dns_zone_id              = var.custom_domain_dns_zone_id
+
+  tls {
+    certificate_type = "ManagedCertificate" # Azure issues and rotates it; no secret to expire unnoticed.
+    minimum_version  = "TLS12"
+  }
+
+  # Azure serialises custom-domain writes behind an internal validation and
+  # synchronisation process, and rejects otherwise-valid follow-up operations
+  # while it runs. The provider defaults are already generous; these are here
+  # so a slow validation reads as "still working" rather than failing an apply
+  # halfway and leaving the profile mid-change.
+  timeouts {
+    create = "2h"
+    update = "2h"
+    delete = "2h"
+  }
+}
+
 resource "azurerm_cdn_frontdoor_origin_group" "this" {
   name                     = "og-${var.name}"
   cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.this.id
@@ -138,6 +197,11 @@ resource "azurerm_cdn_frontdoor_route" "this" {
   cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.this.id
   cdn_frontdoor_origin_ids      = [azurerm_cdn_frontdoor_origin.this.id]
 
+  # The API must answer on the custom domain too. The SPA calls /api on its
+  # own origin (VITE_API_BASE_URL is empty), so a custom domain attached only
+  # to the SPA route would serve the app and 404 every call it makes.
+  cdn_frontdoor_custom_domain_ids = azurerm_cdn_frontdoor_custom_domain.this[*].id
+
   patterns_to_match      = var.web_origin_hostname == null ? ["/*"] : ["/api/*", "/health/*"]
   supported_protocols    = ["Http", "Https"]
   forwarding_protocol    = "HttpsOnly"
@@ -153,6 +217,8 @@ resource "azurerm_cdn_frontdoor_route" "web" {
   cdn_frontdoor_endpoint_id     = azurerm_cdn_frontdoor_endpoint.this.id
   cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.web[0].id
   cdn_frontdoor_origin_ids      = [azurerm_cdn_frontdoor_origin.web[0].id]
+
+  cdn_frontdoor_custom_domain_ids = azurerm_cdn_frontdoor_custom_domain.this[*].id
 
   patterns_to_match      = ["/*"]
   supported_protocols    = ["Http", "Https"]
@@ -254,6 +320,33 @@ resource "azurerm_cdn_frontdoor_security_policy" "this" {
         domain {
           cdn_frontdoor_domain_id = azurerm_cdn_frontdoor_endpoint.this.id
         }
+
+        # THE CUSTOM DOMAIN MUST BE LISTED HERE TOO.
+        #
+        # A WAF policy in Front Door protects the domains it is associated
+        # with, not the profile. Add a custom domain to the routes and leave
+        # this block naming only the endpoint, and the result is a site that
+        # works perfectly on the new address with no firewall in front of it
+        # -- while the portal still shows a Premium profile, a Prevention-mode
+        # policy, and managed rule sets enabled. Every dashboard stays green.
+        #
+        # It would also be silently self-inflicted: the same WAF that blocked
+        # every receipt upload in August would stop blocking anything on the
+        # address everyone had moved to, and the only signal would be the
+        # absence of log entries nobody reads when things are working.
+        #
+        # The dynamic block below is what makes this automatic: any
+        # environment that sets custom_domain_host_name gets the association
+        # without anyone remembering to add it. Verify after apply with the
+        # az command in docs/17 -- the association is worth confirming by
+        # looking, because its absence is invisible from the outside.
+        dynamic "domain" {
+          for_each = azurerm_cdn_frontdoor_custom_domain.this
+          content {
+            cdn_frontdoor_domain_id = domain.value.id
+          }
+        }
+
         patterns_to_match = ["/*"]
       }
     }

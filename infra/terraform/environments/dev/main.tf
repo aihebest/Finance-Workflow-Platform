@@ -176,6 +176,10 @@ module "frontdoor" {
   # module outputs here would be a genuine cycle.
   web_origin_hostname = local.web_default_hostname
 
+  # Additive. The azurefd.net hostname keeps answering, so links already sent
+  # and anyone mid-walkthrough are unaffected.
+  custom_domain_host_name = var.custom_domain_host_name
+
   log_analytics_workspace_id = module.monitoring.log_analytics_workspace_id
   tags                       = local.tags
 }
