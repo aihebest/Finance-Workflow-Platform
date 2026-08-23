@@ -25,6 +25,15 @@ public sealed class AvailableActionsTests : IntegrationTestBase
 {
     public AvailableActionsTests(WorkflowApiFixture fixture) : base(fixture) { }
 
+    /// <summary>The only action a requester may take on a claim that is waiting
+    /// on somebody else. Fields rather than inline array literals because
+    /// CA1861 is an error here.</summary>
+    private static readonly string[] WithdrawOnly = { "WITHDRAW" };
+
+    /// <summary>The Head of Department's decisions. None of these may ever be
+    /// offered to the person who raised the request.</summary>
+    private static readonly string[] ApproverDecisions = { "VERIFY", "RETURN", "REJECT" };
+
     /// <summary>Actions the caller is authorised for, enabled or not.</summary>
     private static string[] ActionsOf(JsonElement detail) =>
         detail.GetProperty("availableActions").EnumerateArray()
@@ -99,11 +108,11 @@ public sealed class AvailableActionsTests : IntegrationTestBase
 
         var actions = ActionsOf(forRequester);
 
-        actions.Should().BeEquivalentTo(new[] { "WITHDRAW" },
+        actions.Should().BeEquivalentTo(WithdrawOnly,
             "the only thing a requester may do to a claim waiting on their Head of Department is " +
             "take it back");
 
-        actions.Should().NotContain(new[] { "VERIFY", "RETURN", "REJECT" },
+        actions.Should().NotContain(ApproverDecisions,
             "those are the Head of Department's decisions; offering any of them to the requester " +
             "would collapse the two signature boxes DEL-AC-FRM-002 keeps apart");
     }
