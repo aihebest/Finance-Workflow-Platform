@@ -567,6 +567,64 @@ and the platform has no equivalent of not handing it in.
 
 ---
 
+## 5d. The buttons offered and the actions permitted are computed differently
+
+Found 23 August 2026, trying to reject `ADV-2026-000001`.
+
+The request detail page offered **Verify** (disabled, with a reason), **Return
+for correction** and **Reject**. Return and Reject looked ordinary. Both were
+refused, silently as far as the click was concerned, and the request stayed at
+`DEPT_HEAD`.
+
+The reason was already on the screen, at the top, phrased as a page-level
+notice:
+
+> Self-approval blocked: the acting user is this request's own requester.
+
+That is `RequestActionService.EvaluatePolicyViolation` — a defence-in-depth
+layer that re-checks self-approval and maker-checker independently of the
+definition's own guards, so that a misconfigured or forged definition cannot
+authorise what policy forbids. It is a good control and it worked.
+
+**But `GetAvailableActionsAsync` does not run it.** Availability is computed
+from the definition's guards alone. `REJECT` and `RETURN` carry no guard — only
+`VERIFY` does — so the API reports them as available, and the engine then
+refuses them at execution.
+
+Two layers, the same question, different answers. The user sees a button, a
+banner that appears unrelated to it, and no response to their click.
+
+### Why it deadlocked
+
+`REJECT`'s actor is `DepartmentHeadOf(DepartmentId)`. The requester *was* the
+Head of Department of their own department, so nobody else resolves as an
+eligible actor either. The request could not be cleared by anyone:
+
+- the requester is blocked by the self-approval policy
+- no other person satisfies the actor spec
+
+It unsticks itself after 24 hours — `DEPT_HEAD` escalates to
+`COST_CONTROL_VERIFY`, where a different desk can reject it. That the SLA
+escalation is what rescues this is not a coincidence; it is the only mechanism
+in the system for a queue nobody can act on.
+
+`WITHDRAW` (version 5, branch `feat/withdraw-own-request`) also resolves it,
+and now looks less like a convenience: `Requester` is in
+`SelfServiceResolvers`, so the self-approval policy permits it by design. The
+feature built last night for tidiness turns out to be the only self-service
+route out of a genuine deadlock.
+
+- [ ] Make `GetAvailableActionsAsync` run `EvaluatePolicyViolation` and return
+      policy-blocked actions as *disabled with a reason*, the way guard-blocked
+      ones already are. The page already knows how to render that — `Verify`
+      does it correctly on the same screen
+- [ ] Nothing should render as an enabled button that the engine will refuse.
+      A control that stops the wrong thing is worth having; one that stops it
+      without saying so teaches people the system is unreliable
+
+Not a Monday blocker: it only bites when the acting user is also the requester,
+which is not the walkthrough. It bites the moment a Head of Department raises
+anything for themselves.
 ## 5e. Cost Control cannot correct a miscoded request at its own step
 
 Raised by Cost Control on 24 August 2026, alongside three defects that have
