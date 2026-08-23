@@ -487,10 +487,19 @@ That is the same failure this report was built to end, wearing the report's own
 uniform. A zero because nothing is there is fine. A zero because the rows were
 filtered out is worse than no number, because it is believed.
 
-- [ ] Run `scripts/backfill-submitted-at.sql` against **each** environment
-      before trusting the pipeline report there — dev, then uat, then prd
+- [ ] Run `scripts/backfill-submitted-at.sql` before trusting the pipeline
+      report:
 
-It reports by default and writes nothing until `-v Apply=1`. The value is
+      ```powershell
+      . .\scripts\dev-db-connect.ps1
+
+      Invoke-Sqlcmd -ServerInstance "sql-desicon-fw-dev.database.windows.net" `
+        -Database "DesiconFinanceWorkflow" -AccessToken $token `
+        -InputFile "scripts/backfill-submitted-at.sql" `
+        -Variable @("Apply=0") -Verbose
+      ```
+
+It reports by default and writes nothing until `Apply=1`. The value is
 reconstructed from `AuditEvents` — the earliest departure from `DRAFT`, which is
 append-only and hash-chained, so it is recovered from evidence rather than
 estimated. `RESUBMIT` is deliberately not matched, so a returned-and-resubmitted

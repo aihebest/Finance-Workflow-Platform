@@ -44,18 +44,25 @@
 -- Only ever fills NULLs -- it cannot overwrite a value the application wrote,
 -- so it is safe to run twice.
 --
--- Usage:
---   sqlcmd ... -i scripts/backfill-submitted-at.sql              -- report only
---   sqlcmd ... -i scripts/backfill-submitted-at.sql -v Apply=1   -- write
+-- Usage -- Invoke-Sqlcmd, not sqlcmd. sqlcmd is not installed on this
+-- machine and every other .sql in this directory is run the same way:
+--
+--   . .\scripts\dev-db-connect.ps1      # dot-source: refreshes firewall + $token
+--
+--   Invoke-Sqlcmd -ServerInstance "sql-desicon-fw-dev.database.windows.net" `
+--     -Database "DesiconFinanceWorkflow" -AccessToken $token `
+--     -InputFile "scripts/backfill-submitted-at.sql" `
+--     -Variable @("Apply=0") -Verbose        # report only
+--
+-- Apply=1 to write. The variable is required, deliberately: Invoke-Sqlcmd
+-- fails on an undefined $(Apply) rather than guessing, and failing to run is
+-- the safe outcome for a script that can modify a column the reports depend
+-- on.
 -------------------------------------------------------------------------------
 
 SET NOCOUNT ON;
 
-DECLARE @Apply bit = 0;
-
--- Picks up -v Apply=1 when supplied; harmless when it is not.
-:setvar Apply 0
-SET @Apply = CASE WHEN '$(Apply)' = '1' THEN 1 ELSE 0 END;
+DECLARE @Apply bit = CASE WHEN '$(Apply)' = '1' THEN 1 ELSE 0 END;
 
 -------------------------------------------------------------------------------
 -- 1. What is actually missing
