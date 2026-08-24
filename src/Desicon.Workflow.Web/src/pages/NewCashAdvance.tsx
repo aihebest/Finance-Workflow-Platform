@@ -214,7 +214,24 @@ export function NewCashAdvance() {
         {/* Allocation is form-level here, unlike the expense form where it is
             per line. Radio rather than checkbox: the paper form's two boxes
             are alternatives, and a form that allowed both would be capturing
-            something the process has no meaning for. */}
+            something the process has no meaning for.
+
+            THE CODE BOXES USED TO BE DISABLED UNTIL THEIR RADIO WAS PICKED
+            --------------------------------------------------------------
+            Reported by Cost Control on 24 August 2026: "The system was not
+            giving the flexibility in inputting the project Code or Cost
+            Centre."
+
+            It was not a restriction anyone designed. A disabled input does not
+            receive clicks, so clicking the very box you want to type in did
+            nothing at all -- no focus, no cursor, no message. You had to find
+            and hit the small radio circle first, and nothing on screen said
+            so. The form looked like it was refusing you.
+
+            Now both boxes stay enabled and typing in one selects it. That is
+            how the paper form works: you write in the box you mean, and the
+            tick follows. The radios remain, because the two options are still
+            alternatives and only the selected code is submitted. */}
         <div className="mt-3 space-y-3">
           <label className="flex items-center gap-3 text-sm text-gray-800">
             <input
@@ -229,9 +246,13 @@ export function NewCashAdvance() {
               aria-label="Project code"
               value={projectCode}
               onChange={(e) => setProjectCode(e.target.value)}
-              disabled={allocationType !== "Project"}
+              onFocus={() => setAllocationType("Project")}
               placeholder="Project code"
-              className="min-h-11 w-56 rounded border border-gray-300 p-2 text-sm disabled:bg-gray-50 disabled:text-gray-400"
+              className={`min-h-11 w-56 rounded border p-2 text-sm ${
+                allocationType === "Project"
+                  ? "border-gray-300"
+                  : "border-gray-200 text-gray-500"
+              }`}
             />
           </label>
 
@@ -248,9 +269,13 @@ export function NewCashAdvance() {
               aria-label="Cost centre code"
               value={costCentreCode}
               onChange={(e) => setCostCentreCode(e.target.value)}
-              disabled={allocationType !== "CostCentre"}
+              onFocus={() => setAllocationType("CostCentre")}
               placeholder="Cost centre code"
-              className="min-h-11 w-56 rounded border border-gray-300 p-2 text-sm disabled:bg-gray-50 disabled:text-gray-400"
+              className={`min-h-11 w-56 rounded border p-2 text-sm ${
+                allocationType === "CostCentre"
+                  ? "border-gray-300"
+                  : "border-gray-200 text-gray-500"
+              }`}
             />
           </label>
         </div>

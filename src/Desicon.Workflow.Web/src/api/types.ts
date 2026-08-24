@@ -157,10 +157,13 @@ export interface AvailableAction {
 /**
  * One row of DEL-AC-FRM-003's table.
  *
- * The paper form has a naira box and a separate kobo box rather than a
- * decimal, so the capture screen presents two inputs and combines them here.
- * `decimal(18,2)` storage is right; the input shape is what makes the form
- * recognisable.
+ * `amount` is naira, kobo after the decimal point. The capture screen used to
+ * present the printed form's separate ₦ and k boxes; it no longer does, and
+ * the reason is worth keeping — people read the narrow first box as a
+ * quantity, and a ₦20,200 advance was submitted as ₦209.00 with nothing
+ * refusing 13,000 kobo. See NewCashAdvance.tsx.
+ *
+ * `decimal(18,2)` storage was always right and did not change.
  */
 export interface AdvanceLineInput {
   description: string;
@@ -226,4 +229,23 @@ export interface ExpenseDraftInput {
   beneficiaryId?: string;
   receiptStatus: "Yes" | "No" | "Incomplete";
   lines: ExpenseLineInput[];
+}
+
+/** One request this person has acted on, and what they did to it. */
+export interface MyApproval {
+  requestId: string;
+  requestNumber: string;
+  moduleKey: string;
+  currentState: string;
+  totalAmountNgn: number;
+  requester: string | null;
+  isClosed: boolean;
+  myAction: string;
+  myActionAt: string;
+  myActionMovedItTo: string | null;
+}
+
+export interface MyApprovals {
+  totals: { count: number; stillOpen: number };
+  approvals: MyApproval[];
 }
