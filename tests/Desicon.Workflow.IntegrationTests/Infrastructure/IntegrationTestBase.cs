@@ -1,4 +1,5 @@
 using Desicon.Workflow.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -33,4 +34,20 @@ public abstract class IntegrationTestBase : IAsyncLifetime
         var db = scope.ServiceProvider.GetRequiredService<WorkflowDbContext>();
         await action(db);
     }
+
+    /// <summary>
+    /// The human-readable number for a request id.
+    /// </summary>
+    /// <remarks>
+    /// Lived as a private helper on ReportTests until a second test class
+    /// needed it. Here rather than duplicated, because the tests that assert
+    /// against what a person sees on screen all need the number rather than
+    /// the GUID, and there will be more of them.
+    /// </remarks>
+    protected Task<string> RequestNumberOfAsync(Guid requestId) =>
+        WithDbAsync(async db => await db.Requests
+            .AsNoTracking()
+            .Where(r => r.RequestId == requestId)
+            .Select(r => r.RequestNumber)
+            .SingleAsync());
 }
