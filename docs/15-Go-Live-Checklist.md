@@ -577,9 +577,32 @@ Whichever is chosen, it is a workflow version: a `captures` entry on
 `COST_CONTROL_VERIFY`, and — if amendment is allowed — an audit entry that
 records the old and new coding rather than silently overwriting it.
 
-- [ ] Put this to Chima and Cost Control together. It is a process decision,
-      not an interface one, and the wrong answer is to pick whichever is easier
-      to build
+**Decided 24 August 2026: both.** Cost Control returns a request with comments
+when the *request* is wrong, and sets the coding themselves when only the coding
+is. Built as `PATCH /api/v1/requests/{id}/allocation`, restricted to
+`CostControlOfficer` while the request is at `COST_CONTROL_VERIFY`.
+
+The reason it is Cost Control rather than the requester: **they hold the
+organisation's cost centres and the requester does not.** A code that arrives
+wrong or blank is ordinary, not careless, and returning every one of them makes
+the desk that knows the answer ask the person who does not.
+
+It is not a transition and not a `captures` field. `captures` are all mandatory
+in `WorkflowEngine`, and project code and cost centre are alternatives, so
+requiring both would refuse every verification. Nothing moves either — a fact
+about the request is corrected while it sits in the same queue — so modelling it
+as a state change would put a step in the trail that did not happen.
+
+The previous coding is recorded alongside the new one, with a required reason,
+in a hash-chained `ALLOCATION_SET` event. A silent correction is
+indistinguishable from the original entry a week later, and this is the figure
+that decides which budget carries the spend.
+
+- [ ] **The fix at source, not yet built:** Cost Control holds the cost centre
+      list; this platform does not. Codes are free text on both forms, so a
+      requester can type anything and Cost Control corrects it afterwards. A
+      cost centre reference table and a picker would stop most miscoding before
+      it happens, and would need nothing from us but the list itself
 
 ---
 

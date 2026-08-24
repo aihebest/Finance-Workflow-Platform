@@ -175,3 +175,23 @@ export const downloadAttachment = async (id: string, attachmentId: string, fileN
  * moment you act, and My Requests shows what you raised, not what you decided.
  */
 export const getMyApprovals = () => api.get<MyApprovals>("/api/v1/my/approvals");
+
+/**
+ * Cost Control setting or correcting the coding while a request sits in their
+ * queue.
+ *
+ * Cost Control holds the organisation's cost centres and the requester
+ * generally does not, so a code that arrives wrong or blank is ordinary. This
+ * is the alternative to returning every such request to somebody who would
+ * have to come and ask them for the answer.
+ *
+ * Exactly one of projectCode / costCentreCode, and a reason: the previous
+ * coding is kept in the audit trail alongside the new one.
+ */
+export const setAllocation = (
+  requestId: string,
+  body: { projectCode?: string; costCentreCode?: string; reason: string },
+) => api.patch<{ requestId: string; requestNumber: string; allocation: string }>(
+  `/api/v1/requests/${requestId}/allocation`,
+  body,
+);
