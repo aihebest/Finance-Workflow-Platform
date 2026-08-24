@@ -549,6 +549,40 @@ and the platform has no equivalent of not handing it in.
 
 ---
 
+## 5e. Cost Control cannot correct a miscoded request at its own step
+
+Raised by Cost Control on 24 August 2026, alongside three defects that have
+been fixed (the amount box, the department not showing, and the code inputs
+being unclickable — see the branch `fix/advance-amount-and-request-header`).
+
+This one is not a defect. It is a question only Finance can answer.
+
+`COST_CONTROL_VERIFY` captures a Treasury number and nothing else. The desk
+whose entire job is checking that spend is costed to the right centre cannot
+set or amend the project code or cost centre. Their only lever is **Return for
+correction**, which sends the whole request back to the requester.
+
+Two defensible answers:
+
+- **Return it.** The requester owns their own coding, the correction is made by
+  the person who knows what the spend was for, and the trail shows a request
+  that was miscoded and fixed. Slower, and for a wrong cost centre on an
+  otherwise perfect request it is a lot of ceremony.
+- **Let Cost Control amend it.** Faster, and matches what the desk is for. But
+  it means the figures a department head approved can change after they
+  approved them, which is a different thing from correcting a typo and should
+  be visible in the trail if it happens.
+
+Whichever is chosen, it is a workflow version: a `captures` entry on
+`COST_CONTROL_VERIFY`, and — if amendment is allowed — an audit entry that
+records the old and new coding rather than silently overwriting it.
+
+- [ ] Put this to Chima and Cost Control together. It is a process decision,
+      not an interface one, and the wrong answer is to pick whichever is easier
+      to build
+
+---
+
 ## 6. Repository and pipeline
 
 - [ ] Move the repository from the personal GitHub account to a Desicon
