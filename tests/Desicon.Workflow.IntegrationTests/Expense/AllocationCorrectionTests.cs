@@ -29,7 +29,9 @@ public sealed class AllocationCorrectionTests : IntegrationTestBase
 {
     public AllocationCorrectionTests(WorkflowApiFixture fixture) : base(fixture) { }
 
-    private static HttpContent Correction(string? costCentre, string? project, string reason) =>
+    // Returns JsonContent, not HttpContent: CA1859 is an error here, and the
+    // concrete type avoids a virtual dispatch the analyser objects to.
+    private static JsonContent Correction(string? costCentre, string? project, string reason) =>
         JsonContent.Create(new { costCentreCode = costCentre, projectCode = project, reason });
 
     private async Task<Guid> AdvanceAtCostControlAsync(OrgChart org, string purpose)
