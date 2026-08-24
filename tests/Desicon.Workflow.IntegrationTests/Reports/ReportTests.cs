@@ -171,10 +171,4 @@ public sealed class ReportTests : IntegrationTestBase
             "an open request nobody holds is a defect, and this report is where it should become visible");
     }
 
-    private async Task<string> RequestNumberOfAsync(Guid requestId) =>
-        await WithDbAsync(async db => await db.Requests
-            .AsNoTracking()
-            .Where(r => r.RequestId == requestId)
-            .Select(r => r.RequestNumber)
-            .SingleAsync());
 }
