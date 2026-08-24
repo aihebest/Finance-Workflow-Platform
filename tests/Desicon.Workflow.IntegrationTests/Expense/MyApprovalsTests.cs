@@ -38,6 +38,12 @@ public sealed class MyApprovalsTests : IntegrationTestBase
         await (await WorkflowSteps.ActionAsync(Fixture.CreateClient(org.DeptHead), id, "VERIFY"))
             .ShouldSucceedAsync();
 
+        // COST_CONTROL_VERIFY's guard wants receipts complete, at least one
+        // attachment, and a Treasury number. Omitting the attachment refuses
+        // the action with a 409 that says exactly that — which is the guard
+        // doing its job, and was my omission rather than its fault.
+        await WorkflowSteps.AttachReceiptAsync(Fixture, id, org.Requester.Id);
+
         var costControl = Fixture.CreateClient(org.CostControlOfficer, "CostControlOfficer");
 
         // Before acting: nothing of theirs.
