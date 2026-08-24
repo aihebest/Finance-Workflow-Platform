@@ -97,6 +97,27 @@ updates:
       - dependency-name: "dotnet-ef"
         update-types: ["version-update:semver-major"]
 
+      # FluentAssertions 8 IS NOT FREE FOR DESICON.
+      #
+      # The licence changed at 8.0.0. Ownership moved to Xceed Software Inc.,
+      # and the package description states it plainly: "free for open-source
+      # projects and non-commercial use, but commercial use requires a paid
+      # license". requireLicenseAcceptance is set on the package.
+      #
+      # Desicon is a commercial company and this platform is internal
+      # commercial software, so merging an 8.x bump would put a paid-licence
+      # dependency into the build with nothing anywhere saying so. It arrives
+      # as a routine green Dependabot PR in a group called "test", which is
+      # exactly how a licensing obligation gets acquired by accident.
+      #
+      # The 7.x line remains Apache-2.0, is still maintained by the original
+      # author, and is current: 7.2.2 shipped 16 March 2026, the same day as
+      # 8.9.0. Staying on 7.x is a supported position, not a stale one.
+      #
+      # Ignored at major only. 7.x patches and minors still arrive.
+      - dependency-name: "FluentAssertions"
+        update-types: ["version-update:semver-major"]
+
     groups:
       # EF Core, the SqlClient stack and the Functions worker packages each
       # move as a set. Ungrouped, a minor bump to one half produces a PR that

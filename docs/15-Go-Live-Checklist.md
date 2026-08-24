@@ -606,6 +606,39 @@ that decides which budget carries the spend.
 
 ---
 
+## 5f. FluentAssertions 8 is not free for Desicon
+
+Found 24 August 2026 while looking at why several Dependabot pull requests were
+failing CI. The failing build was the smaller problem.
+
+**The licence changed at 8.0.0.** Ownership moved to Xceed Software Inc., and
+the package description says it plainly: *"free for open-source projects and
+non-commercial use, but commercial use requires a paid license."*
+`requireLicenseAcceptance` is set on the package. Desicon is a commercial
+company and this is internal commercial software.
+
+This project is on **6.12.1**. The **7.x line remains Apache-2.0**, is still
+maintained by the original author, and is current — 7.2.2 shipped 16 March
+2026, the same day as 8.9.0. Staying on 7.x is a supported position, not a
+stale one.
+
+The trap is the shape of it: an 8.x bump arrives as an ordinary Dependabot pull
+request, in a group called `test`, alongside xunit and Respawn. Nothing in the
+title, the diff or a green CI run would mention a licence. That is how a
+commercial obligation gets acquired on a Monday morning by clicking Merge.
+
+**Blocked in `.github/dependabot.yml`** — major updates to `FluentAssertions`
+are now ignored, with the reason written next to the rule. Patches and minors
+within 7.x still arrive, which is where any fixes are.
+
+- [ ] Move 6.12.1 → 7.2.2 deliberately, with the suite running. Not done here
+      because it is a major bump and this session could not execute the .NET
+      tests
+- [ ] Check whether anything else in the tree has changed licence since it was
+      chosen. This one was caught by accident, which is not a control
+
+---
+
 ## 6. Repository and pipeline
 
 - [ ] Move the repository from the personal GitHub account to a Desicon
