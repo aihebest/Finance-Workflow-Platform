@@ -136,6 +136,19 @@ export function RequestDetail() {
     | { name: string; type: string; staffNumber: string | null; email: string | null }
     | null
     | undefined;
+
+  // Who raised it, and out of which department.
+  //
+  // Reported by Cost Control on 24 August 2026: "Request did not show which
+  // department the request is coming from." The ids were always in the
+  // response — requesterId and departmentId, both GUIDs — so the fact was on
+  // the wire and off the page. Cost Control's entire question is whether an
+  // advance is costed to the right centre, and they were being asked it
+  // without being told whose department it came from.
+  const raisedBy = detail.requester as
+    | { name: string; staffNumber: string | null; department: string | null }
+    | null
+    | undefined;
   const genericActions = availableActions.filter((a) => !CAPTURE_ACTIONS.has(a.action));
 
   /**
@@ -190,6 +203,23 @@ export function RequestDetail() {
           {currentState.replaceAll("_", " ")}
           {detail.formCode ? ` · ${String(detail.formCode)} ${String(detail.formRevision ?? "")}` : ""}
         </p>
+
+        {raisedBy ? (
+          <p className="mt-2 text-sm text-gray-700">
+            <span className="text-gray-500">Raised by</span>{" "}
+            <span className="font-medium">{raisedBy.name}</span>
+            {raisedBy.staffNumber ? (
+              <span className="text-gray-500"> ({raisedBy.staffNumber})</span>
+            ) : null}
+            {raisedBy.department ? (
+              <>
+                {" · "}
+                <span className="text-gray-500">Department</span>{" "}
+                <span className="font-medium">{raisedBy.department}</span>
+              </>
+            ) : null}
+          </p>
+        ) : null}
 
         {/* Who gets the money.
 
