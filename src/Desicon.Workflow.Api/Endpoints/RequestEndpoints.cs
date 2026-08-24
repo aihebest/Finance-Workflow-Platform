@@ -49,6 +49,7 @@ public static class RequestEndpoints
         my.MapGet("/inbox", GetInboxAsync);
         my.MapGet("/requests", GetMyRequestsAsync);
         my.MapGet("/advances", GetMyAdvancesAsync);
+        my.MapGet("/approvals", GetMyApprovalsAsync);
     }
 
     private static async Task<IResult> CreateDraftAsync(
@@ -532,6 +533,131 @@ public static class RequestEndpoints
         var nextCursor = hasMore ? EncodeCursor(items[^1].StateEnteredAt) : null;
 
         return Results.Ok(new { Items = items.Select(ToSummaryDto), NextCursor = nextCursor });
+    }
+
+    /// <summary>
+    /// What this person has already decided.
+    /// </summary>
+    /// <remarks>
+    /// Reported by Cost Control on 24 August 2026: "The System does not show
+    /// the history or trail of request that have been approved by cost
+    /// control."
+    ///
+    /// They were right, and the gap was total. `/my/inbox` shows what is
+    /// waiting on you and empties the moment you act; `/my/requests` and
+    /// `/my/advances` show what you raised. Nothing anywhere showed what you
+    /// had decided. A desk that verifies several advances a day had no way to
+    /// answer "did I already pass that one?" except by asking somebody.
+    ///
+    /// Which is a strange gap for this system in particular. Every action has
+    /// been written to a hash-chained, append-only AuditEvent since the first
+    /// release -- the record was complete and simply had no reader. The
+    /// evidence was being kept for an auditor who might come one day, and
+    /// withheld from the person who produced it.
+    ///
+    /// SUBMIT and RESUBMIT are excluded. They are the requester's own act, not
+    /// a decision on someone else's request, and they already appear under
+    /// My Requests and My Advances. Including them would bury three approvals
+    /// under thirty submissions.
+    ///
+    /// No ReadAccessScope check: this returns only requests the caller
+    /// personally acted on, which is a narrower set than anything they could
+    /// already read, and is derived from their own audit trail rather than
+    /// from a role.
+    /// </remarks>
+    private static async Task<IResult> GetMyApprovalsAsync(
+        WorkflowDbContext db,
+        ICurrentUserAccessor currentUser,
+        CancellationToken cancellationToken)
+    {
+        var employee = await currentUser.GetEmployeeAsync(cancellationToken);
+
+        // Most recent decision per request, newest first. Grouped rather than
+        // one row per event, because a request returned and later verified by
+        // the same person is one line in their history, not two.
+        var decisions = await db.AuditEvents
+            .AsNoTracking()
+            .Where(e => e.ActorId == employee.Id
+                        && e.EventType != "SUBMIT"
+                        && e.EventType != "RESUBMIT")
+            .GroupBy(e => e.RequestId)
+            .Select(g => new
+            {
+                RequestId = g.Key,
+                LastActedAt = g.Max(e => e.OccurredAtUtc)
+            })
+            .OrderByDescending(x => x.LastActedAt)
+            .Take(200)
+            .ToListAsync(cancellationToken);
+
+        var ids = decisions.Select(d => d.RequestId).ToList();
+
+        var requests = await db.Requests
+            .AsNoTracking()
+            .Where(r => ids.Contains(r.RequestId))
+            .Select(r => new
+            {
+                r.RequestId,
+                r.RequestNumber,
+                r.ModuleKey,
+                r.CurrentState,
+                r.TotalAmountNgn,
+                r.ClosedAt,
+                Requester = db.Employees
+                    .Where(e => e.Id == r.RequesterId)
+                    .Select(e => e.FullName)
+                    .FirstOrDefault()
+            })
+            .ToListAsync(cancellationToken);
+
+        // The action taken, alongside the request. Read after the grouping
+        // rather than inside it: EF cannot project a "row with the max" out of
+        // a group without a correlated subquery per row, and this list is
+        // capped at 200.
+        var lastActions = await db.AuditEvents
+            .AsNoTracking()
+            .Where(e => e.ActorId == employee.Id && ids.Contains(e.RequestId)
+                        && e.EventType != "SUBMIT" && e.EventType != "RESUBMIT")
+            .Select(e => new { e.RequestId, e.EventType, e.OccurredAtUtc, e.ToState })
+            .ToListAsync(cancellationToken);
+
+        var byRequest = requests.ToDictionary(r => r.RequestId);
+
+        var rows = decisions
+            .Where(d => byRequest.ContainsKey(d.RequestId))
+            .Select(d =>
+            {
+                var request = byRequest[d.RequestId];
+                var last = lastActions
+                    .Where(a => a.RequestId == d.RequestId)
+                    .OrderByDescending(a => a.OccurredAtUtc)
+                    .First();
+
+                return new
+                {
+                    request.RequestId,
+                    request.RequestNumber,
+                    request.ModuleKey,
+                    request.CurrentState,
+                    request.TotalAmountNgn,
+                    request.Requester,
+                    IsClosed = request.ClosedAt != null,
+                    MyAction = last.EventType,
+                    MyActionAt = last.OccurredAtUtc,
+                    MyActionMovedItTo = last.ToState
+                };
+            })
+            .ToList();
+
+        return Results.Ok(new
+        {
+            Totals = new
+            {
+                Count = rows.Count,
+                StillOpen = rows.Count(r => !r.IsClosed)
+            },
+            Approvals = rows
+        });
     }
 
     private static async Task<IResult> GetInboxAsync(

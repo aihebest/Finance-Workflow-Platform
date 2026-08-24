@@ -4,6 +4,7 @@ import { apiScopes } from "./auth/msal";
 import { useIsFinance } from "./auth/roles";
 import { Inbox } from "./pages/Inbox";
 import { MyAdvances } from "./pages/MyAdvances";
+import { MyApprovals } from "./pages/MyApprovals";
 import { NewCashAdvance } from "./pages/NewCashAdvance";
 import { NewExpense } from "./pages/NewExpense";
 import { Reports } from "./pages/Reports";
@@ -98,6 +99,7 @@ export function App() {
             <Tab to="/advances/new">New Cash Advance</Tab>
             <Tab to="/advances">My Advances</Tab>
             <Tab to="/">My Inbox</Tab>
+            <Tab to="/approvals">My Approvals</Tab>
             {isFinance && <Tab to="/reports">Reports</Tab>}
           </nav>
         </header>
@@ -111,6 +113,7 @@ export function App() {
             <Route path="/expenses/new" element={<NewExpense />} />
             <Route path="/advances/new" element={<NewCashAdvance />} />
             <Route path="/advances" element={<MyAdvances />} />
+            <Route path="/approvals" element={<MyApprovals />} />
             <Route path="/reports" element={<Reports />} />
           </Routes>
         </div>

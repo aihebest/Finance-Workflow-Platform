@@ -1,5 +1,6 @@
 import { api } from "./client";
 import type {
+  MyApprovals,
   AdvanceRetirementDraft,
   AttachmentSummary,
   AuditEntry,
@@ -165,3 +166,12 @@ export const downloadAttachment = async (id: string, attachmentId: string, fileN
     URL.revokeObjectURL(url);
   }
 };
+
+/**
+ * What this person has already decided.
+ *
+ * Cost Control, 24 Aug 2026: "The System does not show the history or trail of
+ * request that have been approved by cost control." My Inbox empties the
+ * moment you act, and My Requests shows what you raised, not what you decided.
+ */
+export const getMyApprovals = () => api.get<MyApprovals>("/api/v1/my/approvals");
