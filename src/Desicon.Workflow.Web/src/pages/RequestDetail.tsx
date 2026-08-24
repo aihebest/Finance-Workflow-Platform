@@ -7,6 +7,7 @@ import {
   getHistory,
   getRequest,
   markPosted,
+  setAllocation,
 } from "../api/requests";
 import { ACTION_LABELS, ApiError, type AuditEntry, type AvailableAction } from "../api/types";
 import { Attachments } from "../components/Attachments";
@@ -65,6 +66,14 @@ export function RequestDetail() {
   const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [refundAmount, setRefundAmount] = useState("");
   const [treasuryNumber, setTreasuryNumber] = useState("");
+
+  // Cost Control setting the coding. Separate state from the action
+  // panel because it is not an action: nothing moves, a fact about the
+  // request is corrected while it sits in the same queue.
+  const [codeKind, setCodeKind] = useState<"CostCentre" | "Project">("CostCentre");
+  const [code, setCode] = useState("");
+  const [codeReason, setCodeReason] = useState("");
+  const [codingBusy, setCodingBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -489,6 +498,80 @@ export function RequestDetail() {
               Verification -- without it the transition is refused, so the
               field appears with the action that needs it rather than on a
               separate screen. */}
+          {/* Cost Control holds the organisation's cost centres; the
+              requester generally does not, so a code that arrives wrong or
+              blank is ordinary rather than careless. Returning every one of
+              them would make the desk that knows the answer ask the person
+              who does not.
+
+              Return stays where it is and is unchanged. It is the right
+              response when the request is wrong; this is for when only the
+              coding is. */}
+          {currentState === "COST_CONTROL_VERIFY" && can("VERIFY") && (
+            <div className="mt-3 rounded border border-gray-200 bg-gray-50 p-3">
+              <p className="text-sm font-medium text-gray-800">Coding</p>
+              <p className="mt-1 text-xs text-gray-600">
+                Set or correct this before verifying. The previous coding is kept in the
+                history.
+              </p>
+
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <select
+                  aria-label="Coding type"
+                  value={codeKind}
+                  onChange={(e) => setCodeKind(e.target.value as "CostCentre" | "Project")}
+                  className="min-h-11 rounded border border-gray-300 p-2 text-sm"
+                >
+                  <option value="CostCentre">Cost centre</option>
+                  <option value="Project">Project</option>
+                </select>
+
+                <input
+                  aria-label="Code"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  placeholder={codeKind === "Project" ? "Project code" : "Cost centre code"}
+                  className="min-h-11 w-48 rounded border border-gray-300 p-2 text-sm"
+                />
+
+                <input
+                  aria-label="Reason for the coding change"
+                  value={codeReason}
+                  onChange={(e) => setCodeReason(e.target.value)}
+                  placeholder="Why (recorded against the request)"
+                  className="min-h-11 flex-1 rounded border border-gray-300 p-2 text-sm"
+                />
+
+                <button
+                  type="button"
+                  disabled={codingBusy || code.trim() === "" || codeReason.trim() === ""}
+                  onClick={() => {
+                    setCodingBusy(true);
+                    setError(null);
+                    setAllocation(id!, {
+                      ...(codeKind === "Project"
+                        ? { projectCode: code.trim() }
+                        : { costCentreCode: code.trim() }),
+                      reason: codeReason.trim(),
+                    })
+                      .then(() => {
+                        setCode("");
+                        setCodeReason("");
+                        return load();
+                      })
+                      .catch((e: Error) =>
+                        setError(e instanceof ApiError ? e.message : e.message),
+                      )
+                      .finally(() => setCodingBusy(false));
+                  }}
+                  className="min-h-11 rounded bg-desicon-navy px-4 py-2 text-sm font-medium text-white disabled:bg-gray-300"
+                >
+                  {codingBusy ? "Saving…" : "Set coding"}
+                </button>
+              </div>
+            </div>
+          )}
+
           {currentState === "COST_CONTROL_VERIFY" && can("VERIFY") && (
             <>
               <label className="mt-3 block text-sm text-gray-700" htmlFor="treasury">
