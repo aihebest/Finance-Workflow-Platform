@@ -575,6 +575,21 @@ public static class RequestEndpoints
         // Most recent decision per request, newest first. Grouped rather than
         // one row per event, because a request returned and later verified by
         // the same person is one line in their history, not two.
+        //
+        // ORDERED BY AuditEventId, NOT BY OccurredAtUtc
+        // ---------------------------------------------
+        // Written first as Max(OccurredAtUtc), which is the obvious thing and
+        // is wrong. Two actions can share a timestamp -- trivially so under a
+        // frozen test clock, and in production whenever two transitions land
+        // inside the same tick -- and OrderByDescending on equal keys is not
+        // stable, so "the latest decision" came back as whichever row the
+        // provider happened to yield first. A Head of Department who returned
+        // a claim and then verified it was shown as having returned it.
+        //
+        // AuditEvents is append-only and its identity is monotonic, so the
+        // table already carries the sequence this needs. Asking the clock what
+        // order things happened in, when the log knows, is how an audit trail
+        // ends up disagreeing with itself.
         var decisions = await db.AuditEvents
             .AsNoTracking()
             .Where(e => e.ActorId == employee.Id
@@ -584,9 +599,9 @@ public static class RequestEndpoints
             .Select(g => new
             {
                 RequestId = g.Key,
-                LastActedAt = g.Max(e => e.OccurredAtUtc)
+                LastEventId = g.Max(e => e.AuditEventId)
             })
-            .OrderByDescending(x => x.LastActedAt)
+            .OrderByDescending(x => x.LastEventId)
             .Take(200)
             .ToListAsync(cancellationToken);
 
@@ -618,7 +633,7 @@ public static class RequestEndpoints
             .AsNoTracking()
             .Where(e => e.ActorId == employee.Id && ids.Contains(e.RequestId)
                         && e.EventType != "SUBMIT" && e.EventType != "RESUBMIT")
-            .Select(e => new { e.RequestId, e.EventType, e.OccurredAtUtc, e.ToState })
+            .Select(e => new { e.AuditEventId, e.RequestId, e.EventType, e.OccurredAtUtc, e.ToState })
             .ToListAsync(cancellationToken);
 
         var byRequest = requests.ToDictionary(r => r.RequestId);
@@ -630,7 +645,7 @@ public static class RequestEndpoints
                 var request = byRequest[d.RequestId];
                 var last = lastActions
                     .Where(a => a.RequestId == d.RequestId)
-                    .OrderByDescending(a => a.OccurredAtUtc)
+                    .OrderByDescending(a => a.AuditEventId)
                     .First();
 
                 return new
