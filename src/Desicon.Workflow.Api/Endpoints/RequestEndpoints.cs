@@ -180,7 +180,8 @@ public static class RequestEndpoints
         httpResponse.SetETag(request.RowVersion);
 
         return Results.Ok(ToDetailDto(request, availableActions,
-            await LoadBeneficiaryRefAsync(db, request, cancellationToken)));
+            await LoadBeneficiaryRefAsync(db, request, cancellationToken),
+            await LoadRequesterRefAsync(db, request, cancellationToken)));
     }
 
     /// <summary>
@@ -228,6 +229,49 @@ public static class RequestEndpoints
 
     /// <summary>The payee, named rather than referenced by id.</summary>
     internal sealed record BeneficiaryRef(string Name, string Type, string? StaffNumber, string? Email);
+
+    /// <summary>
+    /// Who raised this, and out of which department.
+    /// </summary>
+    /// <remarks>
+    /// Added 24 August 2026 on Cost Control's own report: "Request did not show
+    /// which department the request is coming from."
+    ///
+    /// The ids were always on the wire — RequesterId and DepartmentId are in
+    /// both detail branches and have been since the first release. They are
+    /// GUIDs, which no approver can read, and the screen rendered neither. So
+    /// the department was simultaneously present in the response and absent
+    /// from the job.
+    ///
+    /// It matters most precisely where it was missing. Cost Control's whole
+    /// question is whether an advance is costed to the right centre, and they
+    /// were being asked to answer it without being told whose department it
+    /// came out of.
+    ///
+    /// Same shape and the same lesson as BeneficiaryRef above, which was added
+    /// in August after a claim was paid to the wrong person because no approval
+    /// screen showed a payee. An identifier the system can resolve is not the
+    /// same as a fact the reader can see.
+    /// </remarks>
+    internal sealed record RequesterRef(string Name, string? StaffNumber, string? Department);
+
+    private static async Task<RequesterRef?> LoadRequesterRefAsync(
+        WorkflowDbContext db, Request request, CancellationToken cancellationToken)
+    {
+        if (request.RequesterId == Guid.Empty)
+        {
+            return null;
+        }
+
+        return await db.Employees
+            .AsNoTracking()
+            .Where(e => e.Id == request.RequesterId)
+            .Select(e => new RequesterRef(
+                e.FullName,
+                e.StaffNumber,
+                db.Departments.Where(d => d.Id == e.DepartmentId).Select(d => d.Name).FirstOrDefault()))
+            .FirstOrDefaultAsync(cancellationToken);
+    }
 
     private static async Task<IResult> UpdateDraftAsync(
         Guid id,
@@ -797,7 +841,8 @@ public static class RequestEndpoints
     internal static object ToDetailDto(
         Request request,
         IReadOnlyList<AvailableAction>? availableActions = null,
-        BeneficiaryRef? beneficiary = null) => request switch
+        BeneficiaryRef? beneficiary = null,
+        RequesterRef? requester = null) => request switch
     {
         ExpenseRequest expense => new
         {
@@ -816,6 +861,11 @@ public static class RequestEndpoints
             expense.RevisionNumber,
             expense.RequesterId,
             expense.DepartmentId,
+
+            // The ids above are GUIDs. This is the same two facts in a
+            // form an approver can act on -- see RequesterRef.
+            Requester = requester,
+
             expense.TotalAmountNgn,
             expense.SubmittedAt,
             expense.ClosedAt,
@@ -875,6 +925,11 @@ public static class RequestEndpoints
             advance.RevisionNumber,
             advance.RequesterId,
             advance.DepartmentId,
+
+            // The ids above are GUIDs. This is the same two facts in a
+            // form an approver can act on -- see RequesterRef.
+            Requester = requester,
+
             advance.TotalAmountNgn,
             advance.SubmittedAt,
             advance.ClosedAt,

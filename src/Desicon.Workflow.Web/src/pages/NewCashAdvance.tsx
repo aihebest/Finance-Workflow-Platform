@@ -13,30 +13,50 @@ import { ApiError, type AdvanceLineInput } from "../api/types";
 const ROW_COUNT = 6;
 
 /**
- * A row as typed: naira and kobo in separate boxes, exactly as printed.
+ * A row as typed: one amount, in naira, with optional decimals.
  *
- * The paper form's amount column is split ₦ / k, so this presents two inputs
- * and combines them on submit. Storage is decimal(18,2) either way — the split
- * is about the form looking like itself, not about the data.
+ * THIS WAS TWO BOXES UNTIL 24 AUG 2026, AND IT COST REAL MONEY
+ * -----------------------------------------------------------
+ * The printed DEL-AC-FRM-003 splits its amount column ₦ / k, so this form did
+ * too — faithfully, and wrongly. On paper the split is unmistakable because
+ * the columns are ruled and labelled down the page. On screen it is a narrow
+ * box and a narrower box under two one-character headings, and people read the
+ * first as a quantity.
+ *
+ * Cost Control raised an advance for ₦20,200 of office consumables:
+ *
+ *     Water      ₦ 2   k 4200      read as 2 + 42.00  = ₦44.00
+ *     Groundnut  ₦ 3   k 3000      read as 3 + 30.00  = ₦33.00
+ *     Malt       ₦ 2   k 13000     read as 2 + 130.00 = ₦132.00
+ *                                            Total    = ₦209.00
+ *
+ * The arithmetic was correct throughout. The form was wrong, and it was wrong
+ * silently: nothing rejected 13,000 kobo, a quantity that does not exist. The
+ * kobo input carried max="99" and had done since it was written, but `max` on
+ * a number input only participates in native form validation, which this form
+ * bypasses with its own submit handler. A bound that was declared and never
+ * enforced — which is this project's most repeated finding, here costing two
+ * orders of magnitude on a real request.
+ *
+ * One box removes the class of error rather than guarding it, and matches
+ * DEL-AC-FRM-002's own screen, which has had a single NGN amount column all
+ * along. Storage was decimal(18,2) either way; nothing about the data changes.
  */
 type Row = {
   description: string;
-  naira: string;
-  kobo: string;
+  amount: string;
 };
 
-const emptyRow = (): Row => ({ description: "", naira: "", kobo: "" });
+const emptyRow = (): Row => ({ description: "", amount: "" });
 
 const money = (value: number) =>
   new Intl.NumberFormat("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
     value,
   );
 
-/** Naira and kobo boxes to one decimal. Blank kobo is zero, not invalid. */
+/** Blank is zero, not invalid — eleven rows are printed and most stay empty. */
 function rowAmount(row: Row): number {
-  const naira = Number(row.naira) || 0;
-  const kobo = Number(row.kobo) || 0;
-  return naira + kobo / 100;
+  return Number(row.amount) || 0;
 }
 
 export function NewCashAdvance() {
@@ -139,8 +159,7 @@ export function NewCashAdvance() {
               <tr className="border-b border-gray-200 text-left text-xs uppercase text-gray-500">
                 <th className="py-2 pr-2 font-medium">S/n</th>
                 <th className="py-2 pr-2 font-medium">Description</th>
-                <th className="py-2 pr-2 text-right font-medium">₦</th>
-                <th className="py-2 pl-2 text-right font-medium">k</th>
+                <th className="py-2 pl-2 text-right font-medium">Amount (₦)</th>
               </tr>
             </thead>
             <tbody>
@@ -155,29 +174,19 @@ export function NewCashAdvance() {
                       className="min-h-11 w-full rounded border border-gray-300 p-2 text-sm"
                     />
                   </td>
-                  <td className="py-1 pr-2">
-                    <input
-                      aria-label={`Naira, row ${index + 1}`}
-                      type="number"
-                      min="0"
-                      step="1"
-                      value={row.naira}
-                      onChange={(e) => updateRow(index, { naira: e.target.value })}
-                      className="min-h-11 w-32 rounded border border-gray-300 p-2 text-right text-sm tabular-nums"
-                    />
-                  </td>
                   <td className="py-1 pl-2">
-                    {/* Two boxes rather than one decimal, because that is what
-                        the printed form has. Blank means zero. */}
+                    {/* One box, in naira, kobo after the point. step="0.01"
+                        rather than "1" so 4200.50 is typeable; blank is zero. */}
                     <input
-                      aria-label={`Kobo, row ${index + 1}`}
+                      aria-label={`Amount in naira, row ${index + 1}`}
                       type="number"
+                      inputMode="decimal"
                       min="0"
-                      max="99"
-                      step="1"
-                      value={row.kobo}
-                      onChange={(e) => updateRow(index, { kobo: e.target.value })}
-                      className="min-h-11 w-20 rounded border border-gray-300 p-2 text-right text-sm tabular-nums"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={row.amount}
+                      onChange={(e) => updateRow(index, { amount: e.target.value })}
+                      className="min-h-11 w-40 rounded border border-gray-300 p-2 text-right text-sm tabular-nums"
                     />
                   </td>
                 </tr>
@@ -188,7 +197,7 @@ export function NewCashAdvance() {
                 <td colSpan={2} className="pt-3 text-right text-sm font-medium text-gray-700">
                   Total
                 </td>
-                <td colSpan={2} className="pt-3 pl-2 text-right text-sm font-medium tabular-nums">
+                <td className="pt-3 pl-2 text-right text-sm font-medium tabular-nums">
                   ₦{money(total)}
                 </td>
               </tr>
