@@ -4,13 +4,13 @@
   "displayName": "Expense Form (Cash / Bank)",
   "formCode": "DEL-AC-FRM-002",
   "formRevision": "05",
-  "version": 5,
-  "effectiveFrom": "2026-08-23T00:00:00Z",
+  "version": 6,
+  "effectiveFrom": "2026-08-25T00:00:00Z",
   "numberFormat": "EXP-{yyyy}-{seq:000000}",
   "workingCalendar": "NG_STANDARD",
   "slaPausesOutsideWorkingHours": true,
 
-  "amendment": "23 Aug 2026: version 5 adds WITHDRAW. A requester may take back their own request while it is still at the first approval step, or after it has been returned to them. Until now nothing could be withdrawn: ADV-2026-000001 was raised in error and the only way out was to ask the Head of Department to reject it, which records an approver's refusal for a decision no approver made. WITHDRAWN is a separate terminal state for exactly that reason -- 'the requester took this back' and 'an approver refused this' are different facts about different people. Guarded on ActorId == RequesterId, so it is only ever self-service; DEPT_HEAD and RETURNED only, so no work anyone else has done is ever discarded. See docs/15 section 5c. PREVIOUS: 19 Aug 2026: version 4 removes the LINE_MANAGER step. Desicon has ONE approval before Cost Control -- the Head of Department -- confirmed against the list of requesting accounts and their approvers. Version 3 modelled two, a line manager and then a department head, which for Desicon would have meant the same person approving the same request twice. Two clicks for one judgement teaches people that a step is ceremony, and a step people treat as ceremony is not a control. No version 3 file is retained because the database was reset for UAT and nothing was ever pinned to it; the next change after UAT begins must keep its predecessor. See docs/15 section 3.",
+  "amendment": "25 Aug 2026: version 6 puts the Treasury number where Treasury works. COST_CONTROL_VERIFY captured TreasuryNumber and guarded on it -- a field the desk's own note says belongs to 'the Treasury officer who posts it at AWAITING_POSTING'. It was a leftover: version 2 called this state FINANCE_VERIFY and one FinanceOfficer did both jobs, and when version 3 split the role the captured field was never revisited, so Cost Control inherited a field belonging to the desk they were split from. Nothing in the solution read it afterwards. It now moves to MARK_POSTED, beside the Business Central document number it sits next to in the ledger. Cost Control instead guards on what its note always said it checks: that the request carries a project or a cost centre. PREVIOUS: 23 Aug 2026: version 5 adds WITHDRAW. A requester may take back their own request while it is still at the first approval step, or after it has been returned to them. Until now nothing could be withdrawn: ADV-2026-000001 was raised in error and the only way out was to ask the Head of Department to reject it, which records an approver's refusal for a decision no approver made. WITHDRAWN is a separate terminal state for exactly that reason -- 'the requester took this back' and 'an approver refused this' are different facts about different people. Guarded on ActorId == RequesterId, so it is only ever self-service; DEPT_HEAD and RETURNED only, so no work anyone else has done is ever discarded. See docs/15 section 5c. PREVIOUS: 19 Aug 2026: version 4 removes the LINE_MANAGER step. Desicon has ONE approval before Cost Control -- the Head of Department -- confirmed against the list of requesting accounts and their approvers. Version 3 modelled two, a line manager and then a department head, which for Desicon would have meant the same person approving the same request twice. Two clicks for one judgement teaches people that a step is ceremony, and a step people treat as ceremony is not a control. No version 3 file is retained because the database was reset for UAT and nothing was ever pinned to it; the next change after UAT begins must keep its predecessor. See docs/15 section 3.",
 
   "note": "Version 3 splits FinanceOfficer into CostControlOfficer and TreasuryOfficer. Version 2 recorded that Cost Control and the Accounts Officer who posts in Business Central were the same people; they are not. They are separate desks with separate mailboxes (costcontrol@ and treasury@), and one role covering both meant a single person could verify the costing, post it, and execute the payment -- with the posting notification going to the wrong desk, so the person who had to act was never told. Version 2 remains published for requests already open under it; see expense-reimbursement.v2.workflow.json and docs/15-Go-Live-Checklist.md section 3.",
 
@@ -60,9 +60,8 @@
     {
       "from": "COST_CONTROL_VERIFY", "to": "FINANCE_APPROVE", "action": "VERIFY",
       "actor": { "role": "CostControlOfficer" },
-      "guard": "ReceiptStatus == 'Yes' && TreasuryNumber != null && AttachmentCount > 0",
-      "guardMessage": "Receipts must be complete, at least one receipt attached, and a Treasury number captured before this proceeds.",
-      "captures": ["TreasuryNumber"],
+      "guard": "ReceiptStatus == 'Yes' && AttachmentCount > 0",
+      "guardMessage": "Receipts must be complete and at least one receipt attached before this proceeds.",
       "note": "Cost Control checks that the claim is costed to the right centre. A separate desk from the Treasury officer who posts it at AWAITING_POSTING -- version 2 modelled them as one role, which let the same person check the costing and then post against their own check."
     },
     {
@@ -128,7 +127,7 @@
       "actor": { "role": "TreasuryOfficer" },
       "guard": "BcDocumentNumber != null && NetPayableNgn > 0",
       "guardMessage": "Enter the Business Central document number for this posting.",
-      "captures": ["BcDocumentNumber"],
+      "captures": ["BcDocumentNumber", "TreasuryNumber"],
       "records": "PostedByUserId",
       "effect": "RetireLinkedAdvance",
       "note": "The Accounts Officer posts in Business Central, then records here that she has and under which document number. This platform deliberately captures no journal lines: BC owns the ledger, and a second copy of the same journal in a different system is two versions of the truth waiting to disagree. The document number is the only key tying this approval trail to the ledger entry, which is why it is required rather than optional."
@@ -138,7 +137,7 @@
       "actor": { "role": "TreasuryOfficer" },
       "guard": "BcDocumentNumber != null && NetPayableNgn <= 0",
       "guardMessage": "Enter the Business Central document number for this posting.",
-      "captures": ["BcDocumentNumber"],
+      "captures": ["BcDocumentNumber", "TreasuryNumber"],
       "records": "PostedByUserId",
       "effect": "RetireLinkedAdvance",
       "note": "A retirement that paid nobody -- balanced exactly, or refunded to the company. Once BC has it there is nothing to pay and nothing for a recipient to acknowledge, so it closes here. Routing it through AWAITING_PAYMENT would leave a claim sitting in the Accounts Officer's payment queue forever with nothing to pay, which is how a queue stops being believed."

@@ -110,9 +110,14 @@ public static class WorkflowSteps
     /// modelled a journal this platform no longer keeps -- BC owns the ledger
     /// from definition version 2 onward.
     /// </summary>
+    // treasuryNumber defaults rather than being threaded through every
+    // caller: workflow version 6 moved the capture here from
+    // COST_CONTROL_VERIFY, and the tests that care which number it is
+    // pass one explicitly.
     public static Task<HttpResponseMessage> MarkPostedExpenseAsync(
-        HttpClient client, Guid id, string bcDocumentNumber) =>
-        PostAsync(client, $"/api/v1/expenses/{id}/mark-posted", new { BcDocumentNumber = bcDocumentNumber });
+        HttpClient client, Guid id, string bcDocumentNumber, string treasuryNumber = "TN-POST") =>
+        PostAsync(client, $"/api/v1/expenses/{id}/mark-posted",
+            new { BcDocumentNumber = bcDocumentNumber, TreasuryNumber = treasuryNumber });
 
     public static Task<HttpResponseMessage> AcknowledgeExpenseAsync(HttpClient client, Guid id) =>
         PostAsync(client, $"/api/v1/expenses/{id}/acknowledge", null);
@@ -137,9 +142,14 @@ public static class WorkflowSteps
     public static Task<HttpResponseMessage> ReleaseCashAsync(HttpClient client, Guid id, DateTimeOffset cashReleasedAt) =>
         PostAsync(client, $"/api/v1/advances/{id}/release", new { CashReleasedAt = cashReleasedAt });
 
+    // treasuryNumber defaults rather than being threaded through every
+    // caller: workflow version 6 moved the capture here from
+    // COST_CONTROL_VERIFY, and the tests that care which number it is
+    // pass one explicitly.
     public static Task<HttpResponseMessage> MarkPostedAdvanceAsync(
-        HttpClient client, Guid id, string bcDocumentNumber) =>
-        PostAsync(client, $"/api/v1/advances/{id}/mark-posted", new { BcDocumentNumber = bcDocumentNumber });
+        HttpClient client, Guid id, string bcDocumentNumber, string treasuryNumber = "TN-POST") =>
+        PostAsync(client, $"/api/v1/advances/{id}/mark-posted",
+            new { BcDocumentNumber = bcDocumentNumber, TreasuryNumber = treasuryNumber });
 
     /// <summary>
     /// The Director of Finance's approval. Nothing is paid without it, so

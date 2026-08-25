@@ -54,7 +54,7 @@ who share one of them.
 **What each may do**
 
 - **Cost Control** — verify that a claim or advance is costed to the right cost
-  centre or project, check receipts, capture the Treasury number. Cannot post
+  centre or project, check receipts, set the coding if it is wrong or missing. Cannot post
   to Business Central, cannot release cash, cannot pay.
 - **Accounts Manager** — approve on behalf of Accounts, confirm refunds, write
   off an unretired advance. Cannot release money.
@@ -92,7 +92,7 @@ Money already spent: a reimbursement, or the retirement of an advance.
 |---|---|---|---|
 | 1 | `DRAFT` | Requester | Complete the form, attach receipts, submit |
 | 2 | `DEPT_HEAD` | **Head of Department** | Approve. Cannot approve their own claim. Last step on the requesting side |
-| 3 | `COST_CONTROL_VERIFY` | **Cost Control** | Capture Treasury number, confirm costing. Blocked without at least one receipt attached |
+| 3 | `COST_CONTROL_VERIFY` | **Cost Control** | Confirm the costing; set the project or cost centre if wrong or missing. Blocked without at least one receipt attached |
 | 4 | `FINANCE_APPROVE` | **Accounts Manager** | Approve. Cannot approve their own claim |
 | 5 | `DMD_APPROVAL` | **Director of Finance** | Authorise the payment |
 | 6 | `AWAITING_POSTING` | **Treasury** | Post in Business Central, record the BC document number |
@@ -121,7 +121,7 @@ Money before it is spent.
 |---|---|---|---|
 | 1 | `DRAFT` | Requester | Complete the form, submit. Blocked if they have an overdue advance |
 | 2 | `DEPT_HEAD` | **Head of Department** | Approve. Cannot approve their own request |
-| 3 | `COST_CONTROL_VERIFY` | **Cost Control** | Capture Treasury number, confirm costing |
+| 3 | `COST_CONTROL_VERIFY` | **Cost Control** | Confirm the costing. Blocked until the advance carries a project or a cost centre |
 | 4 | `FINANCE_APPROVE` | **Accounts Manager** | Approve |
 | 5 | `DMD_APPROVAL` | **Director of Finance** | Authorise. Unconditional — an advance always pays somebody |
 | 6 | `AWAITING_POSTING` | **Treasury** | Post in Business Central |

@@ -633,7 +633,13 @@ being unclickable — see the branch `fix/advance-amount-and-request-header`).
 
 This one is not a defect. It is a question only Finance can answer.
 
-`COST_CONTROL_VERIFY` captures a Treasury number and nothing else. The desk
+**Resolved in workflow version 6 (25 Aug 2026).** `COST_CONTROL_VERIFY` no
+longer captures a Treasury number — that moved to `MARK_POSTED`, where Treasury
+acts. Cost Control now guards on the coding instead, and can set it through the
+Coding panel. The text below is kept because the reasoning is still the record
+of why.
+
+`COST_CONTROL_VERIFY` captured a Treasury number and nothing else. The desk
 whose entire job is checking that spend is costed to the right centre cannot
 set or amend the project code or cost centre. Their only lever is **Return for
 correction**, which sends the whole request back to the requester.
