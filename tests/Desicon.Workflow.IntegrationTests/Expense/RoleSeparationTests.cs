@@ -124,10 +124,16 @@ public sealed class RoleSeparationTests : IntegrationTestBase
             .ShouldSucceedAsync();
         await WorkflowSteps.AttachReceiptAsync(Fixture, id, org.Requester.Id);
 
+        // Read, not hardcoded. This literal has been bumped 4 -> 5 -> 6 in
+        // three days, once per workflow change, and each bump was a test
+        // failing for being out of date rather than for finding anything.
+        var published = (await GetDefinitionAsync("EXPENSE")).Version;
+
         await WithDbAsync(async db =>
         {
             var request = await db.Requests.SingleAsync(r => r.RequestId == id);
-            request.DefinitionVersion.Should().Be(5, "a request raised today is stamped with the current version");
+            request.DefinitionVersion.Should().Be(published,
+                "a request raised today is stamped with the current version");
 
             // As if it had been raised before version 2 was retired.
             request.DefinitionVersion = 2;
@@ -139,18 +145,19 @@ public sealed class RoleSeparationTests : IntegrationTestBase
             payload: new Dictionary<string, object?> { ["TreasuryNumber"] = "TN-PIN-1" });
 
         // Either an exception naming the versions, or a non-success response --
-        // what must NOT happen is a 200 produced by quietly using version 5.
+        // what must NOT happen is a 200 produced by quietly using version 6.
         try
         {
             var response = await act();
 
             response.IsSuccessStatusCode.Should().BeFalse(
-                "evaluating this request against version 5 would apply a process it was never raised under");
+                "evaluating this request against version 6 would apply a process it was never raised under");
         }
         catch (InvalidOperationException ex)
         {
             ex.Message.Should().Contain("version 2");
-            ex.Message.Should().Contain("5", "the message must say what IS published, or the fix is guesswork");
+            ex.Message.Should().Contain(published.ToString(),
+                "the message must say what IS published, or the fix is guesswork");
         }
     }
 }

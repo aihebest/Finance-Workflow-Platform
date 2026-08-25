@@ -1,4 +1,6 @@
+using Desicon.Workflow.Core.Definitions;
 using Desicon.Workflow.Infrastructure.Persistence;
+using Desicon.Workflow.Infrastructure.Workflow;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -33,6 +35,24 @@ public abstract class IntegrationTestBase : IAsyncLifetime
         using var scope = Fixture.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<WorkflowDbContext>();
         await action(db);
+    }
+
+    /// <summary>
+    /// The published definition for a module, as the API would load it.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than duplicated because tests keep needing to ask what is
+    /// currently published instead of asserting a number. Three separate
+    /// commits in three days have bumped a hardcoded current version -- 4 to 5
+    /// to 6 -- each time because a real change happened and a literal in a test
+    /// did not know about it. A test that reads the version it is asserting
+    /// against cannot fall behind the thing it is testing.
+    /// </remarks>
+    protected async Task<WorkflowDefinition> GetDefinitionAsync(string moduleKey)
+    {
+        using var scope = Fixture.CreateScope();
+        var provider = scope.ServiceProvider.GetRequiredService<IWorkflowDefinitionProvider>();
+        return await provider.GetAsync(moduleKey);
     }
 
     /// <summary>
