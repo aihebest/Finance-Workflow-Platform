@@ -346,7 +346,23 @@ module "functions" {
     FinanceManager     = "chima.onyealilachi@desicongroup.com"
     DirectorOfFinance  = "tomy.john@desicongroup.com"
   }
-  notifications_application_base_url = "https://${module.frontdoor.endpoint_hostname}"
+  # The address in every approval email.
+  #
+  # This was the generated hostname until 25 Aug 2026 — which was the whole
+  # reason for buying a custom domain, stated in that commit: "that hostname is
+  # about to appear in every approval notification this platform sends, to
+  # Heads of Department and the DMD, most of them on a phone." The domain went
+  # live, the notifications kept sending
+  # fde-desicon-fw-dev-e5deetfbdxfvfsfq.z01.azurefd.net, and nothing anywhere
+  # was wrong enough to notice: the links worked.
+  #
+  # A change made for a reason, with the one place the reason applied left
+  # pointing at the old value. Same family as the Treasury number that stayed
+  # at Cost Control when the role was split.
+  #
+  # coalesce, not a hardcoded name: an environment with no custom domain still
+  # sends links that work, rather than links to a host that does not exist.
+  notifications_application_base_url = "https://${coalesce(module.frontdoor.custom_domain_host_name, module.frontdoor.endpoint_hostname)}"
 
   key_vault_id       = module.keyvault.id
   key_vault_uri      = module.keyvault.uri
