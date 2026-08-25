@@ -42,6 +42,22 @@ public sealed class ReadAccessScope
     /// pinned to version 2 any more. It granted everything both replacement
     /// roles grant; leaving it here would have kept a way to read every
     /// request in the system under a role nobody is supposed to hold.
+    ///
+    /// DirectorOfFinance added 25 August 2026, after the Director of Finance
+    /// followed an approval email to a request waiting on him and was told
+    /// "You do not have access to this request."
+    ///
+    /// Cost Control, Treasury, the Accounts Manager and Procurement were all
+    /// here. The one person who authorises every payment in the company was
+    /// not -- and DMD_APPROVAL is role-gated, so CurrentActorId is null there
+    /// by design, which removed the only other clause that could have let him
+    /// in. The gate this platform is built around could not open the thing it
+    /// gates.
+    ///
+    /// Nothing failed. The notification sent, the link resolved, sign-in
+    /// worked, and the refusal was correct according to this list. It was the
+    /// list that was wrong, and only a real approver following a real email
+    /// could find it.
     /// </remarks>
     private static readonly HashSet<string> CrossCuttingRoles =
         new(StringComparer.Ordinal)
@@ -49,17 +65,45 @@ public sealed class ReadAccessScope
             "CostControlOfficer",
             "TreasuryOfficer",
             "FinanceManager",
+            "DirectorOfFinance",
             "ProcurementOfficer"
         };
 
     private readonly WorkflowDbContext _db;
     private readonly IWorkflowClock _clock;
+    private readonly InboxStateIndex _inboxStates;
 
-    public ReadAccessScope(WorkflowDbContext db, IWorkflowClock clock)
+    public ReadAccessScope(WorkflowDbContext db, IWorkflowClock clock, InboxStateIndex inboxStates)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+        _inboxStates = inboxStates ?? throw new ArgumentNullException(nameof(inboxStates));
     }
+
+    /// <summary>
+    /// Whether the request is sitting in a queue one of these roles holds.
+    /// </summary>
+    /// <remarks>
+    /// The class docstring above has always said read access includes "a
+    /// role-gated queue they hold a role for -- see InboxStateIndex". It did
+    /// not: CanReadAsync and ScopeAsync both checked only CurrentActorId,
+    /// which is null by design on a role-gated state because no single person
+    /// holds it.
+    ///
+    /// So the documented rule and the enforced rule differed, and the
+    /// difference was invisible for as long as every role that needed it
+    /// happened to be in CrossCuttingRoles. The Director of Finance was not,
+    /// and the gap surfaced as a senior approver being refused a request that
+    /// was waiting on him.
+    ///
+    /// Adding DirectorOfFinance to that set fixes this instance. This fixes
+    /// the rule, so the next role added to a definition does not depend on
+    /// somebody also remembering a list in a different file.
+    /// </remarks>
+    private bool HoldsRoleGatedQueue(Request request, IReadOnlySet<string> roles) =>
+        _inboxStates.StatesFor(roles)
+            .Any(s => string.Equals(s.ModuleKey, request.ModuleKey, StringComparison.Ordinal)
+                   && string.Equals(s.State, request.CurrentState, StringComparison.Ordinal));
 
     /// <summary>Applies the scoping filter to a Requests (or subclass)
     /// queryable. Compose this before any caller-supplied filter (state,
@@ -96,10 +140,19 @@ public sealed class ReadAccessScope
             .Select(d => d.Id)
             .ToListAsync(cancellationToken);
 
+        // The same role-gated queues CanReadAsync honours, flattened to the
+        // "module|state" keys GetInboxAsync already uses. Without this a list
+        // and the detail page would disagree about the same request, which is
+        // worse than either rule alone.
+        var roleStateKeys = _inboxStates.StatesFor(roles)
+            .Select(s => s.ModuleKey + "|" + s.State)
+            .ToHashSet(StringComparer.Ordinal);
+
         return query.Where(r =>
             visibleRequesterIds.Contains(r.RequesterId) ||
             (r.CurrentActorId != null && visibleActorIds.Contains(r.CurrentActorId.Value)) ||
-            headedDepartmentIds.Contains(r.DepartmentId));
+            headedDepartmentIds.Contains(r.DepartmentId) ||
+            roleStateKeys.Contains(r.ModuleKey + "|" + r.CurrentState));
     }
 
     /// <summary>True if the viewer may see this single, already-loaded request.
@@ -119,7 +172,8 @@ public sealed class ReadAccessScope
         var visibleActorIds = await ResolveVisibleActorIdsAsync(viewer.Id, cancellationToken);
 
         if (visibleActorIds.Contains(request.RequesterId) ||
-            (request.CurrentActorId is { } currentActorId && visibleActorIds.Contains(currentActorId)))
+            (request.CurrentActorId is { } currentActorId && visibleActorIds.Contains(currentActorId)) ||
+            HoldsRoleGatedQueue(request, roles))
         {
             return true;
         }
