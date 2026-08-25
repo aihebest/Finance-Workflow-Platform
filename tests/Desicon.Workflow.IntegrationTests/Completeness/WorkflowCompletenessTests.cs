@@ -425,10 +425,4 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         coveredStates.Should().BeEquivalentTo(expectedStates, "every declared CASH_ADVANCE state should be entered by at least one test");
     }
 
-    private async Task<WorkflowDefinition> GetDefinitionAsync(string moduleKey)
-    {
-        using var scope = Fixture.CreateScope();
-        var provider = scope.ServiceProvider.GetRequiredService<IWorkflowDefinitionProvider>();
-        return await provider.GetAsync(moduleKey);
-    }
 }
