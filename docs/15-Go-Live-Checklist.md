@@ -142,24 +142,54 @@ who. If that ever needs to change, it is one role reassignment and no code.
 
 ---
 
-## 2. Turn notifications on
+## 2. Turn notifications on — DONE 10 AUGUST 2026
 
-`notifications_use_graph = false` in dev, so `LoggingNotificationSender` writes
-each message to Application Insights instead of sending it. Nothing has ever
-been emailed to a real person from this platform.
+**This section was stale and was being read as current on 25 August**, two
+weeks after the work was finished. It is kept, ticked, because the steps are
+the record of what was done and what must be redone for uat and prd.
 
-Before go-live:
-
-- [ ] Provision the shared sender mailbox and set `notifications_sender_mailbox`
-- [ ] Grant `Mail.Send` application permission to the Function App's managed
+- [x] Provision the shared sender mailbox and set `notifications_sender_mailbox`
+      — `financeworkflow@desicongroup.com`
+- [x] Grant `Mail.Send` application permission to the Function App's managed
       identity, with admin consent
-- [ ] **Scope it with an Exchange application access policy** to that one
+- [x] **Scope it with an Exchange application access policy** to that one
       mailbox. Without this, `Mail.Send` as an application permission allows
       sending as *any* mailbox in the tenant. Nothing in this repository can
       enforce or detect that, which is why it is called out separately rather
-      than left as part of the step above.
-- [ ] Set `notifications_use_graph = true`
-- [ ] Confirm `notifications_role_mailboxes` names the real people
+      than left as part of the step above. Tested rather than assumed —
+      `Test-ApplicationAccessPolicy` returns Granted for the sender and Denied
+      for the Director of Finance's own mailbox
+- [x] Set `notifications_use_graph = true`
+- [x] Confirm `notifications_role_mailboxes` names the real people
+
+### 2b. The links in those emails pointed at the wrong host until 25 Aug 2026
+
+Found while answering "why are notifications still off" — they were not, and
+checking turned up something else.
+
+`notifications_application_base_url` was built from the Front Door *endpoint*
+hostname, so every approval email sent people to
+`https://fde-desicon-fw-dev-e5deetfbdxfvfsfq.z01.azurefd.net/requests/{id}`.
+
+The custom domain was bought for exactly this. The commit that added it says
+so: *"that generated hostname is about to appear in every approval notification
+this platform sends — to Heads of Department, the Accounts Manager and the DMD,
+most of them reading it on a phone."* The domain went live and the notifications
+carried on sending the old host, because the links still worked. Nothing was
+broken enough to notice.
+
+A change made for one reason, with the single place that reason applied left
+pointing at the old value. The same shape as the Treasury number that stayed at
+Cost Control after the role was split.
+
+Now `coalesce(custom_domain_host_name, endpoint_hostname)`, so an environment
+without a custom domain still sends links that work rather than links to a host
+that does not exist.
+
+- [ ] `terraform apply` in dev — this is a Function App setting, so it takes
+      effect on apply, not on the next code deploy
+- [ ] Raise one request afterwards and read the link in the email before
+      trusting it
 
 Verify by raising one request and checking it arrives, before anyone relies on
 it. A notification system that silently sends nothing is worse than none,
