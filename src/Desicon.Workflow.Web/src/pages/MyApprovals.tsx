@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { getMyApprovals } from "../api/requests";
 import { ACTION_LABELS, MODULE_LABELS, type MyApprovals as MyApprovalsData } from "../api/types";
 import { Money } from "../components/Money";

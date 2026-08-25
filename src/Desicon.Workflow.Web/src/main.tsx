@@ -18,9 +18,9 @@ import "./index.css";
  *
  * Order matters. initialize() must complete before any other MSAL call --
  * true in v3, still true in v5 -- and handleRedirectPromise() must resolve
- * before the app reads accounts --
- * otherwise the first render after a sign-in redirect sees no account and
- * sends the person straight back to the sign-in they just completed.
+ * before the app reads accounts, otherwise the first render after a sign-in
+ * redirect sees no account and sends the person straight back to the sign-in
+ * they just completed.
  */
 async function bootstrap(): Promise<void> {
   await msalInstance.initialize();
