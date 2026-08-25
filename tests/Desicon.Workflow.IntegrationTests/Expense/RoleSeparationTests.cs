@@ -1,3 +1,4 @@
+using System.Globalization;
 using Desicon.Workflow.IntegrationTests.Infrastructure;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -156,7 +157,7 @@ public sealed class RoleSeparationTests : IntegrationTestBase
         catch (InvalidOperationException ex)
         {
             ex.Message.Should().Contain("version 2");
-            ex.Message.Should().Contain(published.ToString(),
+            ex.Message.Should().Contain(published.ToString(CultureInfo.InvariantCulture),
                 "the message must say what IS published, or the fix is guesswork");
         }
     }
