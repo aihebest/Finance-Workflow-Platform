@@ -172,6 +172,22 @@ export function RequestDetail() {
   const requestProjectCode = (detail.projectCode as string | null | undefined) ?? null;
   const requestCostCentreCode = (detail.costCentreCode as string | null | undefined) ?? null;
   const requestCoding = requestProjectCode ?? requestCostCentreCode;
+
+  // DEL-AC-FRM-002 and DEL-AC-FRM-003 do not have the same table.
+  //
+  // The expense form itemises date, description, project or cost centre, and
+  // amount. The cash advance form has description and amount, and nothing
+  // else -- it is a request for money not yet spent, so there is no date a
+  // line was incurred on and no per-line coding, because an advance is coded
+  // once on the form.
+  //
+  // One table was drawn for both, so a cash advance showed a Date column and a
+  // Project / Cost centre column that could only ever contain a dash. Two
+  // columns of nothing, on the screen an approver is meant to read, next to a
+  // total they are being asked to authorise. Reported as "no date shown",
+  // which is exactly how it looks: like data that failed to load rather than a
+  // column that should not have been drawn.
+  const isAdvance = String(detail.moduleKey ?? "") === "CASH_ADVANCE";
   const genericActions = availableActions.filter((a) => !CAPTURE_ACTIONS.has(a.action));
 
   /**
@@ -313,16 +329,18 @@ export function RequestDetail() {
       {lines.length > 0 && (
         <section className="rounded border border-gray-200 bg-white p-4">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
-            Details of expense
+            {isAdvance ? "Details of the advance" : "Details of expense"}
           </h2>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 text-left text-xs uppercase text-gray-500">
                   <th className="py-2 pr-2 font-medium">#</th>
-                  <th className="py-2 pr-2 font-medium">Date</th>
+                  {isAdvance ? null : <th className="py-2 pr-2 font-medium">Date</th>}
                   <th className="py-2 pr-2 font-medium">Description</th>
-                  <th className="py-2 pr-2 font-medium">Project / Cost centre</th>
+                  {isAdvance ? null : (
+                    <th className="py-2 pr-2 font-medium">Project / Cost centre</th>
+                  )}
                   <th className="py-2 pl-2 text-right font-medium">Amount</th>
                 </tr>
               </thead>
@@ -330,13 +348,17 @@ export function RequestDetail() {
                 {lines.map((line, index) => (
                   <tr key={line.lineId ?? index} className="border-b border-gray-100">
                     <td className="py-2 pr-2 text-gray-500">{line.lineNumber ?? index + 1}.0</td>
-                    <td className="py-2 pr-2 tabular-nums">
-                      {line.expenseDate ? String(line.expenseDate).slice(0, 10) : "—"}
-                    </td>
+                    {isAdvance ? null : (
+                      <td className="py-2 pr-2 tabular-nums">
+                        {line.expenseDate ? String(line.expenseDate).slice(0, 10) : "—"}
+                      </td>
+                    )}
                     <td className="py-2 pr-2">{line.description}</td>
-                    <td className="py-2 pr-2 text-gray-600">
-                      {line.projectCode ?? line.costCentreCode ?? "—"}
-                    </td>
+                    {isAdvance ? null : (
+                      <td className="py-2 pr-2 text-gray-600">
+                        {line.projectCode ?? line.costCentreCode ?? "—"}
+                      </td>
+                    )}
                     <td className="py-2 pl-2 text-right tabular-nums">
                       {money(Number(line.amountNgn ?? 0))}
                     </td>
