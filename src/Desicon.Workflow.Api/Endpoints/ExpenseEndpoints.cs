@@ -64,6 +64,11 @@ public static class ExpenseEndpoints
             return ProblemResults.BadRequest("'bcDocumentNumber' is required.", httpRequest.Path);
         }
 
+        if (string.IsNullOrWhiteSpace(dto.TreasuryNumber))
+        {
+            return ProblemResults.BadRequest("'treasuryNumber' is required.", httpRequest.Path);
+        }
+
         var expense = await db.ExpenseRequests.FirstOrDefaultAsync(e => e.RequestId == id, cancellationToken);
         if (expense is null)
         {
@@ -71,6 +76,7 @@ public static class ExpenseEndpoints
         }
 
         expense.BcDocumentNumber = dto.BcDocumentNumber.Trim();
+        expense.TreasuryNumber = dto.TreasuryNumber.Trim();
         await db.SaveChangesAsync(cancellationToken);
 
         var actingUser = await currentUser.GetActingUserAsync(cancellationToken);
@@ -79,7 +85,11 @@ public static class ExpenseEndpoints
             id, actingUser,
             new TransitionRequest(
                 "MARK_POSTED", dto.Comment,
-                new Dictionary<string, object?> { ["BcDocumentNumber"] = expense.BcDocumentNumber },
+                new Dictionary<string, object?>
+                {
+                    ["BcDocumentNumber"] = expense.BcDocumentNumber,
+                    ["TreasuryNumber"] = expense.TreasuryNumber
+                },
                 dto.IdempotencyKey),
             cancellationToken);
 
@@ -352,8 +362,16 @@ public static class ExpenseEndpoints
 
     private sealed record GlLineDto(string Side, string AccountNumber, string? Narration, decimal AmountNgn);
 
+    /// <summary>
+    /// TreasuryNumber moved here in workflow version 6. It used to be captured
+    /// at COST_CONTROL_VERIFY, a desk whose own note says the number belongs to
+    /// "the Treasury officer who posts it at AWAITING_POSTING" -- a leftover
+    /// from version 2, when one FinanceOfficer did both jobs and the split of
+    /// the role never revisited the fields each half captured.
+    /// </summary>
     private sealed record MarkPostedDto(
         string BcDocumentNumber,
+        string TreasuryNumber,
         string? Comment = null,
         string? IdempotencyKey = null);
 

@@ -78,9 +78,23 @@ export const submitRequest = (id: string) =>
  * has. No journal lines travel with this: BC owns the ledger, and this
  * platform owns the approval trail plus the reference joining the two.
  */
-export const markPosted = (id: string, bcDocumentNumber: string, comment?: string) =>
+/**
+ * Treasury records the posting: the BC document number and the Treasury
+ * number together.
+ *
+ * The Treasury number moved here from COST_CONTROL_VERIFY in workflow
+ * version 6. Cost Control had been required to supply a number belonging to
+ * the desk they were split from in version 3, and nothing read it.
+ */
+export const markPosted = (
+  id: string,
+  bcDocumentNumber: string,
+  treasuryNumber: string,
+  comment?: string,
+) =>
   api.post<{ toState: string; outcome: string }>(`/api/v1/expenses/${id}/mark-posted`, {
     bcDocumentNumber,
+    treasuryNumber,
     comment: comment ?? null,
   });
 

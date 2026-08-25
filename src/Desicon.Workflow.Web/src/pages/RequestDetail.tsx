@@ -113,15 +113,11 @@ export function RequestDetail() {
       return;
     }
 
-    // TreasuryNumber is the one capture the generic /actions endpoint stages
-    // onto the entity itself, so VERIFY at COST_CONTROL_VERIFY can send it
-    // inline rather than needing an endpoint of its own.
-    const payload =
-      action === "VERIFY" && treasuryNumber.trim().length > 0
-        ? { TreasuryNumber: treasuryNumber.trim() }
-        : undefined;
-
-    await run(() => executeAction(id, action, comment.trim() || undefined, payload));
+    // No payload. VERIFY at COST_CONTROL_VERIFY used to carry a Treasury
+    // number; workflow version 6 moved that capture to MARK_POSTED, where
+    // Treasury acts. Cost Control now guards on the coding instead, which
+    // is what its own note always said the step was for.
+    await run(() => executeAction(id, action, comment.trim() || undefined));
   }
 
   if (!detail) {
@@ -211,12 +207,12 @@ export function RequestDetail() {
    * comes back verbatim. The cost of being wrong is a round trip. The cost of
    * being conservative is a state nobody can leave.
    */
-  function locallyUnblocked(action: string) {
-    return (
-      action === "VERIFY" &&
-      currentState === "COST_CONTROL_VERIFY" &&
-      treasuryNumber.trim().length > 0
-    );
+  function locallyUnblocked(_action: string) {
+    // Nothing typed on this screen unblocks a generic action any more.
+    // VERIFY at COST_CONTROL_VERIFY was the only case, and its guard is now
+    // the request's coding -- which is set through the Coding panel and
+    // reloaded from the server, so the server's own isEnabled is accurate.
+    return false;
   }
 
   return (
@@ -384,6 +380,17 @@ export function RequestDetail() {
             className="mt-1 min-h-11 w-72 rounded border border-gray-300 p-2 text-sm focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
           />
 
+          <label className="mt-3 block text-sm text-gray-700" htmlFor="treasury">
+            Treasury number
+          </label>
+          <input
+            id="treasury"
+            value={treasuryNumber}
+            onChange={(e) => setTreasuryNumber(e.target.value)}
+            placeholder="Treasury reference"
+            className="mt-1 min-h-11 w-72 rounded border border-gray-300 p-2 text-sm focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+          />
+
           <p className="mt-2 text-sm text-gray-500">
             {netPayable > 0
               ? "Once posted, this moves to payment."
@@ -392,9 +399,18 @@ export function RequestDetail() {
 
           <button
             type="button"
-            disabled={busy || bcDocumentNumber.trim().length === 0}
+            disabled={
+              busy || bcDocumentNumber.trim().length === 0 || treasuryNumber.trim().length === 0
+            }
             onClick={() =>
-              void run(() => markPosted(id, bcDocumentNumber.trim(), comment.trim() || undefined))
+              void run(() =>
+                markPosted(
+                  id,
+                  bcDocumentNumber.trim(),
+                  treasuryNumber.trim(),
+                  comment.trim() || undefined,
+                ),
+              )
             }
             className="mt-3 min-h-11 rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800 disabled:opacity-50"
           >
@@ -525,10 +541,6 @@ export function RequestDetail() {
             Available actions
           </h2>
 
-          {/* Treasury number is a guard field on VERIFY at Finance
-              Verification -- without it the transition is refused, so the
-              field appears with the action that needs it rather than on a
-              separate screen. */}
           {/* Cost Control holds the organisation's cost centres; the
               requester generally does not, so a code that arrives wrong or
               blank is ordinary rather than careless. Returning every one of
@@ -601,20 +613,6 @@ export function RequestDetail() {
                 </button>
               </div>
             </div>
-          )}
-
-          {currentState === "COST_CONTROL_VERIFY" && can("VERIFY") && (
-            <>
-              <label className="mt-3 block text-sm text-gray-700" htmlFor="treasury">
-                Treasury number
-              </label>
-              <input
-                id="treasury"
-                value={treasuryNumber}
-                onChange={(e) => setTreasuryNumber(e.target.value)}
-                className="mt-1 min-h-11 w-64 rounded border border-gray-300 p-2 text-sm focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
-              />
-            </>
           )}
 
           <label className="mt-3 block text-sm text-gray-700" htmlFor="comment">
