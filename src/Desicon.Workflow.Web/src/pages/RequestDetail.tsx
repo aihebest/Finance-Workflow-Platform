@@ -158,6 +158,24 @@ export function RequestDetail() {
     | { name: string; staffNumber: string | null; department: string | null }
     | null
     | undefined;
+
+  // How this request is costed.
+  //
+  // A cash advance is coded once, on the form; an expense claim is coded per
+  // line. The table below renders the per-line column, so for an advance it
+  // showed "—" on every row and the coding appeared nowhere at all — the
+  // Head of Department approved without seeing it and Cost Control, whose
+  // whole job is to check it, could not read the thing being checked.
+  //
+  // The API has sent allocationType, projectCode and costCentreCode in the
+  // cash advance detail since it was written. Third time on this project that
+  // a fact was on the wire and off the page: the payee in August, the
+  // requester's department last week, and now this. The response was correct
+  // every time, which is exactly why nothing caught it.
+  const allocationType = detail.allocationType as string | undefined;
+  const requestProjectCode = (detail.projectCode as string | null | undefined) ?? null;
+  const requestCostCentreCode = (detail.costCentreCode as string | null | undefined) ?? null;
+  const requestCoding = requestProjectCode ?? requestCostCentreCode;
   const genericActions = availableActions.filter((a) => !CAPTURE_ACTIONS.has(a.action));
 
   /**
@@ -212,6 +230,19 @@ export function RequestDetail() {
           {currentState.replaceAll("_", " ")}
           {detail.formCode ? ` · ${String(detail.formCode)} ${String(detail.formRevision ?? "")}` : ""}
         </p>
+
+        {requestCoding ? (
+          <p className="mt-2 text-sm text-gray-700">
+            <span className="text-gray-500">
+              {allocationType === "Project" ? "Project" : "Cost centre"}
+            </span>{" "}
+            <span className="font-medium">{requestCoding}</span>
+          </p>
+        ) : allocationType ? (
+          <p className="mt-2 text-sm text-amber-700">
+            No project or cost centre recorded.
+          </p>
+        ) : null}
 
         {raisedBy ? (
           <p className="mt-2 text-sm text-gray-700">
