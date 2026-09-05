@@ -979,18 +979,24 @@ This is §3c with the stakes made explicit: the plan does say so, in the form
 Terraform always says it, and the whole finding of this document is that a
 correct warning nobody reads is not a control.
 
-**Remedy applied instead — a `CanNotDelete` lock on the resource group.** Not as
-a reminder: the lock makes that `terraform apply` *fail*. It is the enforcement.
+**Remedy — a `CanNotDelete` lock.** Not as a reminder: the lock makes that
+`terraform apply` *fail*. It is enforcement rather than documentation, which is
+the distinction this checklist keeps turning on.
 
-```powershell
-az lock create --name fw-prod-do-not-delete --lock-type CanNotDelete `
-  --resource-group rg-desicon-fw-dev
-```
+The scope is the whole question, and the first attempt got it wrong. See "The
+lock was the wrong scope" below for what happened and for the command that
+should actually be run.
 
-- [ ] Apply the lock to `rg-desicon-fw-dev`
-- [ ] Apply the same lock to `rg-ddw-dev`. It is a separate system, but it
+- [x] ~~Apply the same lock to `rg-ddw-dev`. It is a separate system, but it
       serves `alerts.desiconapp.com` from an app called `app-ddw-dev-x6zi99`
-      and carries the identical hazard
+      and carries the identical hazard~~ — **applied 5 Sep 2026 and then
+      removed.** The recommendation was made from resource *names* alone. The
+      tags, read a few minutes later, say `application: Desicon Digital
+      Workplace`, `owner: ddw-platform-team`, `managed_by: terraform`. Locking
+      another team's Terraform-managed estate without telling them turns their
+      next replacement apply into a 409 they have no reason to connect to
+      anything Finance did. If that group should be locked, it is their
+      decision and their runbook
 - [x] ~~Tag both groups `environment=production` so the portal contradicts the
       name at the point somebody reads it~~ — **applied 5 Sep 2026, and it had
       already been half-true.** `rg-desicon-fw-dev` was already carrying
@@ -1008,10 +1014,68 @@ az lock create --name fw-prod-do-not-delete --lock-type CanNotDelete `
       recurring finding arriving one more time, in the remedy for it.
       `environment` is now hardcoded to `production` in the dev environment's
       locals, with the reason beside it
-- [ ] Note that a lock also blocks *intended* destructive applies. That is the
+- [x] ~~Note that a lock also blocks *intended* destructive applies. That is the
       point, but it means the next legitimate teardown needs the lock removed
       first and put back after — write that into the deploy runbook rather than
-      discovering it at the worst moment
+      discovering it at the worst moment~~ — **discovered at the worst moment,
+      about forty minutes after writing that line.** See below
+
+### The lock was the wrong scope, and it took under an hour to prove it
+
+5 September 2026. The resource-group lock went on. The very next
+`terraform apply` — the one applying these tags — failed at the last step:
+
+```
+Error: deleting Firewall Rule ... sql-desicon-fw-dev
+  409 ScopeLocked: ... cannot perform delete operation because following
+  scope(s) are locked: '/subscriptions/.../rg-desicon-fw-dev'
+```
+
+Terraform was deleting `deployer-102-90-125-12`, the stale SQL firewall rule
+for the previous deployer address, exactly as it should have been. Seventeen
+resources took their tags; the eighteenth step could not clean up after itself.
+
+**The scope was wrong, and wrong in the way that matters.** The deployer IP
+rotates on this ISP (§7), so a stale firewall rule is deleted on *every* apply.
+A resource-group lock therefore has to be removed and restored on every single
+deployment. A control with that much friction is removed once and never put
+back, which leaves the estate less protected than if it had never been applied
+— the failure mode being *protected on paper only* is the one this entire
+document exists to catch, arriving this time inside a remedy written on the
+same afternoon.
+
+The thing that must never be deleted is not the resource group. It is the
+database. Locking that instead protects every approved request and every real
+amount, and leaves tags, firewall rules, app settings and deployments to churn
+freely. Deleting the server or the group still fails, because either delete
+must remove the locked child to succeed.
+
+```powershell
+az lock create --name db-do-not-delete --lock-type CanNotDelete `
+  --resource-group rg-desicon-fw-dev `
+  --namespace Microsoft.Sql `
+  --parent servers/sql-desicon-fw-dev `
+  --resource-type databases `
+  --resource-name DesiconFinanceWorkflow
+```
+
+`az lock create` takes `--resource`, not `--resource-id`, and a database is a
+child resource, so it needs `--namespace` / `--parent` / `--resource-type`
+spelled out. Noted because the first version of this line was written with
+`--resource-id` and failed with `unrecognized arguments` — a runbook command
+that has never been run is not a runbook.
+
+- [ ] **Nothing is currently locked.** The group lock was removed to let the
+      5 Sep apply finish and has not been replaced. Apply the database-scoped
+      lock above
+- [ ] Consider the same for `stdesiconfwdev`, once confirmed that nothing
+      routinely churns its containers. That account holds the receipts and the
+      quotations — which, since cash advance version 7 (§5g), are the evidence
+      the Director of Finance authorises against. Losing it loses the proof,
+      not just the file
+- [ ] Whatever lock ends up in place, the deploy runbook must name it. A lock
+      nobody documented is a deployment that fails at 6pm for a reason nobody
+      on call can explain
 
 ---
 
