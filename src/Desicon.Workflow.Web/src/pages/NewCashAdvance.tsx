@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { createCashAdvanceDraft, submitRequest } from "../api/requests";
+import { createCashAdvanceDraft, submitRequest, uploadAttachment } from "../api/requests";
 import { ApiError, type AdvanceLineInput } from "../api/types";
 
 /**
@@ -72,6 +72,14 @@ export function NewCashAdvance() {
   const [stationScope, setStationScope] = useState<"InStation" | "OutOfStation">("InStation");
   const [hasSupportingDocuments, setHasSupportingDocuments] = useState(false);
 
+  // The supporting document itself, not a claim that one exists.
+  //
+  // Workflow version 7 guards SUBMIT on AttachmentCount > 0, counted from
+  // the Attachments table. hasSupportingDocuments above is the printed
+  // form's tick box: it records what the requester said about themselves
+  // and no guard has ever read it.
+  const [supportingDocument, setSupportingDocument] = useState<File | null>(null);
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,6 +91,7 @@ export function NewCashAdvance() {
     filled.length > 0 &&
     purpose.trim().length > 0 &&
     allocationCode.trim().length > 0 &&
+    supportingDocument !== null &&
     !busy;
 
   function updateRow(index: number, patch: Partial<Row>) {
@@ -116,8 +125,19 @@ export function NewCashAdvance() {
         lines,
       });
 
-      await submitRequest(created.requestId);
-      navigate(`/requests/${created.requestId}`);
+      // Attach, then submit. One click for the person, three calls
+      // underneath, because an attachment needs a request to belong to and
+      // the guard needs the attachment to already be there.
+      //
+      // If the upload fails the draft still exists, so this navigates to it
+      // either way rather than leaving the work stranded behind an error
+      // message on a form the person is about to close.
+      try {
+        await uploadAttachment(created.requestId, supportingDocument!);
+        await submitRequest(created.requestId);
+      } finally {
+        navigate(`/requests/${created.requestId}`);
+      }
     } catch (e) {
       // Guard refusals arrive as ProblemDetails with a sentence written for a
       // person — most likely here "retire any overdue advance before
@@ -185,6 +205,10 @@ export function NewCashAdvance() {
                       step="0.01"
                       placeholder="0.00"
                       value={row.amount}
+                      // A focused number input changes value on scroll. On a
+                      // form six rows long that is a silent edit to a money
+                      // field made by scrolling past it.
+                      onWheel={(e) => e.currentTarget.blur()}
                       onChange={(e) => updateRow(index, { amount: e.target.value })}
                       className="min-h-11 w-40 rounded border border-gray-300 p-2 text-right text-sm tabular-nums"
                     />
@@ -280,6 +304,22 @@ export function NewCashAdvance() {
           </label>
         </div>
 
+        <div className="mt-4 rounded border border-gray-200 bg-gray-50 p-3">
+          <p className="text-sm font-medium text-gray-800">Supporting document</p>
+          <p className="mt-1 text-xs text-gray-600">
+            A quotation, pro-forma invoice or written request. Required — this is money
+            not yet spent, so this is the only evidence an approver has.
+          </p>
+          <input
+            type="file"
+            aria-label="Supporting document"
+            accept=".pdf,image/*"
+            onChange={(e) => setSupportingDocument(e.target.files?.[0] ?? null)}
+            className="mt-2 block w-full text-sm"
+          />
+          <p className="mt-1 text-xs text-gray-500">PDF or photograph, up to 10 MB.</p>
+        </div>
+
         <label className="mt-4 flex items-center gap-3 text-sm text-gray-800">
           <input
             type="checkbox"
@@ -350,7 +390,9 @@ export function NewCashAdvance() {
         <span className="text-sm text-gray-600">
           {filled.length === 0
             ? "Add at least one line with a description and an amount."
-            : `${filled.length} line${filled.length === 1 ? "" : "s"} · ₦${money(total)}`}
+            : supportingDocument === null
+              ? "Attach the quotation or invoice supporting this advance."
+              : `${filled.length} line${filled.length === 1 ? "" : "s"} · ₦${money(total)}`}
         </span>
       </div>
     </div>

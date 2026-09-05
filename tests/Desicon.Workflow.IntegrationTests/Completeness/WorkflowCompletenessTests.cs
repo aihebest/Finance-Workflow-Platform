@@ -253,7 +253,12 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         async Task<Guid> CreateDraftAsync(string purpose, decimal amount)
         {
             var created = await (await WorkflowSteps.CreateCashAdvanceDraftAsync(requesterClient, purpose, amount)).ShouldSucceedAsync();
-            return created.GetGuid("requestId");
+            var id = created.GetGuid("requestId");
+
+            // Version 7 will not submit an advance with nothing attached.
+            await WorkflowSteps.AttachReceiptAsync(Fixture, id, org.Requester.Id);
+
+            return id;
         }
 
         // Version 4: one approval on the requesting side. See the expense
@@ -276,9 +281,10 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         {
             var id = await DriveToCostControlVerifyAsync(purpose, amount);
 
-            // Cost Control will not pass a claim with no evidence attached.
-            await WorkflowSteps.AttachReceiptAsync(Fixture, id, org.Requester.Id);
-
+            // No attachment step here, unlike the expense walk above. An
+            // advance's evidence is now demanded at SUBMIT (version 7), so by
+            // the time it reaches Cost Control it already has one; Cost
+            // Control's own guard asks for the allocation code instead.
             await StepAsync(
                 () => WorkflowSteps.ActionAsync(costControlClient, id, "VERIFY", payload: TreasuryNumber(treasuryNumber)),
                 "COST_CONTROL_VERIFY", "VERIFY", "FINANCE_APPROVE");

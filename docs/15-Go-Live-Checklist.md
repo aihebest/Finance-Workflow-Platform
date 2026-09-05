@@ -751,6 +751,71 @@ within 7.x still arrive, which is where any fixes are.
 
 ---
 
+## 5g. An advance could be approved with no evidence behind it
+
+Raised by the Director of Finance on 5 September 2026. He authorises every
+payment Desicon makes, and his objection was not to the workflow — it was that
+he was being asked to release money against a purpose line and a figure, with
+nothing to check either against. His own estimate is that roughly **98 percent
+of cash advances raised on paper were never retired**.
+
+An expense claim has always needed a receipt, because it is money already spent
+and the evidence exists. An advance is money *not yet* spent, so its evidence is
+a quotation, a pro-forma or a written request — and until now nothing asked for
+one.
+
+**`HasSupportingDocuments` was there the whole time.** It is DEL-AC-FRM-003's
+tick box, captured on every advance since the first release, stored, indexed,
+and read by no guard ever. The platform faithfully recorded that somebody said
+there was a document. It never once asked for the document.
+
+Fixed in **cash advance version 7**: `SUBMIT` now also requires
+`AttachmentCount > 0`, counted from the Attachments table the same way the
+expense claim's receipt check works — what was provided, not what was asserted.
+The form uploads the file between creating the draft and submitting it, so the
+requester still does it in one action.
+
+Deliberately *not* done, per Aihe on 5 September: the block on raising a new
+advance stays on the overdue rule alone. Requiring a document is a check on this
+advance; blocking on someone's retirement history is a different decision and
+belongs to whoever sets that policy.
+
+- [ ] **Drafts created before v7 deploys are still on v6 and will submit
+      without a document.** `DefinitionVersion` is pinned at draft creation and
+      never changes — that is the whole point of pinning, and it is right. But
+      it means the rule starts with advances raised *after* the deploy, not
+      with the ones already sitting in DRAFT. Count them before deploying:
+
+      ```sql
+      SELECT COUNT(*) FROM Requests
+      WHERE ModuleKey = 'CASH_ADVANCE' AND CurrentState = 'DRAFT'
+        AND DefinitionVersion < 7;
+      ```
+
+      If it is a handful, ask those requesters to discard and re-raise. If it is
+      not, they will reach the DMD with nothing attached and he will have been
+      told the problem was fixed
+- [ ] `BLOCK_NEW_ADVANCE_WHEN_OVERDUE` is still a policy value nothing reads —
+      the overdue check is hard-coded in the SUBMIT guard instead. A policy row
+      that looks like a switch and is not one will eventually be turned off by
+      somebody expecting it to do something
+- [ ] The DMD asked to *see* the evidence, not only for it to exist. He can open
+      the attachment from the request page, but nothing puts it in front of him
+      at DMD_APPROVAL. Worth watching whether he actually opens them
+
+### The frontend lint has never run
+
+Noticed 5 September 2026 while checking this change. `src/Desicon.Workflow.Web`
+has an `npm run lint` script, four ESLint packages installed, and **no ESLint
+configuration file anywhere in the repository**. The script fails immediately
+with "couldn't find a configuration file" — and CI never calls it, only
+`npm run build`, so nothing has ever reported this.
+
+- [ ] Either add a config and put `npm run lint` in CI, or remove the script and
+      the four dependencies. What is there now is the appearance of a control
+
+---
+
 ## 6. Repository and pipeline
 
 - [ ] Move the repository from the personal GitHub account to a Desicon
