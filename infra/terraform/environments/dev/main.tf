@@ -12,8 +12,22 @@ locals {
   web_name             = "app-desicon-fw-web-${var.environment}"
   web_default_hostname = "${local.web_name}.azurewebsites.net"
 
+  # environment is deliberately not var.environment, which is "dev".
+  #
+  # The environment named dev is the one Desicon runs on -- there is no other
+  # (docs/15 section 7). None of these resources can be renamed without
+  # rebuilding them, and rebuilding sql-desicon-fw-dev destroys the database,
+  # so the tag is the only place that can say what this actually is. It should
+  # not repeat the name's mistake.
+  #
+  # criticality belongs here rather than being applied by hand, because the
+  # azurerm provider writes this map as the *complete* set of tags: anything
+  # merged in with `az tag update` is silently removed by the next apply. A
+  # tag applied at the console is a tag with an expiry date nobody is told
+  # about.
   tags = {
-    environment         = var.environment
+    environment         = "production"
+    criticality         = "high"
     owner               = var.owner
     cost_centre         = var.cost_centre
     data_classification = "Confidential"

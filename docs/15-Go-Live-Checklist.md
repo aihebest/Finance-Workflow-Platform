@@ -948,10 +948,70 @@ production setting and needs a decision rather than a default:
 - [ ] SKUs were chosen as "scaled down relative to uat/prd" — `P1v3`,
       `GP_Gen5_2`, `EP1`. Re-examine against real load rather than inheriting a
       dev sizing decision
-- [ ] Naming: the resources keep `-dev` throughout. Renaming them means
-      rebuilding, which is not worth it — but every future reader will assume
-      this is a test environment, so the assumption must be contradicted
-      wherever it could cause harm, not just here
+- [ ] Naming: the resources keep `-dev` throughout, and every future reader
+      will assume this is a test environment. See below for why renaming is not
+      the remedy, and what is
+
+### There is no rename. There is only a rebuild wearing the word.
+
+Checked 5 September 2026, because "just rename them" is the obvious idea and it
+is worth having the answer written down before somebody acts on it.
+
+Azure has no rename operation for anything in `rg-desicon-fw-dev`:
+
+| Resource | Renameable in place? |
+|---|---|
+| The resource group itself | **No.** Azure has no rename for resource groups |
+| `sql-desicon-fw-dev` | No — the logical server name *is* the FQDN |
+| `app-desicon-fw-api-dev`, `-web-dev`, `func-desicon-fw-dev` | No — the name *is* the `azurewebsites.net` hostname |
+| `afd-desicon-fw-dev` | No |
+| Key Vault | No — and soft-delete reserves the old name for the retention window (90 days), so it cannot even be reused promptly |
+| Log Analytics workspace, App Insights | No |
+| The user-assigned managed identity | No — and recreating it mints a **new principal ID**, silently invalidating every role assignment and Key Vault policy that names the old one |
+| `DesiconFinanceWorkflow` (the database) | Yes — and it is the one thing already named correctly |
+
+So changing any of those names in Terraform yields `-/+ destroy and then create
+replacement`. On the SQL server that destroys the database holding every
+approved request and every real amount Desicon has put through this platform.
+The cosmetic fix costs the data.
+
+This is §3c with the stakes made explicit: the plan does say so, in the form
+Terraform always says it, and the whole finding of this document is that a
+correct warning nobody reads is not a control.
+
+**Remedy applied instead — a `CanNotDelete` lock on the resource group.** Not as
+a reminder: the lock makes that `terraform apply` *fail*. It is the enforcement.
+
+```powershell
+az lock create --name fw-prod-do-not-delete --lock-type CanNotDelete `
+  --resource-group rg-desicon-fw-dev
+```
+
+- [ ] Apply the lock to `rg-desicon-fw-dev`
+- [ ] Apply the same lock to `rg-ddw-dev`. It is a separate system, but it
+      serves `alerts.desiconapp.com` from an app called `app-ddw-dev-x6zi99`
+      and carries the identical hazard
+- [x] ~~Tag both groups `environment=production` so the portal contradicts the
+      name at the point somebody reads it~~ — **applied 5 Sep 2026, and it had
+      already been half-true.** `rg-desicon-fw-dev` was already carrying
+      `cost_centre 1103`, `owner ICT` and `data_classification Confidential`.
+      What it was carrying for `environment` was `dev`, because
+      `locals.tags` in `environments/dev/main.tf` set `environment =
+      var.environment`. So the one tag that mattered agreed with the misleading
+      name rather than with the truth
+- [x] ~~Add the tags to the Terraform so the next apply does not strip them~~ —
+      **and this was not optional.** The azurerm provider writes `tags` as the
+      complete set: the next `terraform apply` would have reset `environment`
+      to `dev` and deleted `criticality` outright, with no warning and nothing
+      in the plan that reads as a loss. A tag applied at the console is a tag
+      with an expiry date nobody is told about — which is this document's
+      recurring finding arriving one more time, in the remedy for it.
+      `environment` is now hardcoded to `production` in the dev environment's
+      locals, with the reason beside it
+- [ ] Note that a lock also blocks *intended* destructive applies. That is the
+      point, but it means the next legitimate teardown needs the lock removed
+      first and put back after — write that into the deploy runbook rather than
+      discovering it at the worst moment
 
 ---
 
