@@ -240,11 +240,22 @@ public sealed class RequestActionService
             }
         }
 
-        // Evidence. COST_CONTROL_VERIFY's guard on a retirement requires at
-        // least one attachment, and AttachmentCount is not a column -- same
-        // arrangement as GlPostingLines above. Counted rather than trusted
-        // from ReceiptStatus, which records what the requester said rather
-        // than what they provided.
+        // Evidence. Two guards read this: an expense claim's
+        // COST_CONTROL_VERIFY, and -- from cash advance version 7 -- the
+        // advance's SUBMIT. AttachmentCount is not a column, so it is counted
+        // here, the same arrangement as GlPostingLines above.
+        //
+        // Counted, never trusted from a field. Both modules carry a tick box
+        // the requester fills in about themselves (ReceiptStatus on the
+        // claim, HasSupportingDocuments on the advance) and neither is read
+        // by any guard. The advance's box had been captured since the first
+        // release while nothing ever asked for the document behind it, which
+        // is how the Director of Finance came to be approving payments
+        // against a purpose line and nothing else.
+        //
+        // Hydrated on the read path too: GetAvailableActionsAsync loads
+        // through here as well, so the Submit button the requester sees and
+        // the guard that refuses them agree.
         request.AttachmentCount = await _db.Attachments
             .AsNoTracking()
             .CountAsync(a => a.RequestId == requestId, cancellationToken);

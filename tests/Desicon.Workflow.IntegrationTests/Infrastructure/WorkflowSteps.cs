@@ -248,6 +248,13 @@ public static class WorkflowSteps
             requesterClient, purpose, amount, stationScope: stationScope)).ShouldSucceedAsync();
         var id = created.GetGuid("requestId");
 
+        // Workflow version 7 will not submit an advance with nothing attached:
+        // it is money not yet spent, so the quotation is the only evidence an
+        // approver has. Attached here so every caller that just wants a
+        // submitted advance keeps working -- the rule is asserted properly in
+        // SupportingDocumentTests rather than incidentally by everything else.
+        await AttachReceiptAsync(fixture, id, org.Requester.Id);
+
         await (await SubmitAsync(requesterClient, id)).ShouldSucceedAsync();
         return id;
     }
