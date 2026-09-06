@@ -140,6 +140,47 @@ are attributed to a desk, not to a person.** `PostedByUserId` naming
 `treasury@` means "somebody at the Treasury desk", and the platform cannot say
 who. If that ever needs to change, it is one role reassignment and no code.
 
+### 1d. There was no way to sign out
+
+Asked on 6 September 2026, by Aihe, looking at a live request: *"do anyone
+login need where to logout or you just close the browser page?"*
+
+Closing the page was the only way out, and it is not one.
+
+The token cache is `sessionStorage`, chosen deliberately (see `auth/msal.ts`)
+so that closing the tab clears this application's copy. It does. But the Entra
+sign-in cookie lives in the **browser**, not the tab, and survives. The next
+person to open `finance.desiconapp.com` on that machine is signed straight back
+in as the last one, silently and without a prompt, because that is exactly what
+single sign-on is for.
+
+Which lands on the same machines §1c is about. A shared site PC was the reason
+the cache is `sessionStorage`; the half of the problem that lives outside the
+tab was never addressed.
+
+`postLogoutRedirectUri` has been configured since the first release. The
+configuration for signing out was there the whole time. The button was not —
+the same shape as the guard message that promised receipts nobody checked, and
+the `PUT` endpoint nothing ever called.
+
+Alongside it, a second gap that made the first invisible: **the header never
+said who was signed in.** Nothing on screen could have let anyone notice they
+were acting as somebody else.
+
+**Both fixed 6 September 2026.** The account's display name *and* its username
+now sit in the header — both, because §3e was written after a claim was paid to
+the wrong one of two employees sharing a display name — beside a Sign out that
+calls MSAL's `logoutRedirect` scoped to that account. Not a cache clear: that
+would leave the Entra session intact and the next Sign in would walk straight
+back in, which is the behaviour being removed.
+
+- [ ] Tell staff that Sign out also signs that account out of other Microsoft
+      sessions in the same browser. That is the intended trade on a shared
+      machine and a surprise on a personal one
+- [ ] Consider whether a session timeout is wanted as well. Sign out only helps
+      the person who remembers to press it, and the case this is really about —
+      someone walking away from a site PC — is the case where nobody does
+
 ---
 
 ## 2. Turn notifications on — DONE 10 AUGUST 2026
