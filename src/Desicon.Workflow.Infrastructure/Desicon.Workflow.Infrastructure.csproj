@@ -17,7 +17,7 @@
       alternative (letting the transitive win silently) is how a
       MissingMethodException arrives at runtime instead of at build.
     -->
-    <PackageReference Include="Azure.Core" Version="1.44.1" />
+    <PackageReference Include="Azure.Core" Version="1.62.0" />
     <!--
       Blob storage for receipt attachments. Same arrangement as Azure.Core
       above: the SDK lives here, the choice of credential stays with the host.
