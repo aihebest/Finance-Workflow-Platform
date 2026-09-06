@@ -43,14 +43,21 @@ public sealed class CashAdvanceWorkflowTests : IntegrationTestBase
     // AdvanceRetirementEndpoints.RetireAsync inserts the linked ExpenseRequest
     // directly (it is a plain DB insert, not a guarded transition -- see that
     // file's class-level comment) and never sets ExpenseRequest.ReceiptStatus,
-    // which defaults to ReceiptStatus.No. EXPENSE's own SUBMIT guard requires
-    // LineCount > 0 and TotalAmountNgn > 0 and ReceiptStatus != 'No', and there
-    // is no HTTP endpoint that can change ReceiptStatus on an existing DRAFT
-    // (RequestEndpoints.CreateDraftAsync is the only place that sets it, and
-    // that only runs for a brand-new draft). A retirement-linked claim is
-    // therefore stuck at DRAFT via the API alone; this test pokes the field
-    // directly through the DbContext to get past it, the same workaround the
-    // negative-net-payable expense test uses for AdvanceAmountNgn.
+    // which defaults to ReceiptStatus.No. EXPENSE's SUBMIT guard requires
+    // ReceiptStatus != 'No', so a retirement claim arrives already unable to
+    // move, and this test pokes the field through the DbContext to get past it.
+    //
+    // 6 Sep 2026: half of the note that used to sit here was wrong, and the
+    // wrong half mattered. It said "there is no HTTP endpoint that can change
+    // ReceiptStatus on an existing DRAFT". There is -- PUT /api/v1/requests/
+    // {id} routes to UpdateDraftAsync, which calls the same ApplyExpenseFields
+    // that CreateDraftAsync does. What is missing is not the endpoint. It is
+    // any caller: the SPA has no update-draft function and no edit-draft
+    // route, so a requester who retires an advance lands on a claim they
+    // cannot submit and cannot edit.
+    //
+    // This workaround therefore stands in for a dead end a real person hits,
+    // not for a test-harness inconvenience. See docs/15 section 5h.
     [Fact]
     public async Task Full_retirement_via_a_linked_expense_claim_closes_the_advance()
     {
@@ -74,6 +81,11 @@ public sealed class CashAdvanceWorkflowTests : IntegrationTestBase
             expense.ReceiptStatus = ReceiptStatus.Yes;
             await db.SaveChangesAsync();
         });
+
+        // Expense version 7 also wants the receipt itself, which is the whole
+        // point on a retirement: this claim is the account of what the advance
+        // was spent on.
+        await WorkflowSteps.AttachReceiptAsync(Fixture, expenseId, org.Requester.Id);
 
         await (await WorkflowSteps.SubmitAsync(Fixture.CreateClient(org.Requester), expenseId)).ShouldSucceedAsync();
         await WorkflowSteps.DriveExpenseToFinanceApproveAsync(Fixture, org, expenseId, "TN-EXP-RETIRE");

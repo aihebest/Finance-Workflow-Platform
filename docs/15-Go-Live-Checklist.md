@@ -718,6 +718,68 @@ that decides which budget carries the spend.
 
 ---
 
+## 5h. A retired advance cannot be submitted, and never could be
+
+Found 6 September 2026, while updating a test comment that turned out to be
+half wrong in the half that mattered.
+
+**Retiring an advance dead-ends.** The sequence:
+
+1. Requester opens My Advances and presses **Retire this advance**
+2. `AdvanceRetirementEndpoints.RetireAsync` inserts a linked `ExpenseRequest`
+   directly — a plain DB insert, not a guarded transition — and the SPA
+   navigates them straight to it
+3. That insert never sets `ReceiptStatus`, so it takes the property default,
+   which is `ReceiptStatus.No`
+4. EXPENSE's SUBMIT guard requires `ReceiptStatus != 'No'`
+5. The claim cannot be submitted
+
+And there is no way out of it from the browser. `PUT /api/v1/requests/{id}`
+exists and routes to `UpdateDraftAsync`, which calls the same
+`ApplyExpenseFields` that draft creation does — so the API can set the field.
+**Nothing calls it.** The SPA has no update-draft function in `api/requests.ts`
+and no edit-draft route in `App.tsx`. A requester who retires an advance lands
+on a claim they can neither submit nor edit.
+
+This was written down. `CashAdvanceWorkflowTests` carried a note saying a
+retirement-linked claim "is therefore stuck at DRAFT via the API alone", and
+the test worked around it by poking the field through the `DbContext`. The
+note was read as a test-harness inconvenience for eleven weeks. It was a
+description of a user-facing dead end, sitting in the codebase, in a comment,
+in the past tense.
+
+**Why this one is worse than the others in this document.** The Director of
+Finance's stated objection to cash advances is that around 98 percent of them
+were never retired. Retirement is the single behaviour this platform most
+needs to make easy. It is the one that does not work.
+
+The paper process at least had somewhere for the claim to go. The digital one
+accepts the request, creates the claim, shows it to the requester, and then
+refuses it with a guard message about a radio button they cannot reach.
+
+- [ ] Decide the fix. The API side already works, so this is a frontend gap:
+      either give `RequestDetail` a receipt-status control for a draft the
+      viewer raised (wired to the existing PUT, which needs the `If-Match`
+      row version), or add a proper edit-draft page
+- [ ] Do not fix it by having `RetireAsync` set `ReceiptStatus = Yes`. That
+      would assert on the requester's behalf that a receipt exists, which is
+      the exact confusion between *asserted* and *provided* that §5g and this
+      section are both about
+- [ ] Check how many retirement claims are sitting in DRAFT in production
+      right now, unable to move:
+
+      ```sql
+      SELECT COUNT(*) FROM Requests r
+      JOIN ExpenseRequests e ON e.RequestId = r.RequestId
+      WHERE r.CurrentState = 'DRAFT' AND e.RetiresAdvanceId IS NOT NULL;
+      ```
+
+- [ ] Whatever the fix, it needs a test that drives it over HTTP as a
+      requester. Every existing test reached past this by writing to the
+      database, which is precisely why nobody found it
+
+---
+
 ## 5f. FluentAssertions 8 is not free for Desicon
 
 Found 24 August 2026 while looking at why several Dependabot pull requests were
