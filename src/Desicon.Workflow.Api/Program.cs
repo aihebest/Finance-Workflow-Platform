@@ -287,6 +287,7 @@ app.MapBeneficiaryLookupEndpoints();
 app.MapAttachmentEndpoints();
 app.MapReportEndpoints();
 app.MapAllocationEndpoints();
+app.MapReceiptStatusEndpoints();
 app.MapMeEndpoints();
 
 app.Run();

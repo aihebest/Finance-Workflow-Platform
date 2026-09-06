@@ -202,6 +202,24 @@ export const getMyApprovals = () => api.get<MyApprovals>("/api/v1/my/approvals")
  * Exactly one of projectCode / costCentreCode, and a reason: the previous
  * coding is kept in the audit trail alongside the new one.
  */
+/**
+ * The requester answering whether the receipts are attached.
+ *
+ * Narrow on purpose. `PUT /api/v1/requests/{id}` can also set this field, but
+ * it replaces the whole claim — it clears the lines and rebuilds them from the
+ * payload — so changing one radio button that way would mean sending every line
+ * back through the browser. On a retirement claim those lines are the server's
+ * account of what the advance was spent on, and they should not make that trip
+ * to change something else.
+ */
+export const setReceiptStatus = (
+  requestId: string,
+  receiptStatus: "Yes" | "No" | "Incomplete",
+) => api.patch<{ requestId: string; requestNumber: string; receiptStatus: string }>(
+  `/api/v1/requests/${requestId}/receipt-status`,
+  { receiptStatus },
+);
+
 export const setAllocation = (
   requestId: string,
   body: { projectCode?: string; costCentreCode?: string; reason: string },

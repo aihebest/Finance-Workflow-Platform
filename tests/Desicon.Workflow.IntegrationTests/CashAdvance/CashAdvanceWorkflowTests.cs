@@ -1,4 +1,4 @@
-using Desicon.Workflow.Domain.Common;
+using System.Net.Http.Json;
 using Desicon.Workflow.IntegrationTests.Infrastructure;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -40,24 +40,22 @@ public sealed class CashAdvanceWorkflowTests : IntegrationTestBase
         afterAck.GetProperty("acknowledgedAt").ValueKind.Should().NotBe(System.Text.Json.JsonValueKind.Null);
     }
 
-    // AdvanceRetirementEndpoints.RetireAsync inserts the linked ExpenseRequest
-    // directly (it is a plain DB insert, not a guarded transition -- see that
-    // file's class-level comment) and never sets ExpenseRequest.ReceiptStatus,
-    // which defaults to ReceiptStatus.No. EXPENSE's SUBMIT guard requires
-    // ReceiptStatus != 'No', so a retirement claim arrives already unable to
-    // move, and this test pokes the field through the DbContext to get past it.
+    // This test used to write to ExpenseRequest.ReceiptStatus through the
+    // DbContext, under a note explaining that a retirement-linked claim "is
+    // therefore stuck at DRAFT via the API alone".
     //
-    // 6 Sep 2026: half of the note that used to sit here was wrong, and the
-    // wrong half mattered. It said "there is no HTTP endpoint that can change
-    // ReceiptStatus on an existing DRAFT". There is -- PUT /api/v1/requests/
-    // {id} routes to UpdateDraftAsync, which calls the same ApplyExpenseFields
-    // that CreateDraftAsync does. What is missing is not the endpoint. It is
-    // any caller: the SPA has no update-draft function and no edit-draft
-    // route, so a requester who retires an advance lands on a claim they
-    // cannot submit and cannot edit.
+    // That note was accurate and was read as a test-harness inconvenience for
+    // eleven weeks. It was a description of a dead end a real person walks
+    // into: RetireAsync inserts the linked claim directly and never sets
+    // ReceiptStatus, so it arrives as No, and EXPENSE's SUBMIT guard refuses
+    // No. Nothing in the SPA could change it. The advance could be retired in
+    // the tests and by nobody else.
     //
-    // This workaround therefore stands in for a dead end a real person hits,
-    // not for a test-harness inconvenience. See docs/15 section 5h.
+    // Fixed 6 September 2026 with PATCH /api/v1/requests/{id}/receipt-status,
+    // so this test now takes the same route a requester does. The end-to-end
+    // version lives in RetirementCanBeCompletedTests; this one keeps the walk
+    // it was always about, without reaching around the gap. See docs/15
+    // section 5h.
     [Fact]
     public async Task Full_retirement_via_a_linked_expense_claim_closes_the_advance()
     {
@@ -75,12 +73,10 @@ public sealed class CashAdvanceWorkflowTests : IntegrationTestBase
         retireResponse.GetProperty("advanceAmountNgn").GetDecimal().Should().Be(6_000m);
         retireResponse.GetProperty("lineCount").GetInt32().Should().Be(1);
 
-        await WithDbAsync(async db =>
-        {
-            var expense = await db.ExpenseRequests.FirstAsync(e => e.RequestId == expenseId);
-            expense.ReceiptStatus = ReceiptStatus.Yes;
-            await db.SaveChangesAsync();
-        });
+        await (await Fixture.CreateClient(org.Requester).PatchAsync(
+                $"/api/v1/requests/{expenseId}/receipt-status",
+                JsonContent.Create(new { receiptStatus = "Yes" })))
+            .ShouldSucceedAsync();
 
         // Expense version 7 also wants the receipt itself, which is the whole
         // point on a retirement: this claim is the account of what the advance

@@ -718,7 +718,7 @@ that decides which budget carries the spend.
 
 ---
 
-## 5h. A retired advance cannot be submitted, and never could be
+## 5h. A retired advance could not be submitted, and never could be
 
 Found 6 September 2026, while updating a test comment that turned out to be
 half wrong in the half that mattered.
@@ -757,14 +757,34 @@ The paper process at least had somewhere for the claim to go. The digital one
 accepts the request, creates the claim, shows it to the requester, and then
 refuses it with a guard message about a radio button they cannot reach.
 
-- [ ] Decide the fix. The API side already works, so this is a frontend gap:
-      either give `RequestDetail` a receipt-status control for a draft the
-      viewer raised (wired to the existing PUT, which needs the `If-Match`
-      row version), or add a proper edit-draft page
-- [ ] Do not fix it by having `RetireAsync` set `ReceiptStatus = Yes`. That
-      would assert on the requester's behalf that a receipt exists, which is
-      the exact confusion between *asserted* and *provided* that §5g and this
-      section are both about
+**Fixed 6 September 2026.** `PATCH /api/v1/requests/{id}/receipt-status`, with
+the radio row on `RequestDetail` sitting directly under the attachments panel —
+attach the receipts, then answer the question about them, in that order and in
+one place.
+
+- [x] ~~Decide the fix~~ — a narrow endpoint rather than the existing PUT.
+      `ApplyExpenseFields` is a full replace: it clears the lines and rebuilds
+      them from the payload, so changing one radio button through it would mean
+      the browser round-tripping every line the server generated from the
+      advance. On a retirement claim those lines *are* the account of what the
+      money was spent on. They should not make that trip to change something
+      else
+- [x] ~~Do not fix it by having `RetireAsync` set `ReceiptStatus = Yes`~~ — not
+      done, and worth keeping the reason: that would assert on the requester's
+      behalf that a receipt exists, which is the exact confusion between
+      *asserted* and *provided* that §5g and this section are both about
+- [x] ~~Whatever the fix, it needs a test that drives it over HTTP as a
+      requester~~ — `RetirementCanBeCompletedTests` retires an advance and
+      submits the claim end to end without writing to the database, and asserts
+      the dead end first so the thing being fixed is visible in the test rather
+      than only in this document. `CashAdvanceWorkflowTests` no longer reaches
+      around the gap either
+- [ ] The panel is gated on `can("SUBMIT")`, which is the API's own answer to
+      "may this person submit this" — the requester, in DRAFT or RETURNED. It
+      deliberately ignores whether the guard passes, because SUBMIT is blocked
+      precisely when the field says No. Worth remembering if anyone ever makes
+      `availableActions` omit blocked actions: that would hide the control that
+      unblocks them, and re-create this exact deadlock
 - [ ] Check how many retirement claims are sitting in DRAFT in production
       right now, unable to move:
 
@@ -774,9 +794,8 @@ refuses it with a guard message about a radio button they cannot reach.
       WHERE r.CurrentState = 'DRAFT' AND e.RetiresAdvanceId IS NOT NULL;
       ```
 
-- [ ] Whatever the fix, it needs a test that drives it over HTTP as a
-      requester. Every existing test reached past this by writing to the
-      database, which is precisely why nobody found it
+Every existing test reached past this by writing to the database, which is
+precisely why nobody found it.
 
 ---
 
