@@ -8,6 +8,7 @@ import {
   getRequest,
   markPosted,
   setAllocation,
+  setReceiptStatus,
 } from "../api/requests";
 import { ACTION_LABELS, ApiError, type AuditEntry, type AvailableAction } from "../api/types";
 import { Attachments } from "../components/Attachments";
@@ -74,6 +75,11 @@ export function RequestDetail() {
   const [code, setCode] = useState("");
   const [codeReason, setCodeReason] = useState("");
   const [codingBusy, setCodingBusy] = useState(false);
+
+  // The requester answering the receipts question on a claim already in their
+  // hands. Its own flag rather than the shared `busy`, so the radio row does
+  // not disable the action buttons underneath it.
+  const [receiptBusy, setReceiptBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -379,6 +385,60 @@ export function RequestDetail() {
         canUpload={!detail.closedAt}
         onChanged={() => void load()}
       />
+
+      {/* --- Attached receipts (the requester's own claim, still with them) ---
+
+          Gated on can("SUBMIT") rather than on the viewer's identity: that is
+          already exactly "you are authorised to submit this", which means the
+          requester, in DRAFT or RETURNED. And `can` deliberately ignores
+          whether the guard passes, which is the whole reason this panel works
+          — SUBMIT is blocked precisely when this field says No.
+
+          Why it exists at all: retiring an advance creates the claim as a
+          direct insert that never sets ReceiptStatus, so it arrives as No, and
+          EXPENSE's SUBMIT guard refuses No. There was no screen anywhere that
+          could change it. A requester who pressed "Retire this advance" landed
+          on a claim they could neither submit nor edit, which is why almost
+          nothing was ever retired. See docs/15 section 5h. */}
+      {!isAdvance && can("SUBMIT") && (
+        <section className="rounded border border-gray-200 bg-white p-4">
+          <p className="text-sm font-medium text-gray-800">Attached receipts</p>
+          <p className="mt-1 text-xs text-gray-600">
+            Your answer about this claim. The files above are the receipts themselves —
+            both are needed to submit.
+          </p>
+
+          <div className="mt-2 flex flex-wrap gap-4">
+            {(["Yes", "No", "Incomplete"] as const).map((option) => (
+              <label key={option} className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="detailReceiptStatus"
+                  checked={String(detail.receiptStatus ?? "") === option}
+                  disabled={receiptBusy}
+                  onChange={() => {
+                    setReceiptBusy(true);
+                    setReceiptStatus(id, option)
+                      .then(() => load())
+                      .catch((e: unknown) =>
+                        setError(e instanceof ApiError ? e.message : (e as Error).message),
+                      )
+                      .finally(() => setReceiptBusy(false));
+                  }}
+                />
+                {option}
+              </label>
+            ))}
+          </div>
+
+          {String(detail.receiptStatus ?? "") === "No" && (
+            <p className="mt-2 text-xs text-gray-700">
+              A claim recording no receipts cannot be submitted. Attach them above and
+              change this to Yes, or to Incomplete if you only have some.
+            </p>
+          )}
+        </section>
+      )}
 
       {/* --- Business Central posting (AWAITING_POSTING) --- */}
       {can("MARK_POSTED") && (
