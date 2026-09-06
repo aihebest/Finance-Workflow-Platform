@@ -1201,6 +1201,66 @@ that has never been run is not a runbook.
 
 ---
 
+## 6b. Twenty-three open pull requests, and what was in them
+
+Triaged 6 September 2026. Three findings, in order of how much they matter.
+
+### An `ignore` rule does not close a pull request that is already open
+
+`FluentAssertions` major was ignored in `.github/dependabot.yml` on 24 August,
+with §5f written beside it explaining that 8.x is not free for a commercial
+company. **Two pull requests carrying `FluentAssertions 8.10.0` were still open
+and still mergeable on 6 September** — `test-2525e3642d` and `test-6aab582b53`.
+
+The rule governs what Dependabot raises next. It does nothing about what it has
+already raised. So the control was written, was correct, was committed — and
+the exact thing it existed to prevent sat one green Merge button away for three
+weeks.
+
+The same is true of `Microsoft.EntityFrameworkCore 9.0.18` and `dotnet-ef
+10.0.10`, both ignored at major on 24 August, both still open.
+
+- [ ] Close every pull request an ignore rule was written for. Adding the rule
+      and stopping there is where this went wrong
+- [ ] Whenever an ignore is added in future, close the matching PR in the same
+      sitting. Noted at the top of `dependabot.yml` so the next person reads it
+      before the mistake rather than after
+
+### A SHA pin can carry a comment that lies about it
+
+`scripts/check-action-pinning.mjs` enforces that every action is pinned to a
+full 40-character SHA, and warns when a pin has no version comment — a bare SHA
+being unreadable in review. It never checks that the comment is *true*, which
+it cannot without asking GitHub.
+
+Two of the open pull requests move `actions/checkout` and `azure/login` to new
+SHAs while leaving the comments reading `# v4` and `# v2`. Merged as they
+stand, the workflows would run one version while telling every future reviewer
+they run another — and the pinning check would pass, because a comment is
+present.
+
+The pin is still doing its job: what runs is fixed and auditable. It is the
+human-readable half that goes quietly wrong, which is the half people actually
+read.
+
+- [ ] Before merging either, confirm the SHA matches the tag the comment claims
+      and correct the comment if not
+- [ ] Consider having the check resolve the comment against the GitHub API. It
+      needs a token and a network call in CI, so it is a real decision, not an
+      obvious one
+
+### Version drift inside the solution
+
+`Azure.Identity` is at **1.11.4** in the API and **1.12.0** in Functions. The
+Functions csproj carries a comment explaining its pin; the API's does not
+explain why it is behind. Both are reached through the managed identity that
+holds every credential this platform uses.
+
+- [ ] Bring the two to the same version deliberately. `Azure.Identity-1.21.0`
+      is open and does exactly this for the API side
+
+---
+
 ## A note on how this list was built
 
 Every item is something that was found by running the system rather than by

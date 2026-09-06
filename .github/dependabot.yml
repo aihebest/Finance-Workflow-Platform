@@ -6,6 +6,19 @@
 # is immutable, which is the point — and also means it never picks up a
 # security fix on its own. Pinning without a bump mechanism trades one risk
 # for another; this is the other half of that decision.
+#
+# AN `ignore` RULE DOES NOT CLOSE A PULL REQUEST THAT IS ALREADY OPEN.
+#
+# Learned on 6 September 2026, going through 23 of them. The FluentAssertions
+# major was ignored here on 24 August specifically so that a paid-licence
+# dependency could not arrive by accident. Two pull requests carrying
+# FluentAssertions 8.10.0 were still open and still mergeable three weeks
+# later, because the rule only governs what Dependabot raises next -- it does
+# nothing about what it has already raised.
+#
+# So every ignore added below is only half a control until the matching open
+# pull request is closed by hand. If you add one, close the PR it was written
+# for in the same sitting.
 version: 2
 
 updates:
@@ -36,6 +49,29 @@ updates:
     labels:
       - dependencies
       - frontend
+
+    ignore:
+      # Tailwind 4 is a rewrite, not an upgrade: configuration moves out of
+      # tailwind.config.js and into CSS, and the file this project has stops
+      # being read. The forms would build clean and render wrong -- and
+      # DEL-AC-FRM-002 looking like the printed form is the requirement, not a
+      # preference. It arrived inside the "build-tooling" group next to an
+      # autoprefixer patch, which is exactly how it would have been merged.
+      - dependency-name: "tailwindcss"
+        update-types: ["version-update:semver-major"]
+
+      # TypeScript 7 is the native port. A compiler rewrite is a deliberate
+      # migration with the whole suite watched, not a line in a grouped PR
+      # titled "bump build tooling".
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+
+      # @types/node must track the runtime, which is Node 22 (see the Docker
+      # image and CI). Types for Node 26 against a Node 22 runtime describe
+      # APIs that are not there: it compiles and fails when called.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+
     groups:
       # Build tooling moves together and never reaches the browser -- only
       # dist/ is copied into the nginx image. Grouping keeps a routine
@@ -116,6 +152,24 @@ updates:
       #
       # Ignored at major only. 7.x patches and minors still arrive.
       - dependency-name: "FluentAssertions"
+        update-types: ["version-update:semver-major"]
+
+      # Application Insights 2.x -> 3.x is a breaking change to the SDK this
+      # platform's entire diagnostic story rests on. If telemetry silently
+      # stops, nothing else reports that it has: the workspace-based
+      # workspace is where escalation and reminder sweeps are observed at all.
+      # A deliberate upgrade with the traces checked afterwards, not a Monday
+      # PR.
+      - dependency-name: "Microsoft.ApplicationInsights*"
+        update-types: ["version-update:semver-major"]
+
+      # Functions Worker v1 -> v2 changes the host contract. This app is the
+      # three timer sweeps -- ReminderSweep, EscalationSweep, RetirementSweep
+      # -- and a Functions app that deploys green and never fires is
+      # indistinguishable from one with nothing to do. Which is the failure
+      # this project keeps finding, so it does not get to arrive by grouped
+      # pull request.
+      - dependency-name: "Microsoft.Azure.Functions.Worker*"
         update-types: ["version-update:semver-major"]
 
     groups:
