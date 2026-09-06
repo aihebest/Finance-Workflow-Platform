@@ -56,7 +56,13 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
                     requesterClient, beneficiary.Id, receiptStatus,
                     TestData.ExpenseLine("Coverage line", DateOnly.FromDateTime(Fixture.TimeProvider.GetUtcNow().Date), amount)))
                 .ShouldSucceedAsync();
-            return created.GetGuid("requestId");
+
+            var id = created.GetGuid("requestId");
+
+            // Version 7 will not submit a claim with no receipt attached.
+            await WorkflowSteps.AttachReceiptAsync(Fixture, id, org.Requester.Id);
+
+            return id;
         }
 
         // One approval on the requesting side, not two. Version 4 removed the
@@ -81,7 +87,11 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
         {
             var id = await DriveToCostControlVerifyAsync("Yes", amount);
 
-            // Cost Control will not pass a claim with no evidence attached.
+            // Cost Control keeps its own AttachmentCount check even though
+            // version 7 now demands one at SUBMIT too, so this is a second
+            // attachment. Left in deliberately: a receipt can be removed from
+            // a returned claim, and the desk that sends a payment for
+            // authorisation should not rely on a check made upstream.
             await WorkflowSteps.AttachReceiptAsync(Fixture, id, org.Requester.Id);
 
             await StepAsync(

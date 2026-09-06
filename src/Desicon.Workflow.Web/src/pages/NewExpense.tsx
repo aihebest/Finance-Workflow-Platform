@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { createExpenseDraft, getBeneficiaries, submitRequest } from "../api/requests";
+import {
+  createExpenseDraft,
+  getBeneficiaries,
+  submitRequest,
+  uploadAttachment,
+} from "../api/requests";
 import { ApiError, type BeneficiarySummary, type ExpenseLineInput } from "../api/types";
 
 /**
@@ -70,6 +75,11 @@ export function NewExpense() {
   const [beneficiaries, setBeneficiaries] = useState<BeneficiarySummary[]>([]);
   const [beneficiaryId, setBeneficiaryId] = useState("");
   const [receiptStatus, setReceiptStatus] = useState<"Yes" | "No" | "Incomplete">("Yes");
+
+  // The receipt itself, as opposed to the radio above which is only the
+  // requester's account of it. Version 7 guards SUBMIT on AttachmentCount, so
+  // this is what actually lets the claim move.
+  const [receipt, setReceipt] = useState<File | null>(null);
   const [lines, setLines] = useState<ExpenseLineInput[]>(() =>
     Array.from({ length: ROW_COUNT }, emptyLine),
   );
@@ -122,24 +132,62 @@ export function NewExpense() {
       return;
     }
 
+    // Checked here rather than by disabling the button, because a disabled
+    // button with no explanation is the same dead end as the old `max="99"`:
+    // the form simply stops working and does not say why.
+    if (thenSubmit && receiptStatus === "No") {
+      setError(
+        'A claim marked "No" for receipts cannot be submitted. Mark it Incomplete if you have ' +
+          "some of them, or save it as a draft until you do.",
+      );
+      return;
+    }
+
+    if (thenSubmit && !receipt) {
+      setError(
+        "Attach the receipt for this claim. Save draft works without one if you want to come " +
+          "back to it.",
+      );
+      return;
+    }
+
     setBusy(true);
+
+    let requestId: string;
+
     try {
       const created = await createExpenseDraft({
         ...(beneficiaryId === "__me__" ? {} : { beneficiaryId }),
         receiptStatus,
         lines: filled,
       });
+      requestId = created.requestId;
+    } catch (e) {
+      // Nothing was created, so the form is still the right place to be.
+      setError(e instanceof ApiError ? e.message : (e as Error).message);
+      setBusy(false);
+      return;
+    }
 
-      if (thenSubmit) {
-        await submitRequest(created.requestId);
+    // The draft exists from here on. Whatever happens next, land on it rather
+    // than back on a form that would create a second draft if used again --
+    // and the attachment goes up even when only saving, so choosing a file and
+    // then clicking Save draft does not silently discard it.
+    try {
+      if (receipt) {
+        await uploadAttachment(requestId, receipt);
       }
 
-      navigate(`/requests/${created.requestId}`);
-    } catch (e) {
-      // A guard rejection explains which condition failed -- show it as sent.
-      setError(e instanceof ApiError ? e.message : (e as Error).message);
+      if (thenSubmit) {
+        await submitRequest(requestId);
+      }
+    } catch {
+      // Deliberately swallowed. The request page shows the real state, offers
+      // the upload again and offers Submit; an error banner on this form would
+      // be read as "nothing was saved", which is the opposite of the truth.
     } finally {
       setBusy(false);
+      navigate(`/requests/${requestId}`);
     }
   }
 
@@ -422,6 +470,33 @@ export function NewExpense() {
                 {option}
               </label>
             ))}
+          </div>
+
+          {/* The receipt itself.
+
+              Until version 7 this form had no upload on it at all: the radio
+              above was the whole of it, and the only place to attach anything
+              was the request page after the claim had already been raised. So
+              a claim went to the Head of Department, was approved by him, and
+              bounced at Cost Control -- which had been checking for a real
+              attachment all along. */}
+          <div className="mt-3 rounded border border-gray-200 bg-gray-50 p-3">
+            <p className="text-sm font-medium text-gray-800">Receipt</p>
+            <p className="mt-1 text-xs text-gray-600">
+              Required to submit. The radio above records what you say about the receipt;
+              this is the receipt.
+            </p>
+            <input
+              type="file"
+              aria-label="Receipt"
+              accept=".pdf,image/*"
+              onChange={(e) => setReceipt(e.target.files?.[0] ?? null)}
+              className="mt-2 block w-full text-sm"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              PDF or photograph, up to 10 MB. More can be added on the claim itself once it
+              is saved.
+            </p>
           </div>
         </fieldset>
       </section>

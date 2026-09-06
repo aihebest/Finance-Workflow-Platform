@@ -177,6 +177,12 @@ public static class WorkflowSteps
             .ShouldSucceedAsync();
         var id = created.GetGuid("requestId");
 
+        // Expense version 7 requires the receipt at SUBMIT rather than at Cost
+        // Control. Attached here so every caller that just wants a submitted
+        // claim keeps working -- the rule itself is asserted in
+        // SupportingDocumentTests rather than incidentally by everything else.
+        await AttachReceiptAsync(fixture, id, org.Requester.Id);
+
         await (await SubmitAsync(requesterClient, id)).ShouldSucceedAsync();
         return id;
     }

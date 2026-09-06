@@ -6,7 +6,7 @@ using Xunit;
 namespace Desicon.Workflow.IntegrationTests.CashAdvance;
 
 /// <summary>
-/// That a cash advance cannot be submitted without something supporting it.
+/// That neither module can be submitted without the evidence behind it.
 /// </summary>
 /// <remarks>
 /// Asked for by the Director of Finance on 5 September 2026. He authorises
@@ -25,8 +25,20 @@ namespace Desicon.Workflow.IntegrationTests.CashAdvance;
 /// was a document. It never asked for the document.
 ///
 /// So the guard counts `AttachmentCount` from the Attachments table instead —
-/// the same way the expense claim's receipt check already works, and for the
-/// same reason: what was provided, not what was asserted.
+/// what was provided, not what was asserted.
+///
+/// The expense claim followed one day later, for the same reason and against
+/// the same field. Its SUBMIT guard checked `ReceiptStatus != 'No'` — the radio
+/// on DEL-AC-FRM-002, the requester's account of the receipt — while the real
+/// check sat two states downstream at Cost Control. So a claim with nothing
+/// attached was approved by the Head of Department first and bounced after. And
+/// the form had no upload control on it at all: the only way to attach anything
+/// was the request page, after the claim had already been raised.
+///
+/// Both modules are now on version 7 and both count attachments at SUBMIT.
+/// Cost Control keeps its own count as well, deliberately — a receipt can be
+/// removed from a returned claim, and the desk that sends a payment for
+/// authorisation should not rely on a check made upstream.
 /// </remarks>
 public sealed class SupportingDocumentTests : IntegrationTestBase
 {
@@ -100,18 +112,59 @@ public sealed class SupportingDocumentTests : IntegrationTestBase
     }
 
     /// <summary>
-    /// Expense claims are unchanged.
+    /// An expense claim now needs its receipt at submission too.
     /// </summary>
     /// <remarks>
-    /// EXPENSE stays at version 6. Its receipt requirement sits at
-    /// COST_CONTROL_VERIFY, not at SUBMIT, because a claim is raised against
-    /// money already spent and the receipt may follow the claim by a day. This
-    /// asserts that version 7 did not quietly reach across into the other
-    /// module — the two definitions are separate on purpose and it is easy to
-    /// forget that a shared guard field is not a shared rule.
+    /// Expense version 7, 6 September 2026. Until then SUBMIT checked
+    /// <c>ReceiptStatus != 'No'</c> — the radio button on DEL-AC-FRM-002, which
+    /// is the requester's account of the receipt and not the receipt. The real
+    /// check, <c>AttachmentCount &gt; 0</c>, sat at COST_CONTROL_VERIFY, so a
+    /// claim with nothing attached was approved by the Head of Department first
+    /// and only then bounced, with two people's time already spent on it.
+    ///
+    /// The guard message on SUBMIT had read "Add at least one expense line and
+    /// attach receipts before submitting" the entire time. It described a
+    /// control that was not there.
+    ///
+    /// The reason recorded for keeping the check at Cost Control was that a
+    /// claim is money already spent, so the receipt might follow it by a day.
+    /// Put to Aihe on 5 September: not how Desicon works — the receipt exists
+    /// before the claim is raised.
     /// </remarks>
     [Fact]
-    public async Task An_expense_claim_can_still_be_submitted_before_the_receipt_arrives()
+    public async Task An_expense_claim_cannot_be_submitted_with_no_receipt_attached()
+    {
+        var org = await WithDbAsync(db => WorkflowSteps.CreateOrgChartAsync(db, "EXP-DOC-NONE"));
+        var beneficiary = await WithDbAsync(db => TestData.CreateEmployeeBeneficiaryAsync(db, org.Requester));
+        var requester = Fixture.CreateClient(org.Requester);
+
+        // ReceiptStatus "Yes" — the box says the receipt exists. Nothing is
+        // attached, which is the distinction the change turns on.
+        var created = await (await WorkflowSteps.CreateExpenseDraftAsync(
+            requester, beneficiary.Id, "Yes",
+            TestData.ExpenseLine("Courier", new DateOnly(2026, 4, 1), 8_000m))).ShouldSucceedAsync();
+
+        var id = created.GetGuid("requestId");
+
+        var refused = await WorkflowSteps.SubmitAsync(requester, id);
+
+        refused.IsSuccessStatusCode.Should().BeFalse(
+            "the claim says Yes to receipts and has none; the guard counts attachments");
+
+        await WithDbAsync(async db =>
+        {
+            var state = await db.Requests.AsNoTracking()
+                .Where(r => r.RequestId == id).Select(r => r.CurrentState).SingleAsync();
+
+            state.Should().Be("DRAFT", "the refusal must leave it where the requester can fix it");
+        });
+    }
+
+    /// <summary>
+    /// And goes through once the receipt is actually there.
+    /// </summary>
+    [Fact]
+    public async Task An_expense_claim_with_its_receipt_reaches_the_head_of_department()
     {
         var org = await WithDbAsync(db => WorkflowSteps.CreateOrgChartAsync(db, "EXP-DOC-OK"));
         var beneficiary = await WithDbAsync(db => TestData.CreateEmployeeBeneficiaryAsync(db, org.Requester));
@@ -125,8 +178,7 @@ public sealed class SupportingDocumentTests : IntegrationTestBase
             var state = await db.Requests.AsNoTracking()
                 .Where(r => r.RequestId == id).Select(r => r.CurrentState).SingleAsync();
 
-            state.Should().Be("DEPT_HEAD",
-                "the receipt is required at Cost Control, not at submission");
+            state.Should().Be("DEPT_HEAD");
         });
     }
 }
