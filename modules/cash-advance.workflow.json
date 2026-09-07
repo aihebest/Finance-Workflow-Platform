@@ -4,8 +4,8 @@
   "displayName": "Cash Advance - To Be Justified",
   "formCode": "DEL-AC-FRM-003",
   "formRevision": "05",
-  "version": 7,
-  "effectiveFrom": "2026-09-05T00:00:00Z",
+  "version": 8,
+  "effectiveFrom": "2026-09-07T00:00:00Z",
   "numberFormat": "ADV-{yyyy}-{seq:000000}",
   "workingCalendar": "NG_STANDARD",
   "slaPausesOutsideWorkingHours": true,
@@ -338,6 +338,7 @@
       "from": "AWAITING_ACK",
       "to": "RETURNED",
       "action": "RETURN",
+      "ownsQueue": false,
       "actor": {
         "role": "TreasuryOfficer"
       },
@@ -347,6 +348,7 @@
       "from": "OUTSTANDING",
       "to": "PARTIALLY_RETIRED",
       "action": "RETIRE",
+      "systemOnly": true,
       "actor": {
         "resolver": "Requester"
       },
@@ -357,6 +359,7 @@
       "from": "OUTSTANDING",
       "to": "CLOSED",
       "action": "RETIRE",
+      "systemOnly": true,
       "actor": {
         "resolver": "Requester"
       },
@@ -367,6 +370,7 @@
       "from": "OUTSTANDING",
       "to": "REJECTED",
       "action": "WRITE_OFF",
+      "ownsQueue": false,
       "actor": {
         "role": "FinanceManager"
       },
@@ -377,6 +381,7 @@
       "from": "PARTIALLY_RETIRED",
       "to": "CLOSED",
       "action": "RETIRE",
+      "systemOnly": true,
       "actor": {
         "resolver": "Requester"
       },
@@ -387,6 +392,7 @@
       "from": "PARTIALLY_RETIRED",
       "to": "PARTIALLY_RETIRED",
       "action": "RETIRE",
+      "systemOnly": true,
       "actor": {
         "resolver": "Requester"
       },
@@ -397,6 +403,7 @@
       "from": "PARTIALLY_RETIRED",
       "to": "REJECTED",
       "action": "WRITE_OFF",
+      "ownsQueue": false,
       "actor": {
         "role": "FinanceManager"
       },
@@ -516,5 +523,5 @@
     "note": "Per Finance direction 31 Jul 2026. On a 9-hour working day this makes 24h = 2.67 working days and 72h = 8 working days. Change 'unit' to CalendarHours if that proves not to be the intent."
   },
   "note": "Version 3 splits FinanceOfficer into CostControlOfficer and TreasuryOfficer. Version 2 recorded that Cost Control and the Accounts Officer who posts in Business Central were the same people; they are not. They are separate desks with separate mailboxes (costcontrol@ and treasury@), and one role covering both meant a single person could verify the costing, post it, and release the cash -- with the posting notification going to the wrong desk, so the person who had to act was never told. Version 2 remains published for requests already open under it; see cash-advance.v2.workflow.json and docs/15-Go-Live-Checklist.md section 3.",
-  "amendment": "5 Sep 2026: version 7 requires a supporting document before a cash advance can be submitted. Asked for by the Director of Finance, who authorises every payment and said he wants to see why: his account is that around 98 percent of advances raised on paper were never retired, and he was being asked to release money against a purpose line and nothing else. An expense claim has always needed a receipt -- it is money already spent, and the evidence exists. An advance is money not yet spent, so the evidence is a quotation, a pro-forma or a request, and until now nothing required one: HasSupportingDocuments was a tick box the requester filled in about themselves and no guard ever read. AttachmentCount is counted from the Attachments table rather than trusted from that box, the same way the expense claim's receipt check already works. EXPENSE is unchanged and stays at version 6; this is a cash advance rule. PREVIOUS: 25 Aug 2026: version 6 puts the Treasury number where Treasury works. COST_CONTROL_VERIFY captured TreasuryNumber and guarded on it -- a field the desk's own note says belongs to 'the Treasury officer who posts it at AWAITING_POSTING'. It was a leftover: version 2 called this state FINANCE_VERIFY and one FinanceOfficer did both jobs, and when version 3 split the role the captured field was never revisited, so Cost Control inherited a field belonging to the desk they were split from. Nothing in the solution read it afterwards. It now moves to MARK_POSTED, beside the Business Central document number it sits next to in the ledger. Cost Control instead guards on what its note always said it checks: that the request carries a project or a cost centre. PREVIOUS: 23 Aug 2026: version 5 adds WITHDRAW. A requester may take back their own request while it is still at the first approval step, or after it has been returned to them. Until now nothing could be withdrawn: ADV-2026-000001 was raised in error and the only way out was to ask the Head of Department to reject it, which records an approver's refusal for a decision no approver made. WITHDRAWN is a separate terminal state for exactly that reason -- 'the requester took this back' and 'an approver refused this' are different facts about different people. Guarded on ActorId == RequesterId, so it is only ever self-service; DEPT_HEAD and RETURNED only, so no work anyone else has done is ever discarded. See docs/15 section 5c. PREVIOUS: 19 Aug 2026: version 4 removes the LINE_MANAGER step. Desicon has ONE approval before Cost Control -- the Head of Department. Version 3 modelled two, which for Desicon would have meant the same person approving the same request twice. No version 3 file is retained because the database was reset for UAT and nothing was ever pinned to it. See docs/15 section 3."
+  "amendment": "7 Sep 2026: version 8 stops the retirement half of an advance sitting in nobody's queue. AWAITING_ACK, OUTSTANDING and PARTIALLY_RETIRED each have a way out belonging to the requester and a second belonging to a role -- Treasury's RETURN, and Finance's WRITE_OFF. ResolveNextActorAsync walks every queue-owning exit, and returns null the moment it meets one whose actor is a role rather than a person, because a role does not resolve to somebody to put in an inbox. So the advance was waiting on the requester and the platform recorded it as waiting on no one: ADV-2026-000008 reached AWAITING_ACK and vanished from the requester's inbox, and the only way to acknowledge it was to already know the URL. Those three are escape hatches, not queues -- the same distinction version 5 drew for WITHDRAW -- so each is now ownsQueue false. EXPENSE has no state of this shape, which is why it never appeared there. PREVIOUS: 5 Sep 2026: version 7 requires a supporting document before a cash advance can be submitted. Asked for by the Director of Finance, who authorises every payment and said he wants to see why: his account is that around 98 percent of advances raised on paper were never retired, and he was being asked to release money against a purpose line and nothing else. An expense claim has always needed a receipt -- it is money already spent, and the evidence exists. An advance is money not yet spent, so the evidence is a quotation, a pro-forma or a request, and until now nothing required one: HasSupportingDocuments was a tick box the requester filled in about themselves and no guard ever read. AttachmentCount is counted from the Attachments table rather than trusted from that box, the same way the expense claim's receipt check already works. EXPENSE is unchanged and stays at version 6; this is a cash advance rule. PREVIOUS: 25 Aug 2026: version 6 puts the Treasury number where Treasury works. COST_CONTROL_VERIFY captured TreasuryNumber and guarded on it -- a field the desk's own note says belongs to 'the Treasury officer who posts it at AWAITING_POSTING'. It was a leftover: version 2 called this state FINANCE_VERIFY and one FinanceOfficer did both jobs, and when version 3 split the role the captured field was never revisited, so Cost Control inherited a field belonging to the desk they were split from. Nothing in the solution read it afterwards. It now moves to MARK_POSTED, beside the Business Central document number it sits next to in the ledger. Cost Control instead guards on what its note always said it checks: that the request carries a project or a cost centre. PREVIOUS: 23 Aug 2026: version 5 adds WITHDRAW. A requester may take back their own request while it is still at the first approval step, or after it has been returned to them. Until now nothing could be withdrawn: ADV-2026-000001 was raised in error and the only way out was to ask the Head of Department to reject it, which records an approver's refusal for a decision no approver made. WITHDRAWN is a separate terminal state for exactly that reason -- 'the requester took this back' and 'an approver refused this' are different facts about different people. Guarded on ActorId == RequesterId, so it is only ever self-service; DEPT_HEAD and RETURNED only, so no work anyone else has done is ever discarded. See docs/15 section 5c. PREVIOUS: 19 Aug 2026: version 4 removes the LINE_MANAGER step. Desicon has ONE approval before Cost Control -- the Head of Department. Version 3 modelled two, which for Desicon would have meant the same person approving the same request twice. No version 3 file is retained because the database was reset for UAT and nothing was ever pinned to it. See docs/15 section 3."
 }

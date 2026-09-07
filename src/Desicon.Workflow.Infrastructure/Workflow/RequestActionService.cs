@@ -187,6 +187,10 @@ public sealed class RequestActionService
         // actively misleading: "this applies only when the advance exceeded the
         // amount spent" is not the reason a normal claim cannot be approved.
         return availability
+            // Never offer what nobody may press. Without this the request page
+            // draws a button for RETIRE, and the API is the only thing left
+            // standing between a curious click and a false retirement.
+            .Where(a => !a.Transition.SystemOnly)
             .GroupBy(a => a.Transition.Action, StringComparer.Ordinal)
             .Select(group =>
             {
@@ -343,6 +347,28 @@ public sealed class RequestActionService
         }
 
         var transition = result.Transition!;
+
+        // A consequence, not a choice. See WorkflowTransition.SystemOnly.
+        // Checked here rather than before the engine runs because only the
+        // engine knows which transition an action resolved to -- and nothing
+        // durable has been written yet, so rolling back costs nothing.
+        if (transition.SystemOnly && !isCascaded)
+        {
+            await transaction!.RollbackAsync(cancellationToken);
+
+            var refusal =
+                $"'{transition.Action}' is performed by the system, not requested. " +
+                "A cash advance is retired by the expense claim that accounts for it: " +
+                "start the retirement from the advance, attach the receipts and submit it.";
+
+            await LogDenialAsync(
+                request, actingUser, transitionRequest,
+                request.CurrentState, TransitionOutcome.NotAuthorised, refusal, cancellationToken);
+
+            return new RequestActionResult(
+                TransitionOutcome.NotAuthorised, result.FromState, result.ToState, refusal, null, null);
+        }
+
         var now = _clock.UtcNow;
 
         request.CurrentState = result.ToState!;

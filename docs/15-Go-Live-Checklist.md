@@ -904,6 +904,84 @@ Cash release panel with the released-at datetime, and `RELEASE_CASH` added to
 
 ---
 
+## 5j. A button retired an advance that nobody had accounted for
+
+7 September 2026, on `ADV-2026-000008` — ₦360,000, the first cash advance ever
+walked end to end by real people. It reached `OUTSTANDING`, the request page
+drew a button marked **RETIRE**, the requester pressed it, saw nothing change,
+and pressed it again. The trail now reads:
+
+```
+RETIRE · OUTSTANDING → PARTIALLY_RETIRED       22:32:13
+RETIRE · PARTIALLY_RETIRED → PARTIALLY_RETIRED 22:32:57
+```
+
+Nothing was retired. No claim, no receipts, no figure. The advance declared
+itself partly accounted for, twice, and the hash-chained audit trail — the
+thing this whole platform exists to produce — now carries two entries saying a
+retirement happened on a day when none did. Those entries cannot be removed;
+they can only be explained.
+
+**Everything about the button was correct except its existence.**
+`GetAvailableActionsAsync` reported RETIRE as available because its actor is
+the Requester and its guard only asks that a balance remains. Both true.
+Neither expressed the thing that matters: RETIRE is a *consequence*, not a
+choice. An advance is retired by the expense claim that accounts for it, and
+`AdvanceRetirementHandler` fires the transition as a cascade once that claim
+carries a figure. Nobody presses it.
+
+### The test made it look legitimate
+
+`WorkflowCompletenessTests` had been firing RETIRE straight at the actions
+endpoint as the requester — five times — and reporting the transition covered.
+It was covered. What it covered was a route that should not have existed, and
+its being covered is part of why nobody questioned the button.
+
+That is a sharper version of §5i's lesson. There, 209 green tests missed a
+defect because nothing tested the browser. Here a test *asserted the defective
+behaviour was correct*, in a file whose entire purpose is proving completeness.
+
+**Fixed the same evening.** `WorkflowTransition.SystemOnly`, set on all four
+RETIRE branches:
+
+- `ExecuteAsync` refuses a system-only transition and logs the denial;
+  `ExecuteCascadedAsync` still allows it, so the real path is untouched
+- `GetAvailableActionsAsync` stops returning it, so no page can draw it
+- The request page now offers **Start retirement claim** instead, which raises
+  the linked claim — the same thing My Advances does, in the place the
+  requester was already looking
+- `RetireIsNotAButtonTests` asserts the refusal, the absence from
+  `availableActions`, and that the cascade still works
+- The completeness test excludes system-only transitions from its expected set,
+  with the reason written where the old calls were
+
+### Also fixed: the retirement half sat in nobody's inbox
+
+Same evening, found while chasing the same walkthrough. Cash advance **version
+8**. `AWAITING_ACK`, `OUTSTANDING` and `PARTIALLY_RETIRED` each have one exit
+belonging to the requester and one belonging to a role — Treasury's `RETURN`,
+Finance's `WRITE_OFF`. `ResolveNextActorAsync` returns null the moment it meets
+a queue-owning exit whose actor is a role, because a role does not resolve to
+somebody to put in an inbox. So the advance was waiting on the requester and
+the platform recorded it as waiting on no one.
+
+`ADV-2026-000008` reached `AWAITING_ACK` and disappeared from the requester's
+inbox entirely. The only way to acknowledge it was to already know the URL.
+
+Those three are escape hatches, not queues — the same distinction version 5
+drew for WITHDRAW — so each is now `ownsQueue: false`. EXPENSE has no state of
+this shape, which is why it never appeared there.
+
+- [ ] `ADV-2026-000008` is on version 7 and stays there. It is currently
+      `PARTIALLY_RETIRED` with nothing retired; the balance is intact and the
+      proper retirement still works from My Advances. Finish it and note in the
+      claim's comment why two RETIRE entries sit above it
+- [ ] Decide whether the two false entries need anything said to the auditor
+      beyond this section. They are honest — somebody did press a button — but
+      a reader a year from now will not know what the button was
+
+---
+
 ## 5f. FluentAssertions 8 is not free for Desicon
 
 Found 24 August 2026 while looking at why several Dependabot pull requests were
