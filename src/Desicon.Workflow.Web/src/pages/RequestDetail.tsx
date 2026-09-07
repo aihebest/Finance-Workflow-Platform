@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import {
   confirmRefund,
   executeAction,
@@ -8,6 +8,7 @@ import {
   getRequest,
   markPosted,
   releaseCash,
+  retireAdvance,
   setAllocation,
   setReceiptStatus,
 } from "../api/requests";
@@ -58,6 +59,29 @@ const CAPTURE_ACTIONS = new Set([
   "RELEASE_CASH",
 ]);
 
+/**
+ * Actions the engine performs, which no person may press.
+ *
+ * RETIRE is not something a requester does. An advance is retired *by* an
+ * expense claim: the requester raises the claim through the retirement flow,
+ * and AdvanceRetirementHandler fires RETIRE against the advance as a cascade
+ * once that claim carries a real figure. The transition exists to record the
+ * consequence, not to offer a choice.
+ *
+ * It was rendered as a plain button until 7 September 2026, because
+ * GetAvailableActionsAsync correctly reports it as available -- its actor is
+ * the Requester and its guard only asks that a balance remains. Pressing it
+ * fired the transition with no claim, no receipts and no amount behind it. On
+ * ADV-2026-000008 that took a ₦360,000 advance from OUTSTANDING to
+ * PARTIALLY_RETIRED with nothing retired, twice, and wrote two audit entries
+ * saying a retirement had happened.
+ *
+ * Same shape as MARK_POSTED and RELEASE_CASH before it: an action that carries
+ * data offered as a bare button. The difference is that those two were refused
+ * by the API. This one succeeded.
+ */
+const SYSTEM_ACTIONS = new Set(["RETIRE"]);
+
 const money = (value: number) =>
   new Intl.NumberFormat("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
     value,
@@ -65,6 +89,7 @@ const money = (value: number) =>
 
 export function RequestDetail() {
   const { id = "" } = useParams();
+  const navigate = useNavigate();
 
   const [detail, setDetail] = useState<Detail | null>(null);
   const [history, setHistory] = useState<AuditEntry[]>([]);
@@ -212,7 +237,9 @@ export function RequestDetail() {
   // which is exactly how it looks: like data that failed to load rather than a
   // column that should not have been drawn.
   const isAdvance = String(detail.moduleKey ?? "") === "CASH_ADVANCE";
-  const genericActions = availableActions.filter((a) => !CAPTURE_ACTIONS.has(a.action));
+  const genericActions = availableActions.filter(
+    (a) => !CAPTURE_ACTIONS.has(a.action) && !SYSTEM_ACTIONS.has(a.action),
+  );
 
   /**
    * Authorised, whether or not the guard passes yet.
@@ -575,6 +602,49 @@ export function RequestDetail() {
             className="mt-3 min-h-11 rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800 disabled:opacity-50"
           >
             Record cash release
+          </button>
+        </section>
+      )}
+
+      {/* --- Retirement (OUTSTANDING / PARTIALLY_RETIRED) --- Cash advances only.
+
+          The paper process: you took cash, you bought something, you kept the
+          receipts, and you accounted for it on an expense form with the advance
+          written against it. This is that, and the button below raises the
+          claim for you rather than asking you to start a blank one -- because a
+          claim raised from New Expense would be an ordinary reimbursement and
+          would never net off what you already took.
+
+          Replaces the bare RETIRE button that used to appear here. See
+          SYSTEM_ACTIONS above for what that did. */}
+      {isAdvance &&
+        ["OUTSTANDING", "PARTIALLY_RETIRED"].includes(String(detail.currentState ?? "")) && (
+        <section className="rounded border border-gray-200 bg-white p-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+            Retire this advance
+          </h2>
+          <p className="mt-1 text-sm text-gray-600">
+            Account for what the cash was spent on. This opens an expense claim already
+            linked to this advance and carrying the outstanding balance — attach your
+            purchase receipts to it and submit it as normal.
+          </p>
+          <p className="mt-2 text-sm text-gray-500">
+            The advance closes when that claim is approved. If you spent less than you took,
+            the balance stays against your name until it is returned.
+          </p>
+
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              void run(async () => {
+                const draft = await retireAdvance(id);
+                navigate(`/requests/${draft.expenseRequestId}`);
+              })
+            }
+            className="mt-3 min-h-11 rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800 disabled:opacity-50"
+          >
+            Start retirement claim
           </button>
         </section>
       )}

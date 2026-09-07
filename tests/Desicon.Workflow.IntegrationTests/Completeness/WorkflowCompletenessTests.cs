@@ -237,7 +237,18 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
     public async Task Every_cash_advance_state_and_transition_is_exercised_at_least_once()
     {
         var definition = await GetDefinitionAsync("CASH_ADVANCE");
-        var expected = definition.Transitions.Select(t => (t.From, t.Action, t.To)).ToHashSet();
+
+        // System-only transitions are excluded, not forgotten. RETIRE is fired
+        // by AdvanceRetirementHandler when a linked expense claim accounts for
+        // the money; no actor can request it, so a test that drives it through
+        // the actions endpoint is not exercising the workflow -- it is
+        // exercising a route that should not exist. This test covers what a
+        // person can do. See the note further down, and
+        // CashAdvanceWorkflowTests for the cascade itself.
+        var expected = definition.Transitions
+            .Where(t => !t.SystemOnly)
+            .Select(t => (t.From, t.Action, t.To))
+            .ToHashSet();
         var covered = new HashSet<(string From, string Action, string To)>();
 
         var org = await WithDbAsync(db => WorkflowSteps.CreateOrgChartAsync(db, "ADV-COVER"));
@@ -342,35 +353,49 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
             return id;
         }
 
-        async Task FullyRetireAsync(Guid id)
-        {
-            await WithDbAsync(async db =>
-            {
-                var advance = await db.CashAdvanceRequests.FirstAsync(a => a.RequestId == id);
-                advance.RetiredAmountNgn = advance.TotalAmountNgn;
-                await db.SaveChangesAsync();
-            });
-        }
-
-        // Happy path to OUTSTANDING, then partial retire (self-loop), then full retire -> CLOSED.
-        var advA = await DriveToOutstandingAsync("Happy path advance", 5_000m, "TN-A-01", "JV-A-01");
-        await StepAsync(() => WorkflowSteps.ActionAsync(requesterClient, advA, "RETIRE"), "OUTSTANDING", "RETIRE", "PARTIALLY_RETIRED");
-        await StepAsync(() => WorkflowSteps.ActionAsync(requesterClient, advA, "RETIRE"), "PARTIALLY_RETIRED", "RETIRE", "PARTIALLY_RETIRED");
-        await FullyRetireAsync(advA);
-        await StepAsync(() => WorkflowSteps.ActionAsync(requesterClient, advA, "RETIRE"), "PARTIALLY_RETIRED", "RETIRE", "CLOSED");
-
-        // OUTSTANDING -> CLOSED directly (fully retired in one shot).
-        var advB = await DriveToOutstandingAsync("Direct close advance", 2_000m, "TN-B-01", "JV-B-01");
-        await FullyRetireAsync(advB);
-        await StepAsync(() => WorkflowSteps.ActionAsync(requesterClient, advB, "RETIRE"), "OUTSTANDING", "RETIRE", "CLOSED");
+        // RETIRE is not driven here any more, and the reason is the whole point
+        // of this file.
+        //
+        // Until 7 September 2026 this test fired RETIRE straight at the
+        // actions endpoint as the requester, five times, and reported the
+        // transition covered. That is not how an advance is retired. It is
+        // retired *by* an expense claim -- the requester raises the claim, and
+        // AdvanceRetirementHandler fires RETIRE as a cascade once the claim
+        // carries a figure. Nobody presses it.
+        //
+        // Because this test pressed it, the transition looked exercised, and
+        // the request page's button for it looked legitimate. On
+        // ADV-2026-000008 somebody pressed that button and moved a real
+        // ₦360,000 advance from OUTSTANDING to PARTIALLY_RETIRED with nothing
+        // retired. The coverage was real; what it covered was a route that
+        // should not have existed.
+        //
+        // RETIRE is now SystemOnly, excluded from `expected` above, and
+        // exercised through the cascade it actually travels in
+        // CashAdvanceWorkflowTests.Full_retirement_via_a_linked_expense_claim_
+        // closes_the_advance. That it can no longer be requested by a person
+        // is asserted in RetireIsNotAButtonTests.
+        //
+        // The states remain covered. PARTIALLY_RETIRED is entered below by
+        // writing it, which is a harness shortcut and labelled as one -- not a
+        // supported route dressed up as a test.
 
         // OUTSTANDING WRITE_OFF.
         var advC = await DriveToOutstandingAsync("Write-off advance", 1_000m, "TN-C-01", "JV-C-01");
         await StepAsync(() => WorkflowSteps.ActionAsync(financeManagerClient, advC, "WRITE_OFF", comment: "Recipient left the company."), "OUTSTANDING", "WRITE_OFF", "REJECTED");
 
-        // PARTIALLY_RETIRED WRITE_OFF.
+        // PARTIALLY_RETIRED WRITE_OFF. The state is set directly: the only way
+        // in is the RETIRE cascade, which belongs to the linked claim and is
+        // covered where that claim is driven. Shortcut, said out loud.
         var advD = await DriveToOutstandingAsync("Partial write-off advance", 1_000m, "TN-D-01", "JV-D-01");
-        await StepAsync(() => WorkflowSteps.ActionAsync(requesterClient, advD, "RETIRE"), "OUTSTANDING", "RETIRE", "PARTIALLY_RETIRED");
+        await WithDbAsync(async db =>
+        {
+            var advance = await db.CashAdvanceRequests.FirstAsync(a => a.RequestId == advD);
+            advance.CurrentState = "PARTIALLY_RETIRED";
+            advance.RetiredAmountNgn = 400m;
+            await db.SaveChangesAsync();
+        });
+        covered.Add(("OUTSTANDING", "RETIRE", "PARTIALLY_RETIRED"));
         await StepAsync(() => WorkflowSteps.ActionAsync(financeManagerClient, advD, "WRITE_OFF", comment: "Remaining balance unrecoverable."), "PARTIALLY_RETIRED", "WRITE_OFF", "REJECTED");
 
         // DEPT_HEAD RETURN -> RESUBMIT.

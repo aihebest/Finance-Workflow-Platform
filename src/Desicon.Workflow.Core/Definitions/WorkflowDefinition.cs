@@ -202,6 +202,30 @@ public sealed class WorkflowTransition
     /// </remarks>
     public bool OwnsQueue { get; init; } = true;
 
+    /// <summary>
+    /// True when only the engine may take this transition, never a person.
+    /// </summary>
+    /// <remarks>
+    /// RETIRE on a cash advance is the case this exists for. An advance is
+    /// retired *by* an expense claim: the requester raises the claim, and
+    /// AdvanceRetirementHandler fires RETIRE against the advance as a cascade
+    /// once that claim carries a figure. The transition records a consequence.
+    /// It is not a choice anybody makes.
+    ///
+    /// Nothing said so until 7 September 2026, and nothing had to: the actor
+    /// is the Requester and the guard only asks that a balance remains, so
+    /// GetAvailableActionsAsync reported it as available and the request page
+    /// drew a button for it. Pressing that button ran the transition with no
+    /// claim, no receipts and no amount, moving a ₦360,000 advance from
+    /// OUTSTANDING to PARTIALLY_RETIRED with nothing retired, and writing an
+    /// audit entry saying a retirement had occurred.
+    ///
+    /// The frontend no longer draws it, but a frontend is not a control. This
+    /// is: ExecuteAsync refuses a system-only transition, ExecuteCascadedAsync
+    /// allows it, and GetAvailableActionsAsync stops offering it at all.
+    /// </remarks>
+    public bool SystemOnly { get; init; }
+
     public string? Note { get; init; }
 }
 
