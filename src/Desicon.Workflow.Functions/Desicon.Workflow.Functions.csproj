@@ -30,7 +30,7 @@
       what matters is that each resolves without a downgrade.
     -->
     <PackageReference Include="Azure.Identity" Version="1.12.0" />
-    <PackageReference Include="Microsoft.Data.SqlClient.AlwaysEncrypted.AzureKeyVaultProvider" Version="3.0.0" />
+    <PackageReference Include="Microsoft.Data.SqlClient.AlwaysEncrypted.AzureKeyVaultProvider" Version="7.0.2" />
   </ItemGroup>
 
   <ItemGroup>
