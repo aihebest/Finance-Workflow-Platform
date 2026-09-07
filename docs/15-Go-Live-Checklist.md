@@ -840,6 +840,70 @@ precisely why nobody found it.
 
 ---
 
+## 5i. Treasury's half of the cash advance had no screen at all
+
+Found 7 September 2026 by Treasury, on `ADV-2026-000008` — the first cash
+advance ever to reach `AWAITING_POSTING` with a real person behind it. They
+entered the BC document number and the Treasury number, pressed **Mark posted
+in BC**, and got:
+
+```
+Expense request '1264671a-7639-496f-8d38-e59073e6beca' does not exist.
+```
+
+Which was true. The SPA's `markPosted` posted to
+`/api/v1/expenses/{id}/mark-posted` for every request regardless of module, and
+that endpoint looks for an `ExpenseRequest` row. A cash advance is not one.
+
+**Both endpoints existed. Both were tested.** `WorkflowSteps` has
+`MarkPostedExpenseAsync` and `MarkPostedAdvanceAsync`, and the integration
+suite drives each of them. `WorkflowCompletenessTests` asserts that every
+transition in both definitions is exercised, and it passes. What had no test
+was the only caller that ships to a person, and it called one endpoint for both
+modules.
+
+That is the shape of it worth keeping: **209 green tests, complete transition
+coverage, and the button did not work.** The tests cover the API. Nothing
+covers the SPA — there is no test framework in `src/Desicon.Workflow.Web` at
+all — so every defect in the layer people actually touch is found by a person.
+
+### And two more directly behind it
+
+Fixing the route alone would have moved Treasury one step and stopped them
+again:
+
+- `RELEASE_CASH` captures `CashReleasedAt`, and was missing from
+  `CAPTURE_ACTIONS` in `RequestDetail`. It would have rendered as a bare button
+  that sent the action with no date, been refused for the missing field, and
+  offered nowhere to type one — the exact deadlock the comment on that constant
+  already describes, in the one branch nobody had walked.
+- Nothing in `api/requests.ts` called `/api/v1/advances/{id}/release` at all.
+  The SPA used two of the six advance endpoints.
+
+`CashReleasedAt` is not a formality. It starts the retirement clock, so it is
+what makes an advance overdue, what the SUBMIT guard blocks a new advance on,
+and what the Director of Finance's entire objection rests on. It had no input
+anywhere in the product.
+
+**All three fixed 7 September 2026.** Module-aware routing on `markPosted`, a
+Cash release panel with the released-at datetime, and `RELEASE_CASH` added to
+`CAPTURE_ACTIONS`.
+
+- [ ] The remaining advance steps have still never been walked by a person:
+      `RELEASE_CASH → AWAITING_ACK → ACKNOWLEDGE → OUTSTANDING`, then retire.
+      `ACKNOWLEDGE` should work through the generic action button — the
+      dedicated endpoint does nothing the generic one does not — but "should"
+      is what this section is about
+- [ ] Decide whether the SPA gets tests. Every defect found in the last three
+      days that reached a person lived in the browser: the missing upload, the
+      receipt-status dead end, the absent sign-out, and now this. The API suite
+      has never once been the thing that failed
+- [ ] Until it does, the release check is a person walking each branch. Both
+      modules, end to end, after any change to `RequestDetail` or
+      `api/requests.ts`
+
+---
+
 ## 5f. FluentAssertions 8 is not free for Desicon
 
 Found 24 August 2026 while looking at why several Dependabot pull requests were
