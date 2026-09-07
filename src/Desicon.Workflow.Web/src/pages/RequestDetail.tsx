@@ -7,6 +7,7 @@ import {
   getHistory,
   getRequest,
   markPosted,
+  releaseCash,
   setAllocation,
   setReceiptStatus,
 } from "../api/requests";
@@ -44,7 +45,18 @@ const REQUIRES_COMMENT = new Set(["RETURN", "REJECT"]);
  * the guard would refuse it for lacking one, and the message would be true but
  * useless -- there was nowhere to type it.
  */
-const CAPTURE_ACTIONS = new Set(["MARK_POSTED", "EXECUTE_PAYMENT", "CONFIRM_REFUND"]);
+const CAPTURE_ACTIONS = new Set([
+  "MARK_POSTED",
+  "EXECUTE_PAYMENT",
+  "CONFIRM_REFUND",
+
+  // RELEASE_CASH captures CashReleasedAt, and was missing from this set until
+  // 7 September 2026 -- so it rendered as a generic button that would have
+  // sent the action with no date, been refused for the missing field, and
+  // offered nowhere to supply it. Exactly the deadlock the comment above
+  // describes, in the one branch nobody had walked.
+  "RELEASE_CASH",
+]);
 
 const money = (value: number) =>
   new Intl.NumberFormat("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
@@ -67,6 +79,12 @@ export function RequestDetail() {
   const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [refundAmount, setRefundAmount] = useState("");
   const [treasuryNumber, setTreasuryNumber] = useState("");
+
+  // When the cash actually left. Starts the retirement clock, so it is the
+  // date the advance becomes overdue from -- not a formality.
+  const [cashReleasedAt, setCashReleasedAt] = useState(() =>
+    new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 16),
+  );
 
   // Cost Control setting the coding. Separate state from the action
   // panel because it is not an action: nothing moves, a fact about the
@@ -474,9 +492,11 @@ export function RequestDetail() {
           />
 
           <p className="mt-2 text-sm text-gray-500">
-            {netPayable > 0
-              ? "Once posted, this moves to payment."
-              : "Nothing is payable on this claim, so it closes once posted."}
+            {isAdvance
+              ? "Once posted, this moves to cash release."
+              : netPayable > 0
+                ? "Once posted, this moves to payment."
+                : "Nothing is payable on this claim, so it closes once posted."}
           </p>
 
           <button
@@ -488,6 +508,7 @@ export function RequestDetail() {
               void run(() =>
                 markPosted(
                   id,
+                  String(detail.moduleKey ?? ""),
                   bcDocumentNumber.trim(),
                   treasuryNumber.trim(),
                   comment.trim() || undefined,
@@ -497,6 +518,63 @@ export function RequestDetail() {
             className="mt-3 min-h-11 rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800 disabled:opacity-50"
           >
             Mark posted in BC
+          </button>
+        </section>
+      )}
+
+      {/* --- Cash release (CASH_RELEASE) --- Cash advances only.
+
+          Added 7 September 2026, after Treasury reached AWAITING_POSTING on
+          ADV-2026-000008 -- the first advance ever to get that far with a
+          person behind it -- and found the next three steps had no screen at
+          all. The API endpoints all existed and were all tested. Nothing in
+          the browser called them.
+
+          CashReleasedAt is what starts the retirement clock. Every overdue
+          advance, the SUBMIT guard that blocks a new one, and the Director of
+          Finance's whole objection about advances never being retired all
+          hang off this single field. */}
+      {can("RELEASE_CASH") && (
+        <section className="rounded border border-gray-200 bg-white p-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+            Cash release
+          </h2>
+          <p className="mt-1 text-sm text-gray-600">
+            Record when the cash actually left. This starts the retirement clock — the advance
+            becomes overdue counted from this moment, not from today.
+          </p>
+
+          <label className="mt-3 block text-sm text-gray-700" htmlFor="cash-released-at">
+            Released at
+          </label>
+          <input
+            id="cash-released-at"
+            type="datetime-local"
+            value={cashReleasedAt}
+            onChange={(e) => setCashReleasedAt(e.target.value)}
+            className="mt-1 min-h-11 w-72 rounded border border-gray-300 p-2 text-sm focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+          />
+
+          <p className="mt-2 text-sm text-gray-500">
+            The requester then acknowledges receipt, and the advance becomes outstanding until
+            it is retired.
+          </p>
+
+          <button
+            type="button"
+            disabled={busy || cashReleasedAt.length === 0}
+            onClick={() =>
+              void run(() =>
+                releaseCash(
+                  id,
+                  new Date(cashReleasedAt).toISOString(),
+                  comment.trim() || undefined,
+                ),
+              )
+            }
+            className="mt-3 min-h-11 rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800 disabled:opacity-50"
+          >
+            Record cash release
           </button>
         </section>
       )}

@@ -86,15 +86,50 @@ export const submitRequest = (id: string) =>
  * version 6. Cost Control had been required to supply a number belonging to
  * the desk they were split from in version 3, and nothing read it.
  */
+/**
+ * The route depends on the module, and it always did.
+ *
+ * This function posted to /api/v1/expenses/{id}/mark-posted for everything
+ * until 7 September 2026. An expense claim posted; a cash advance came back
+ * with "Expense request '...' does not exist", because the expense endpoint
+ * looked for an ExpenseRequest row and a cash advance is not one. Treasury hit
+ * it on ADV-2026-000008, the first advance ever to reach AWAITING_POSTING with
+ * a real person behind it.
+ *
+ * Both endpoints existed. Both were tested -- WorkflowSteps has
+ * MarkPostedExpenseAsync and MarkPostedAdvanceAsync, and the integration suite
+ * drives each. What had no test was the only caller that ships, and it called
+ * one of them for both modules.
+ */
 export const markPosted = (
   id: string,
+  moduleKey: string,
   bcDocumentNumber: string,
   treasuryNumber: string,
   comment?: string,
 ) =>
-  api.post<{ toState: string; outcome: string }>(`/api/v1/expenses/${id}/mark-posted`, {
-    bcDocumentNumber,
-    treasuryNumber,
+  api.post<{ toState: string; outcome: string }>(
+    `/api/v1/${moduleKey === "CASH_ADVANCE" ? "advances" : "expenses"}/${id}/mark-posted`,
+    {
+      bcDocumentNumber,
+      treasuryNumber,
+      comment: comment ?? null,
+    },
+  );
+
+/**
+ * CASH_RELEASE -> AWAITING_ACK. Cash advances only.
+ *
+ * `CashReleasedAt` is a mandatory captured field: it starts the retirement
+ * clock, which is what makes an advance overdue and therefore what the whole
+ * retirement rule rests on. Until 7 September nothing in the SPA called this,
+ * and RELEASE_CASH was not in CAPTURE_ACTIONS either -- so it rendered as a
+ * bare button that would have sent the action with no date and been refused
+ * for the field it never offered anywhere to type.
+ */
+export const releaseCash = (id: string, cashReleasedAt: string, comment?: string) =>
+  api.post<{ toState: string; outcome: string }>(`/api/v1/advances/${id}/release`, {
+    cashReleasedAt,
     comment: comment ?? null,
   });
 
