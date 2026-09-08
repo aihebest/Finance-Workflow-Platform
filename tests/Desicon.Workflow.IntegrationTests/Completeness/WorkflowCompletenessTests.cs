@@ -395,7 +395,7 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
             advance.RetiredAmountNgn = 400m;
             await db.SaveChangesAsync();
         });
-        covered.Add(("OUTSTANDING", "RETIRE", "PARTIALLY_RETIRED"));
+
         await StepAsync(() => WorkflowSteps.ActionAsync(financeManagerClient, advD, "WRITE_OFF", comment: "Remaining balance unrecoverable."), "PARTIALLY_RETIRED", "WRITE_OFF", "REJECTED");
 
         // DEPT_HEAD RETURN -> RESUBMIT.
@@ -461,9 +461,16 @@ public sealed class WorkflowCompletenessTests : IntegrationTestBase
 
         covered.Should().BeEquivalentTo(expected, "every declared CASH_ADVANCE transition should be exercised by at least one test");
 
+        // States a person can reach, which since version 8 is not all of them:
+        // CLOSED on an advance is entered only by the RETIRE cascade, and RETIRE
+        // is SystemOnly. Asserting against every declared state would fail for
+        // the right reason and the wrong one at the same time -- it would be
+        // telling us this test does not press a button it must never press.
+        // CLOSED is covered where the cascade runs, in CashAdvanceWorkflowTests.
         var coveredStates = covered.SelectMany(t => new[] { t.From, t.To }).ToHashSet();
-        var expectedStates = definition.States.Select(s => s.Key).ToHashSet();
-        coveredStates.Should().BeEquivalentTo(expectedStates, "every declared CASH_ADVANCE state should be entered by at least one test");
+        var expectedStates = expected.SelectMany(t => new[] { t.From, t.To }).ToHashSet();
+        coveredStates.Should().BeEquivalentTo(expectedStates,
+            "every CASH_ADVANCE state reachable by an actor should be entered by at least one test");
     }
 
 }
