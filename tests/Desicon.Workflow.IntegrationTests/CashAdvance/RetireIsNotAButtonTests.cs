@@ -53,7 +53,7 @@ public sealed class RetireIsNotAButtonTests : IntegrationTestBase
     [Fact]
     public async Task A_requester_cannot_retire_an_advance_by_asking_to()
     {
-        var (org, id) = await OutstandingAdvanceAsync("RETIRE-DIRECT");
+        var (org, id) = await OutstandingAdvanceAsync("RB-DIR");
 
         var refused = await WorkflowSteps.ActionAsync(
             Fixture.CreateClient(org.Requester), id, "RETIRE");
@@ -84,7 +84,7 @@ public sealed class RetireIsNotAButtonTests : IntegrationTestBase
     [Fact]
     public async Task The_request_never_offers_retire_as_an_available_action()
     {
-        var (org, id) = await OutstandingAdvanceAsync("RETIRE-HIDDEN");
+        var (org, id) = await OutstandingAdvanceAsync("RB-HID");
 
         var detail = await (await Fixture.CreateClient(org.Requester)
             .GetAsync($"/api/v1/requests/{id}")).ShouldSucceedAsync();
@@ -104,7 +104,7 @@ public sealed class RetireIsNotAButtonTests : IntegrationTestBase
     [Fact]
     public async Task The_engine_may_still_retire_an_advance_through_a_linked_claim()
     {
-        var (org, id) = await OutstandingAdvanceAsync("RETIRE-CASCADE");
+        var (org, id) = await OutstandingAdvanceAsync("RB-CAS");
 
         var draft = await (await WorkflowSteps.RetireAdvanceAsync(
             Fixture.CreateClient(org.Requester), id)).ShouldSucceedAsync();

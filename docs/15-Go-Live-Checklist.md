@@ -980,6 +980,33 @@ this shape, which is why it never appeared there.
       beyond this section. They are honest — somebody did press a button — but
       a reader a year from now will not know what the button was
 
+### And the wall directly behind it: bank details have no screen
+
+Pressing **Retire this advance** on `ADV-2026-000008` returns:
+
+> Employee 'ICT Admin' (DEV-0003) has no bank details on file. Record bank
+> details for this employee before an advance can be retired to them.
+
+Correct, and deliberate: `AdvanceRetirementEndpoints` creates the requester's
+own Employee-type Beneficiary and sources bank details from the Employee
+record rather than leaving them blank, because a beneficiary with none would
+pass a check it should fail.
+
+**There is nowhere to record them.** `PUT /api/v1/requests/{id}/beneficiary/
+bank-details` exists and is tested. Nothing in the SPA calls it — the frontend
+reads `hasBankDetails` in `NewExpense` to show a warning and offers no way to
+resolve the thing it warns about. Same shape as the receipt-status dead end in
+§5h, one layer along.
+
+Worth questioning as well as fixing: a retirement where the claim matches the
+advance pays nobody anything. Requiring bank details before the claim can even
+be *raised* blocks a net-zero retirement on a detail that will never be used.
+
+- [ ] Add a way to record an employee's bank details, and decide who may. It is
+      the field that decides where money goes, so it is not an ordinary edit
+- [ ] Decide whether retirement should require them at all, or only when the
+      finished claim leaves Desicon owing the employee
+
 ---
 
 ## 5f. FluentAssertions 8 is not free for Desicon
