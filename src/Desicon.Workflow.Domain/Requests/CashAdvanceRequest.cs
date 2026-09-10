@@ -32,6 +32,32 @@ public sealed class CashAdvanceRequest : Request
     /// <summary>"Please approve a Cash Advance for the underlisted expense(s)".</summary>
     public string Purpose { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Who is going to collect the cash. Free text, and deliberately so.
+    /// </summary>
+    /// <remarks>
+    /// Not a <see cref="Desicon.Workflow.Domain.People.Beneficiary"/>, and not a
+    /// payee. An advance is handed over as cash and remains the liability of
+    /// whoever raised it, whatever
+    /// name is written here -- it stays in the requester's My Advances, they
+    /// retire it, and their overdue advances still block them raising another.
+    /// Asked for by Aihe on 10 September 2026: "it's just somebody that's gonna
+    /// collect the cash. That's all."
+    ///
+    /// So there is no lookup, no bank details and no foreign key. A driver, a
+    /// site supervisor or a casual worker can be named without first existing
+    /// anywhere in this system, which is the entire point -- the expense
+    /// claim's beneficiary picker is a payment target and needs an account
+    /// number behind it; this is a name on a form so Treasury knows who to hand
+    /// the money to. If that person needs paying by transfer instead, that is a
+    /// conversation between them and Treasury, not a field on the requester's
+    /// form.
+    ///
+    /// Null means the requester is collecting it themselves, which is the
+    /// ordinary case and the reason this is optional.
+    /// </remarks>
+    public string? BeneficiaryName { get; set; }
+
     public AllocationType AllocationType { get; set; } = AllocationType.CostCentre;
 
     public string? ProjectCode { get; set; }

@@ -878,6 +878,13 @@ public static class RequestEndpoints
         }
 
         advance.Purpose = data.Purpose;
+
+        // Trimmed to null rather than stored blank, so "nobody named" is one
+        // value and not two. Reused from the allocation codes below for the
+        // same reason: the code asks `is null`, so the database should not
+        // hold "".
+        advance.BeneficiaryName = NullIfBlank(data.BeneficiaryName);
+
         advance.AllocationType = allocationType;
         // Same normalisation as the expense lines. There is no CHECK
         // constraint on CashAdvanceRequests today, so a blank string here
@@ -1075,6 +1082,12 @@ public static class RequestEndpoints
             advance.SubmittedAt,
             advance.ClosedAt,
             advance.Purpose,
+
+            // Who is collecting the cash. Treasury reads this at the release
+            // step to know who is standing in front of them; it is not a payee
+            // and carries no account. See CashAdvanceRequest.BeneficiaryName.
+            advance.BeneficiaryName,
+
             AllocationType = advance.AllocationType.ToString(),
             advance.ProjectCode,
             advance.CostCentreCode,
@@ -1162,7 +1175,13 @@ public static class RequestEndpoints
         string? CostCentreCode,
         string StationScope,
         bool HasSupportingDocuments,
-        IReadOnlyList<AdvanceLinePayload> Lines);
+        IReadOnlyList<AdvanceLinePayload> Lines,
+
+        // Who collects the cash. Free text, optional, and not a payee -- see
+        // CashAdvanceRequest.BeneficiaryName. Last and defaulted so every
+        // existing caller, including the test payload builders, keeps
+        // compiling without naming it.
+        string? BeneficiaryName = null);
 }
 
 /// <summary>{ moduleKey, payload } -- payload is module-specific, parsed

@@ -70,10 +70,19 @@ be saved until this exists.
 
 **Done when:**
 ```bash
-dotnet ef migrations add InitialCreate -p src/Desicon.Workflow.Infrastructure -s src/Desicon.Workflow.Api
+dotnet ef migrations add InitialCreate --project src/Desicon.Workflow.Infrastructure
 dotnet ef migrations script          # inspect the SQL; check constraints present
 dotnet build
 ```
+
+> **No `--startup-project`.** This line carried `-s src/Desicon.Workflow.Api`
+> until 10 September 2026, and following it fails with *"Your startup project
+> 'Desicon.Workflow.Api' doesn't reference Microsoft.EntityFrameworkCore.Design"*.
+> It stopped being true when `WorkflowDbContextFactory` was added: the
+> Infrastructure project is an `IDesignTimeDbContextFactory`, so the tool builds
+> the context on its own and the API project never needs the Design package.
+> `deploy-app.yml` has said so in a comment for weeks. This file had not caught
+> up, which is the only reason anyone would run the wrong command.
 
 ---
 

@@ -66,6 +66,12 @@ export function NewCashAdvance() {
     Array.from({ length: ROW_COUNT }, emptyRow),
   );
   const [purpose, setPurpose] = useState("");
+
+  // Who is going to collect the cash. Typed, not chosen: a driver or a site
+  // supervisor need not exist anywhere in this system to be handed money, and
+  // requiring them to would make the field useless for the case it is for.
+  // The advance stays the requester's liability regardless of what goes here.
+  const [beneficiaryName, setBeneficiaryName] = useState("");
   const [allocationType, setAllocationType] = useState<"Project" | "CostCentre">("CostCentre");
   const [projectCode, setProjectCode] = useState("");
   const [costCentreCode, setCostCentreCode] = useState("");
@@ -116,6 +122,7 @@ export function NewCashAdvance() {
 
       const created = await createCashAdvanceDraft({
         purpose: purpose.trim(),
+        ...(beneficiaryName.trim() ? { beneficiaryName: beneficiaryName.trim() } : {}),
         allocationType,
         ...(allocationType === "Project"
           ? { projectCode: projectCode.trim() }
@@ -172,6 +179,32 @@ export function NewCashAdvance() {
           placeholder="Purpose of this advance"
           className="mt-1 min-h-11 w-full rounded border border-gray-300 p-2 text-sm focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
         />
+
+        {/* Who collects the cash.
+
+            Typed, not picked from a list, and that is the requirement rather
+            than a shortcut: the person handed the money is often a driver or a
+            site supervisor who exists in no system here. The expense claim's
+            beneficiary is a payment target and needs an account behind it;
+            this is a name so Treasury knows who is standing in front of them.
+
+            Optional, because the ordinary case is that the requester collects
+            it themselves — and whoever collects it, the advance stays the
+            requester's to retire. */}
+        <label className="mt-4 block text-sm text-gray-700" htmlFor="advance-beneficiary">
+          Name of the Beneficiary
+        </label>
+        <input
+          id="advance-beneficiary"
+          value={beneficiaryName}
+          onChange={(e) => setBeneficiaryName(e.target.value)}
+          placeholder="Who will collect the cash — leave blank if it is you"
+          className="mt-1 min-h-11 w-full rounded border border-gray-300 p-2 text-sm focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+        />
+        <p className="mt-1 text-xs text-gray-500">
+          Any name. This advance stays yours to retire whoever collects it, and bank details,
+          if the money is to be transferred rather than handed over, are arranged with Treasury.
+        </p>
 
         <div className="mt-4 overflow-x-auto">
           <table className="w-full text-sm">

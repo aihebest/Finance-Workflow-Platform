@@ -350,6 +350,24 @@ export function RequestDetail() {
           </p>
         )}
 
+        {/* Who collects the cash on an advance.
+
+            Deliberately worded as collection rather than payment, and shown
+            without a staff number or an email, because unlike the payee above
+            it identifies nobody in this system -- it is a name the requester
+            typed so Treasury knows who to hand the money to. Saying "payable
+            to" here would imply an account that does not exist. */}
+        {isAdvance && detail.beneficiaryName ? (
+          <p className="mt-1 text-sm text-gray-800">
+            To be collected by{" "}
+            <span className="font-medium">{String(detail.beneficiaryName)}</span>
+            <span className="text-gray-600">
+              {" "}
+              · advance remains the requester&apos;s to retire
+            </span>
+          </p>
+        ) : null}
+
         {/* Net payable differs from the total only when an advance was taken
             against this claim, and the difference is the whole point of the
             REFUND_DUE branch -- so it is shown only when it says something the
