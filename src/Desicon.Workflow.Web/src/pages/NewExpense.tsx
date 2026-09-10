@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import {
+  createBeneficiary,
   createExpenseDraft,
   getBeneficiaries,
   submitRequest,
@@ -74,6 +75,18 @@ export function NewExpense() {
 
   const [beneficiaries, setBeneficiaries] = useState<BeneficiarySummary[]>([]);
   const [beneficiaryId, setBeneficiaryId] = useState("");
+
+  // A payee who is not on the list yet: a vendor, a casual worker, a new
+  // starter. Typed here and created on save, as a name with no bank details —
+  // Treasury records the account against the claim before paying it.
+  //
+  // Kept as a separate control rather than making the picker a free-text box,
+  // because the picker shows staff number and email and this cannot. Two people
+  // in this system share a display name and a claim was once raised against the
+  // wrong one; a box that silently matched typed text to a row would rebuild
+  // that. Choosing to add somebody new is a deliberate act, and it looks like
+  // one.
+  const [newBeneficiaryName, setNewBeneficiaryName] = useState("");
   const [receiptStatus, setReceiptStatus] = useState<"Yes" | "No" | "Incomplete">("Yes");
 
   // The receipt itself, as opposed to the radio above which is only the
@@ -118,6 +131,11 @@ export function NewExpense() {
       return;
     }
 
+    if (beneficiaryId === "__new__" && newBeneficiaryName.trim().length === 0) {
+      setError("Type the name of the person or company this claim should be paid to.");
+      return;
+    }
+
     if (filled.length === 0) {
       setError("Enter at least one expense line with a description and an amount.");
       return;
@@ -156,8 +174,18 @@ export function NewExpense() {
     let requestId: string;
 
     try {
+      // A typed name becomes a payee first, so the draft below has a real id to
+      // carry. Done here rather than on blur so nothing is created until the
+      // person actually saves -- abandoning a half-filled form should not leave
+      // a payee behind, and a duplicate name is refused by the API, which would
+      // be a confusing thing to be told while still typing.
+      const payeeId =
+        beneficiaryId === "__new__"
+          ? (await createBeneficiary(newBeneficiaryName.trim())).id
+          : beneficiaryId;
+
       const created = await createExpenseDraft({
-        ...(beneficiaryId === "__me__" ? {} : { beneficiaryId }),
+        ...(payeeId === "__me__" ? {} : { beneficiaryId: payeeId }),
         receiptStatus,
         lines: filled,
       });
@@ -231,8 +259,31 @@ export function NewExpense() {
                   {beneficiaryLabel(b)}
                 </option>
               ))}
+              {/* The way out of a list that cannot contain everyone. */}
+              <option value="__new__">Someone not on this list…</option>
             </select>
           </div>
+
+          {beneficiaryId === "__new__" && (
+            <div className="flex items-center gap-2">
+              <span className="w-56" />
+              <div className="flex-1">
+                <input
+                  id="new-beneficiary"
+                  aria-label="Name of the beneficiary"
+                  value={newBeneficiaryName}
+                  onChange={(e) => setNewBeneficiaryName(e.target.value)}
+                  placeholder="Type their name"
+                  className="w-full border-b border-gray-400 bg-transparent py-1 focus:border-blue-600 focus:outline-none"
+                />
+                <p className="mt-1 text-xs text-gray-600">
+                  Added as a payee with no bank details. Treasury records the account before
+                  the claim is paid — anything over ₦30,000 must be a transfer, so it will
+                  wait with them until they do.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Who was actually chosen, spelled out under the field.
 

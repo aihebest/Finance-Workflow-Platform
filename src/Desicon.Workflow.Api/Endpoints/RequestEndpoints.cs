@@ -224,12 +224,26 @@ public static class RequestEndpoints
                 b.Name,
                 b.Type.ToString(),
                 db.Employees.Where(e => e.Id == b.EmployeeId).Select(e => e.StaffNumber).FirstOrDefault(),
-                db.Employees.Where(e => e.Id == b.EmployeeId).Select(e => e.Email).FirstOrDefault()))
+                db.Employees.Where(e => e.Id == b.EmployeeId).Select(e => e.Email).FirstOrDefault(),
+
+                // From BankDetailsSetAt, never from the bank columns.
+                // BankAccountNumber is Always Encrypted and cannot be compared
+                // against a literal in SQL -- the same reason
+                // BeneficiaryLookupEndpoints derives it this way, and the same
+                // 500 on an ordinary-looking read if it does not.
+                b.BankDetailsSetAt != null))
             .FirstOrDefaultAsync(cancellationToken);
     }
 
     /// <summary>The payee, named rather than referenced by id.</summary>
-    internal sealed record BeneficiaryRef(string Name, string Type, string? StaffNumber, string? Email);
+    /// <remarks>
+    /// HasBankDetails added 10 September 2026, when a requester could first
+    /// name a payee who was not on the list. Such a payee has no account until
+    /// somebody records one, and the desk that pays needs to see that on the
+    /// claim rather than discover it at the moment of payment.
+    /// </remarks>
+    internal sealed record BeneficiaryRef(
+        string Name, string Type, string? StaffNumber, string? Email, bool HasBankDetails);
 
     /// <summary>
     /// Who raised this, and out of which department.

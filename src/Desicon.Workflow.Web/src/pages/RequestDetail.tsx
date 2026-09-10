@@ -10,6 +10,7 @@ import {
   releaseCash,
   retireAdvance,
   setAllocation,
+  setBankDetails,
   setReceiptStatus,
 } from "../api/requests";
 import { ACTION_LABELS, ApiError, type AuditEntry, type AvailableAction } from "../api/types";
@@ -124,6 +125,13 @@ export function RequestDetail() {
   // not disable the action buttons underneath it.
   const [receiptBusy, setReceiptBusy] = useState(false);
 
+  // Where the money actually goes, recorded by the desk that pays rather than
+  // the person who raised the claim. Kept out of the requester's form on
+  // purpose: the payment guard refuses anyone who both set the account and
+  // approves paying into it.
+  const [bankName, setBankName] = useState("");
+  const [bankAccountNumber, setBankAccountNumber] = useState("");
+
   const load = useCallback(async () => {
     try {
       const [d, h] = await Promise.all([getRequest(id), getHistory(id)]);
@@ -187,7 +195,13 @@ export function RequestDetail() {
   // Null for a cash advance, which pays its requester, and on a claim whose
   // beneficiary the API has not resolved yet.
   const payee = detail.beneficiary as
-    | { name: string; type: string; staffNumber: string | null; email: string | null }
+    | {
+        name: string;
+        type: string;
+        staffNumber: string | null;
+        email: string | null;
+        hasBankDetails: boolean;
+      }
     | null
     | undefined;
 
@@ -500,6 +514,81 @@ export function RequestDetail() {
               change this to Yes, or to Incomplete if you only have some.
             </p>
           )}
+        </section>
+      )}
+
+      {/* --- Bank details (expense claims whose payee has none) ---
+
+          A requester can name a payee who is not on the list, and such a payee
+          has no account behind them. Above ₦30,000 the payment method is
+          bank transfer whatever anyone prefers, and EXECUTE_PAYMENT guards on
+          BeneficiaryHasBankDetails — so without this the claim reaches Treasury
+          and stops, with the posting already made in Business Central.
+
+          Shown to whoever holds the claim rather than gated on a role: the
+          endpoint has always been scoped to the claim, and the control that
+          matters is not who types the account but that the same person cannot
+          then approve paying into it. That is enforced at the payment guard
+          (ActorId != BeneficiaryBankDetailsSetByUserId), which no screen can
+          talk its way past.
+
+          The endpoint shipped in the first release and had no caller until
+          10 September 2026. */}
+      {!isAdvance && payee && !payee.hasBankDetails && !detail.closedAt && (
+        <section className="rounded border border-amber-300 bg-amber-50 p-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-amber-900">
+            Bank details needed
+          </h2>
+          <p className="mt-1 text-sm text-amber-900">
+            <span className="font-medium">{payee.name}</span> has no account on file, so this
+            claim cannot be paid by transfer. Record it here — whoever does cannot also
+            approve the payment into it.
+          </p>
+
+          <div className="mt-3 flex flex-wrap gap-3">
+            <div>
+              <label className="block text-sm text-gray-700" htmlFor="bank-name">
+                Bank name
+              </label>
+              <input
+                id="bank-name"
+                value={bankName}
+                onChange={(e) => setBankName(e.target.value)}
+                placeholder="e.g. Zenith Bank"
+                className="mt-1 min-h-11 w-56 rounded border border-gray-300 p-2 text-sm focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700" htmlFor="bank-account">
+                Account number
+              </label>
+              <input
+                id="bank-account"
+                value={bankAccountNumber}
+                onChange={(e) => setBankAccountNumber(e.target.value)}
+                inputMode="numeric"
+                placeholder="10 digits"
+                className="mt-1 min-h-11 w-56 rounded border border-gray-300 p-2 text-sm focus:border-blue-600 focus:outline-none focus:ring-1 focus:ring-blue-600"
+              />
+            </div>
+          </div>
+
+          <button
+            type="button"
+            disabled={
+              busy || bankName.trim().length === 0 || bankAccountNumber.trim().length === 0
+            }
+            onClick={() =>
+              void run(async () => {
+                await setBankDetails(id, bankName.trim(), bankAccountNumber.trim());
+                setBankName("");
+                setBankAccountNumber("");
+              })
+            }
+            className="mt-3 min-h-11 rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800 disabled:opacity-50"
+          >
+            Record bank details
+          </button>
         </section>
       )}
 
