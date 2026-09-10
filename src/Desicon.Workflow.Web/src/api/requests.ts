@@ -247,6 +247,45 @@ export const getMyApprovals = () => api.get<MyApprovals>("/api/v1/my/approvals")
  * account of what the advance was spent on, and they should not make that trip
  * to change something else.
  */
+/**
+ * Names a payee who is not on the list yet.
+ *
+ * Creates a name and nothing else — no bank details, so no money can reach it
+ * until Treasury records an account against the claim. That split is the
+ * point: the requester says who they paid, a different desk says where the
+ * money goes.
+ *
+ * An exact name match is refused rather than reused. Two people in this system
+ * share a display name, and a claim was once raised against the wrong one, so
+ * quietly resolving a typed name to whichever row matched first would rebuild
+ * that fault inside a convenience.
+ */
+/**
+ * Recording where a claim's money actually goes.
+ *
+ * Scoped to one claim rather than to the payee directory, because that is the
+ * only context Finance ever touches an account number in. Refused once the
+ * claim has been authorised for payment — changing the account after the
+ * maker-checker has run is the swap-before-payment risk that check exists to
+ * stop.
+ *
+ * The endpoint has existed since the first release and had no caller until 10
+ * September 2026. Nothing in the browser could record a bank account, so a
+ * payee without one was a dead end with no way out of it.
+ */
+export const setBankDetails = (
+  requestId: string,
+  bankName: string,
+  bankAccountNumber: string,
+) =>
+  api.put<unknown>(`/api/v1/requests/${requestId}/beneficiary/bank-details`, {
+    bankName,
+    bankAccountNumber,
+  });
+
+export const createBeneficiary = (name: string) =>
+  api.post<BeneficiarySummary>("/api/v1/beneficiaries", { name });
+
 export const setReceiptStatus = (
   requestId: string,
   receiptStatus: "Yes" | "No" | "Incomplete",
