@@ -182,6 +182,13 @@ export interface AdvanceLineInput {
 
 export interface CashAdvanceDraftInput {
   purpose: string;
+  /**
+   * Who is going to collect the cash. Free text, optional, and not a payee —
+   * there is no lookup and no account behind it. The advance remains the
+   * liability of whoever raised it whatever name goes here. Omitted means the
+   * requester is collecting it themselves.
+   */
+  beneficiaryName?: string;
   /** Which tick box: "Projects Specific" or "Non Projects Specific". */
   allocationType: "Project" | "CostCentre";
   projectCode?: string;

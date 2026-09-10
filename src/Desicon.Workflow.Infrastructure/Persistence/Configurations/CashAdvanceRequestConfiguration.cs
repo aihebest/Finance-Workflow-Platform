@@ -43,6 +43,12 @@ public sealed class CashAdvanceRequestConfiguration : IEntityTypeConfiguration<C
 
         builder.Property(a => a.Purpose).HasMaxLength(500);
 
+        // Nullable and unconstrained beyond a length: this is the name of
+        // whoever collects the cash, not a payee. See
+        // CashAdvanceRequest.BeneficiaryName -- no FK, because the whole point
+        // is that the person need not exist anywhere in this system.
+        builder.Property(a => a.BeneficiaryName).HasMaxLength(200);
+
         builder.Property(a => a.AllocationType)
             .HasConversion<string>()
             .HasMaxLength(20)
