@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import {
   confirmRefund,
   executeAction,
@@ -301,7 +301,20 @@ export function RequestDetail() {
       <header className="rounded border border-gray-200 bg-white p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h1 className="text-xl font-semibold text-gray-900">{requestNumber}</h1>
-          <Money amountNgn={total} />
+          <div className="flex items-baseline gap-4">
+            {/* Available on every request, in every state, to anyone who can
+                already open it. Asked for by the Accounts Manager so Treasury
+                can file what they paid, but there is no reason to reserve it
+                for them: printing reveals nothing the page does not, and a
+                requester keeping their own copy is ordinary. */}
+            <Link
+              to={`/requests/${id}/print`}
+              className="text-sm font-medium text-blue-700 hover:text-blue-900"
+            >
+              Print
+            </Link>
+            <Money amountNgn={total} />
+          </div>
         </div>
         <p className="mt-1 text-sm text-gray-600">
           {currentState.replaceAll("_", " ")}

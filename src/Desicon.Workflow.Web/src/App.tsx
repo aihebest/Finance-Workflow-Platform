@@ -7,6 +7,7 @@ import { MyAdvances } from "./pages/MyAdvances";
 import { MyApprovals } from "./pages/MyApprovals";
 import { NewCashAdvance } from "./pages/NewCashAdvance";
 import { NewExpense } from "./pages/NewExpense";
+import { PrintRequest } from "./pages/PrintRequest";
 import { Reports } from "./pages/Reports";
 import { RequestDetail } from "./pages/RequestDetail";
 
@@ -177,6 +178,13 @@ export function App() {
           <Routes>
             <Route path="/" element={<Inbox />} />
             <Route path="/requests/:id" element={<RequestDetail />} />
+
+            {/* The request as a document. Any request, any module, any state —
+                a cash advance, an expense claim, or the claim that retires an
+                advance, since all three reach Treasury and all three get filed.
+                Read-only, and scoped by the same rules as the request itself:
+                if you cannot open it you cannot print it. */}
+            <Route path="/requests/:id/print" element={<PrintRequest />} />
             <Route path="/expenses/new" element={<NewExpense />} />
             <Route path="/advances/new" element={<NewCashAdvance />} />
             <Route path="/advances" element={<MyAdvances />} />

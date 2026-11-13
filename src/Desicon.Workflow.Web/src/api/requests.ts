@@ -202,6 +202,17 @@ export const uploadAttachment = (id: string, file: File) => {
  * token, and an anchor cannot send one. The object URL is revoked immediately
  * -- it holds the whole file in memory until it is.
  */
+/**
+ * The bytes of one attachment, for showing rather than saving.
+ *
+ * Separate from downloadAttachment, which fetches the same blob and then drives
+ * a download. The print view needs to render receipts as pages, so it wants the
+ * blob itself and creates its own object URL with a lifetime tied to the page
+ * rather than to a single click.
+ */
+export const getAttachmentBlob = (id: string, attachmentId: string) =>
+  api.getBlob(`/api/v1/requests/${id}/attachments/${attachmentId}`);
+
 export const downloadAttachment = async (id: string, attachmentId: string, fileName: string) => {
   const blob = await api.getBlob(`/api/v1/requests/${id}/attachments/${attachmentId}`);
   const url = URL.createObjectURL(blob);
